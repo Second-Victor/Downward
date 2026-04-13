@@ -31,7 +31,7 @@ protocol WorkspaceManager: Sendable {
     func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult
     func renameFile(at url: URL, to proposedName: String) async throws -> WorkspaceMutationResult
     func deleteFile(at url: URL) async throws -> WorkspaceMutationResult
-    func clearWorkspaceSelection() async
+    func clearWorkspaceSelection() async throws
 }
 
 actor LiveWorkspaceManager: WorkspaceManager {
@@ -325,8 +325,17 @@ actor LiveWorkspaceManager: WorkspaceManager {
         return WorkspaceMutationResult(snapshot: snapshot, outcome: outcome)
     }
 
-    func clearWorkspaceSelection() async {
-        try? await bookmarkStore.clearBookmark()
+    /// Clears the stored bookmark without mutating UI state. The caller decides whether in-memory app
+    /// state should also be reset so a failed clear does not leave the app partially torn down.
+    func clearWorkspaceSelection() async throws {
+        do {
+            try await bookmarkStore.clearBookmark()
+        } catch let error as AppError {
+            throw AppError.workspaceClearFailed(details: error.localizedDescription)
+        } catch {
+            throw AppError.workspaceClearFailed(details: "The stored workspace reference could not be removed.")
+        }
+
         currentSnapshot = nil
     }
 
@@ -616,7 +625,7 @@ actor StubWorkspaceManager: WorkspaceManager {
         )
     }
 
-    func clearWorkspaceSelection() async {
-        try? await bookmarkStore.clearBookmark()
+    func clearWorkspaceSelection() async throws {
+        try await bookmarkStore.clearBookmark()
     }
 }

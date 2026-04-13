@@ -216,6 +216,179 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testClearWorkspaceResetsAppStateAndNavigation() async {
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceAccessState = .ready(displayName: PreviewSampleData.nestedWorkspace.displayName)
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.openDocument = PreviewSampleData.cleanDocument
+        session.editorLoadError = PreviewSampleData.failedLoadError
+        session.path = [.settings, .editor(PreviewSampleData.cleanDocument.url)]
+        session.lastError = PreviewSampleData.saveFailedError
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: PreviewSampleData.nestedWorkspace
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: StubErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        await coordinator.clearWorkspace()
+
+        XCTAssertEqual(session.launchState, .noWorkspaceSelected)
+        XCTAssertEqual(session.workspaceAccessState, .noneSelected)
+        XCTAssertNil(session.workspaceSnapshot)
+        XCTAssertNil(session.openDocument)
+        XCTAssertNil(session.editorLoadError)
+        XCTAssertEqual(session.path, [])
+        XCTAssertNil(session.lastError)
+    }
+
+    @MainActor
+    func testClearWorkspaceRemovesStoredBookmark() async throws {
+        let bookmarkStore = StubBookmarkStore(
+            initialBookmark: StoredWorkspaceBookmark(
+                workspaceName: PreviewSampleData.nestedWorkspace.displayName,
+                lastKnownPath: PreviewSampleData.nestedWorkspace.rootURL.path,
+                bookmarkData: Data("workspace-bookmark".utf8)
+            )
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceAccessState = .ready(displayName: PreviewSampleData.nestedWorkspace.displayName)
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.openDocument = PreviewSampleData.cleanDocument
+        session.path = [.settings]
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: LiveWorkspaceManager(
+                bookmarkStore: bookmarkStore,
+                securityScopedAccess: SmokeTestSecurityScopedAccessHandler(),
+                workspaceEnumerator: StubWorkspaceEnumerator(snapshot: PreviewSampleData.nestedWorkspace)
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: StubErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        await coordinator.clearWorkspace()
+
+        let bookmark = try await bookmarkStore.loadBookmark()
+        XCTAssertNil(bookmark)
+        XCTAssertEqual(session.launchState, .noWorkspaceSelected)
+        XCTAssertEqual(session.path, [])
+    }
+
+    @MainActor
+    func testClearWorkspaceFailureKeepsExistingStateAndShowsError() async {
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceAccessState = .ready(displayName: PreviewSampleData.nestedWorkspace.displayName)
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.openDocument = PreviewSampleData.cleanDocument
+        session.path = [.settings]
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: PreviewSampleData.nestedWorkspace,
+                clearError: .workspaceClearFailed(details: "The bookmark store is unavailable.")
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: StubErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        await coordinator.clearWorkspace()
+
+        XCTAssertEqual(session.launchState, .workspaceReady)
+        XCTAssertEqual(session.workspaceSnapshot, PreviewSampleData.nestedWorkspace)
+        XCTAssertEqual(session.openDocument?.url, PreviewSampleData.cleanDocument.url)
+        XCTAssertEqual(session.path, [.settings])
+        XCTAssertEqual(session.lastError?.title, "Can’t Clear Workspace")
+    }
+
+    @MainActor
+    func testReconnectFromSettingsReplacesWorkspaceAndClearsNavigationState() async {
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceAccessState = .ready(displayName: PreviewSampleData.nestedWorkspace.displayName)
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.openDocument = PreviewSampleData.cleanDocument
+        session.path = [.settings]
+
+        let replacementWorkspaceURL = URL(filePath: "/preview/ReconnectedWorkspace")
+        let replacementSnapshot = WorkspaceSnapshot(
+            rootURL: replacementWorkspaceURL,
+            displayName: "ReconnectedWorkspace",
+            rootNodes: PreviewSampleData.emptyWorkspace.rootNodes,
+            lastUpdated: PreviewSampleData.previewDate
+        )
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: replacementSnapshot,
+                selectResult: .ready(replacementSnapshot)
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: StubErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        await coordinator.handleFolderPickerResult(.success([replacementWorkspaceURL]))
+
+        XCTAssertEqual(session.launchState, .workspaceReady)
+        XCTAssertEqual(session.workspaceSnapshot, replacementSnapshot)
+        XCTAssertEqual(session.workspaceAccessState, .ready(displayName: "ReconnectedWorkspace"))
+        XCTAssertNil(session.openDocument)
+        XCTAssertEqual(session.path, [])
+        XCTAssertNil(session.lastError)
+    }
+
+    @MainActor
+    func testFailedReconnectFromSettingsKeepsExistingWorkspaceAndEditorState() async {
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceAccessState = .ready(displayName: PreviewSampleData.nestedWorkspace.displayName)
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.openDocument = PreviewSampleData.cleanDocument
+        session.path = [.settings]
+
+        let reconnectError = UserFacingError(
+            title: "Can’t Open Folder",
+            message: "The selected folder could not be loaded.",
+            recoverySuggestion: "Try choosing the folder again."
+        )
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: PreviewSampleData.nestedWorkspace,
+                selectResult: .failed(reconnectError)
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: StubErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        await coordinator.handleFolderPickerResult(.success([URL(filePath: "/preview/BrokenWorkspace")]))
+
+        XCTAssertEqual(session.launchState, .workspaceReady)
+        XCTAssertEqual(session.workspaceSnapshot, PreviewSampleData.nestedWorkspace)
+        XCTAssertEqual(session.openDocument?.url, PreviewSampleData.cleanDocument.url)
+        XCTAssertEqual(session.path, [.settings])
+        XCTAssertEqual(session.lastError, reconnectError)
+    }
+
+    @MainActor
     private func makeWorkspaceSnapshotReplacingRootFile(
         oldURL: URL,
         with replacement: WorkspaceNode
@@ -293,18 +466,24 @@ private actor FailingDocumentManager: DocumentManager {
 
 private actor MutationTestingWorkspaceManager: WorkspaceManager {
     let refreshSnapshot: WorkspaceSnapshot
+    let selectResult: WorkspaceRestoreResult?
     let renameOutcome: WorkspaceMutationOutcome?
     let deleteOutcome: WorkspaceMutationOutcome?
+    let clearError: AppError?
     private(set) var deleteCalls: [URL] = []
 
     init(
         refreshSnapshot: WorkspaceSnapshot,
+        selectResult: WorkspaceRestoreResult? = nil,
         renameOutcome: WorkspaceMutationOutcome? = nil,
-        deleteOutcome: WorkspaceMutationOutcome? = nil
+        deleteOutcome: WorkspaceMutationOutcome? = nil,
+        clearError: AppError? = nil
     ) {
         self.refreshSnapshot = refreshSnapshot
+        self.selectResult = selectResult
         self.renameOutcome = renameOutcome
         self.deleteOutcome = deleteOutcome
+        self.clearError = clearError
     }
 
     func restoreWorkspace() async -> WorkspaceRestoreResult {
@@ -312,7 +491,11 @@ private actor MutationTestingWorkspaceManager: WorkspaceManager {
     }
 
     func selectWorkspace(at url: URL) async -> WorkspaceRestoreResult {
-        .ready(refreshSnapshot)
+        if let selectResult {
+            return selectResult
+        }
+
+        return .ready(refreshSnapshot)
     }
 
     func refreshCurrentWorkspace() async throws -> WorkspaceSnapshot {
@@ -349,5 +532,9 @@ private actor MutationTestingWorkspaceManager: WorkspaceManager {
         )
     }
 
-    func clearWorkspaceSelection() async {}
+    func clearWorkspaceSelection() async throws {
+        if let clearError {
+            throw clearError
+        }
+    }
 }

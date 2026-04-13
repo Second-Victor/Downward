@@ -750,7 +750,7 @@ Add a very small settings or info area for workspace management without bloating
     - workspace loaded
     - no workspace
 
-- [ ] Extend `AppModel`
+- [x] Extend app-level workspace coordination
   - Responsibility added in this phase:
     - clear workspace
     - return to picker state

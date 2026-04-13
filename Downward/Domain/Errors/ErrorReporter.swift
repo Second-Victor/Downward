@@ -37,6 +37,12 @@ struct StubErrorReporter: ErrorReporter {
                 message: "\(displayName) is no longer available.",
                 recoverySuggestion: "Reconnect the folder to keep editing."
             )
+        case let .workspaceClearFailed(details):
+            UserFacingError(
+                title: "Can’t Clear Workspace",
+                message: details,
+                recoverySuggestion: "Try again from Settings."
+            )
         case let .fileOperationFailed(action, name, details):
             UserFacingError(
                 title: action,

@@ -373,14 +373,26 @@ final class AppCoordinator {
 
     func clearWorkspace() async {
         _ = nextWorkspaceTransitionGeneration()
-        await workspaceManager.clearWorkspaceSelection()
-        session.workspaceSnapshot = nil
-        session.workspaceAccessState = .noneSelected
-        session.openDocument = nil
-        session.editorLoadError = nil
-        session.path = []
-        session.lastError = nil
-        session.launchState = .noWorkspaceSelected
+
+        do {
+            try await workspaceManager.clearWorkspaceSelection()
+            session.workspaceSnapshot = nil
+            session.workspaceAccessState = .noneSelected
+            session.openDocument = nil
+            session.editorLoadError = nil
+            session.path = []
+            session.lastError = nil
+            session.launchState = .noWorkspaceSelected
+        } catch let error as AppError {
+            errorReporter.report(error, context: "Clearing workspace")
+            session.lastError = errorReporter.makeUserFacingError(from: error)
+        } catch {
+            let appError = AppError.workspaceClearFailed(
+                details: "The workspace could not be cleared right now."
+            )
+            errorReporter.report(appError, context: "Clearing workspace")
+            session.lastError = errorReporter.makeUserFacingError(from: appError)
+        }
     }
 
     func didChangeNavigationPath(_ path: [AppRoute]) {
@@ -394,12 +406,21 @@ final class AppCoordinator {
         case .success(nil):
             return
         case let .success(.some(url)):
-            session.launchState = .restoringWorkspace
-            session.lastError = nil
+            let isReplacingActiveWorkspace = session.launchState == .workspaceReady && session.workspaceSnapshot != nil
+
+            if isReplacingActiveWorkspace == false {
+                session.launchState = .restoringWorkspace
+                session.lastError = nil
+            }
+
             let generation = nextWorkspaceTransitionGeneration()
             logger.log("Selected workspace folder: \(url.lastPathComponent)")
             let selectionResult = await workspaceManager.selectWorkspace(at: url)
-            applyRestoreResult(selectionResult, generation: generation)
+            if isReplacingActiveWorkspace {
+                applyWorkspaceReplacementResult(selectionResult, generation: generation)
+            } else {
+                applyRestoreResult(selectionResult, generation: generation)
+            }
         case let .failure(error):
             if session.launchState == .workspaceReady {
                 session.lastError = error
@@ -444,6 +465,23 @@ final class AppCoordinator {
             session.workspaceSnapshot = nil
             session.launchState = .failed(error)
             session.lastError = error
+        }
+    }
+
+    private func applyWorkspaceReplacementResult(_ restoreResult: WorkspaceRestoreResult, generation: Int) {
+        guard generation == workspaceTransitionGeneration else {
+            return
+        }
+
+        switch restoreResult {
+        case let .ready(snapshot):
+            applyRestoreResult(.ready(snapshot), generation: generation)
+        case let .accessInvalid(accessState):
+            session.lastError = accessState.invalidationError
+        case let .failed(error):
+            session.lastError = error
+        case .noWorkspaceSelected:
+            break
         }
     }
 

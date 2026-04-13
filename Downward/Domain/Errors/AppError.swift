@@ -4,6 +4,7 @@ enum AppError: Error, Equatable, LocalizedError, Sendable {
     case missingWorkspaceSelection
     case workspaceRestoreFailed(details: String)
     case workspaceAccessInvalid(displayName: String)
+    case workspaceClearFailed(details: String)
     case fileOperationFailed(action: String, name: String, details: String)
     case documentUnavailable(name: String)
     case documentOpenFailed(name: String, details: String)
@@ -19,6 +20,8 @@ enum AppError: Error, Equatable, LocalizedError, Sendable {
             "Workspace restore failed: \(details)"
         case let .workspaceAccessInvalid(displayName):
             "Workspace access is invalid for \(displayName)."
+        case let .workspaceClearFailed(details):
+            "Workspace clear failed: \(details)"
         case let .fileOperationFailed(action, name, details):
             "\(action) failed for \(name): \(details)"
         case let .documentUnavailable(name):
