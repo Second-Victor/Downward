@@ -1,0 +1,27 @@
+import Foundation
+import Observation
+
+enum RootLaunchState: Equatable {
+    case noWorkspaceSelected
+    case restoringWorkspace
+    case workspaceReady
+    case workspaceAccessInvalid
+    case failed(UserFacingError)
+}
+
+@MainActor
+@Observable
+final class AppSession {
+    var launchState: RootLaunchState = .noWorkspaceSelected
+    var workspaceAccessState: WorkspaceAccessState = .noneSelected
+    var workspaceSnapshot: WorkspaceSnapshot?
+    var openDocument: OpenDocument?
+    var editorLoadError: UserFacingError?
+    var path: [AppRoute] = []
+    var lastError: UserFacingError?
+    var hasBootstrapped = false
+
+    var currentWorkspaceName: String? {
+        workspaceSnapshot?.displayName ?? workspaceAccessState.displayName
+    }
+}

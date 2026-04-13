@@ -1,0 +1,130 @@
+import Foundation
+import XCTest
+@testable import Downward
+
+final class WorkspaceEnumeratorTests: XCTestCase {
+    func testEnumeratorIncludesOnlySupportedFiles() throws {
+        let rootURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: rootURL) }
+
+        try createFile(named: "Notes.md", in: rootURL)
+        try createFile(named: "Ideas.markdown", in: rootURL)
+        try createFile(named: "Scratch.txt", in: rootURL)
+        try createFile(named: "Image.png", in: rootURL)
+
+        let snapshot = try LiveWorkspaceEnumerator().makeSnapshot(
+            rootURL: rootURL,
+            displayName: "Workspace"
+        )
+
+        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Ideas.markdown", "Notes.md", "Scratch.txt"])
+    }
+
+    func testEnumeratorSortsFoldersBeforeFilesAlphabetically() throws {
+        let rootURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: rootURL) }
+
+        let zetaURL = try createDirectory(named: "Zeta", in: rootURL)
+        let alphaURL = try createDirectory(named: "Alpha", in: rootURL)
+        try createFile(named: "inside.md", in: zetaURL)
+        try createFile(named: "inside.md", in: alphaURL)
+        try createFile(named: "z-file.md", in: rootURL)
+        try createFile(named: "a-file.md", in: rootURL)
+
+        let snapshot = try LiveWorkspaceEnumerator().makeSnapshot(
+            rootURL: rootURL,
+            displayName: "Workspace"
+        )
+
+        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Alpha", "Zeta", "a-file.md", "z-file.md"])
+    }
+
+    func testEnumeratorBuildsNestedWorkspaceTree() throws {
+        let rootURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: rootURL) }
+
+        let journalURL = try createDirectory(named: "Journal", in: rootURL)
+        let yearURL = try createDirectory(named: "2026", in: journalURL)
+        try createFile(named: "2026-04-13.md", in: yearURL)
+        try createFile(named: "Inbox.md", in: rootURL)
+
+        let snapshot = try LiveWorkspaceEnumerator().makeSnapshot(
+            rootURL: rootURL,
+            displayName: "Workspace"
+        )
+
+        guard case let .folder(journalFolder) = snapshot.rootNodes.first else {
+            return XCTFail("Expected the first root node to be the Journal folder.")
+        }
+
+        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Journal", "Inbox.md"])
+        XCTAssertEqual(journalFolder.children.count, 1)
+
+        guard case let .folder(yearFolder) = journalFolder.children.first else {
+            return XCTFail("Expected the Journal folder to contain the 2026 folder.")
+        }
+
+        XCTAssertEqual(yearFolder.displayName, "2026")
+        XCTAssertEqual(yearFolder.children.map(\.displayName), ["2026-04-13.md"])
+    }
+
+    func testEnumeratorKeepsFoldersOnlyWhenTheyContainSupportedDescendants() throws {
+        let rootURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: rootURL) }
+
+        let supportedFolderURL = try createDirectory(named: "Supported", in: rootURL)
+        try createFile(named: "Keep.md", in: supportedFolderURL)
+
+        let deepFolderURL = try createDirectory(named: "Deep", in: rootURL)
+        let nestedFolderURL = try createDirectory(named: "Nested", in: deepFolderURL)
+        try createFile(named: "Retained.markdown", in: nestedFolderURL)
+
+        let unsupportedFolderURL = try createDirectory(named: "Unsupported", in: rootURL)
+        try createFile(named: "Ignore.png", in: unsupportedFolderURL)
+
+        let emptyFolderURL = try createDirectory(named: "Empty", in: rootURL)
+        try createDirectory(named: "OnlyDirectories", in: emptyFolderURL)
+
+        let snapshot = try LiveWorkspaceEnumerator().makeSnapshot(
+            rootURL: rootURL,
+            displayName: "Workspace"
+        )
+
+        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Deep", "Supported"])
+    }
+
+    private func makeTemporaryWorkspace() throws -> URL {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appending(path: "WorkspaceEnumeratorTests")
+            .appending(path: UUID().uuidString)
+
+        try FileManager.default.createDirectory(
+            at: rootURL,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        return rootURL
+    }
+
+    @discardableResult
+    private func createDirectory(named name: String, in parentURL: URL) throws -> URL {
+        let directoryURL = parentURL.appending(path: name)
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        return directoryURL
+    }
+
+    @discardableResult
+    private func createFile(named name: String, in parentURL: URL) throws -> URL {
+        let fileURL = parentURL.appending(path: name)
+        try Data("sample".utf8).write(to: fileURL)
+        return fileURL
+    }
+
+    private func removeItemIfPresent(at url: URL) {
+        try? FileManager.default.removeItem(at: url)
+    }
+}
