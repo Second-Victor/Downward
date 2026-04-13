@@ -5,8 +5,9 @@ struct WorkspacePlaceholderDetailView: View {
         ContentUnavailableView(
             "Select a Folder or File",
             systemImage: "sidebar.leading",
-            description: Text("Choose a folder to browse deeper or a file to trigger the document stub.")
+            description: Text("Choose a folder to browse deeper or a document to start editing.")
         )
+        .accessibilityElement(children: .contain)
     }
 }
 

@@ -25,13 +25,39 @@ struct WorkspaceRowView: View {
             if isSelected {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
             } else if node.isFolder {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(accessibilityValue)
+        .accessibilityHint(accessibilityHint)
+    }
+
+    private var accessibilityLabel: String {
+        if let subtitle = node.subtitle {
+            "\(node.displayName), \(subtitle)"
+        } else {
+            node.displayName
+        }
+    }
+
+    private var accessibilityValue: String {
+        var values: [String] = [node.isFolder ? "Folder" : "File"]
+        if isSelected {
+            values.append("Open")
+        }
+        return values.joined(separator: ", ")
+    }
+
+    private var accessibilityHint: String {
+        node.isFolder ? "Opens this folder." : "Opens this document."
     }
 }
 

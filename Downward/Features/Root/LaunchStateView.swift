@@ -11,39 +11,45 @@ struct LaunchStateView: View {
     let secondaryAction: (() -> Void)?
 
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: symbolName)
-                .font(.system(size: 40, weight: .medium))
-                .foregroundStyle(.tint)
+        ScrollView {
+            VStack(spacing: 20) {
+                Image(systemName: symbolName)
+                    .font(.system(size: 40, weight: .medium))
+                    .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
 
-            VStack(spacing: 8) {
-                Text(title)
-                    .font(.title2.weight(.semibold))
-                Text(message)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-
-            if isLoading {
-                ProgressView()
-                    .padding(.top, 4)
-            }
-
-            VStack(spacing: 12) {
-                if let primaryActionTitle {
-                    Button(primaryActionTitle, action: primaryAction)
-                        .buttonStyle(.borderedProminent)
+                VStack(spacing: 8) {
+                    Text(title)
+                        .font(.title2.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                    Text(message)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
 
-                if let secondaryActionTitle, let secondaryAction {
-                    Button(secondaryActionTitle, action: secondaryAction)
-                        .buttonStyle(.bordered)
+                if isLoading {
+                    ProgressView("Loading")
+                        .padding(.top, 4)
+                }
+
+                VStack(spacing: 12) {
+                    if let primaryActionTitle {
+                        Button(primaryActionTitle, action: primaryAction)
+                            .buttonStyle(.borderedProminent)
+                    }
+
+                    if let secondaryActionTitle, let secondaryAction {
+                        Button(secondaryActionTitle, action: secondaryAction)
+                            .buttonStyle(.bordered)
+                    }
                 }
             }
+            .frame(maxWidth: 420)
+            .padding(24)
+            .frame(maxWidth: .infinity, minHeight: 0)
         }
-        .frame(maxWidth: 420)
-        .padding(24)
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -58,6 +64,20 @@ struct LaunchStateView: View {
         secondaryActionTitle: "Folder Picker Deferred",
         secondaryAction: {}
     )
+}
+
+#Preview("Large Type") {
+    LaunchStateView(
+        title: "Choose a Workspace",
+        message: "Pick one folder to browse and edit markdown files.",
+        symbolName: "folder.badge.plus",
+        isLoading: false,
+        primaryActionTitle: "Open Folder",
+        primaryAction: {},
+        secondaryActionTitle: "Retry",
+        secondaryAction: {}
+    )
+    .environment(\.dynamicTypeSize, .accessibility3)
 }
 
 #Preview("Failed") {

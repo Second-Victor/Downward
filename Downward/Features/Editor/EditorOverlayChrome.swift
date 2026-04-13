@@ -9,6 +9,7 @@ struct EditorOverlayChrome: View {
             .foregroundStyle(.orange)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(viewModel.saveStateText)
+            .accessibilityHint("The latest save did not complete.")
     }
 }
 

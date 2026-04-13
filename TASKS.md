@@ -822,13 +822,13 @@ Finish the app with usability and platform polish without changing core architec
     - settings actions
     - conflict presentation
 
-- [ ] Verify any save failure messaging is not color-only
+- [x] Verify any save failure messaging is not color-only
   - Affects:
     - failed save UI
     - conflict UI
     - error alerts
 
-- [ ] Verify Dynamic Type behavior across screens
+- [x] Verify Dynamic Type behavior across screens
   - Affects all UI files
 
 - [x] Finalize native editor behavior
@@ -843,22 +843,22 @@ Finish the app with usability and platform polish without changing core architec
     - ensure editor spacing feels natural under the standard bar
     - keep the overall presentation calm and native
 
-- [ ] Verify iPad layout readability and navigation usability
+- [x] Verify iPad layout readability and navigation usability
   - Affects:
     - `RootScreen`
     - `WorkspaceBrowserScreen`
     - `FolderContentsScreen`
     - `DocumentEditorScreen`
 
-- [ ] Improve calm visual styling using native SwiftUI materials and spacing only where useful
+- [x] Improve calm visual styling using native SwiftUI materials and spacing only where useful
   - Do not add decorative complexity
 
 ### Acceptance criteria
 
-- [ ] The app remains minimal
-- [ ] Important controls are accessible
-- [ ] The app is comfortable on iPhone and iPad
-- [ ] No polish work weakens data-safety behavior
+- [x] The app remains minimal
+- [x] Important controls are accessible
+- [x] The app is comfortable on iPhone and iPad
+- [x] No polish work weakens data-safety behavior
 - [x] The editor visually behaves like a standard native detail screen
 
 ---

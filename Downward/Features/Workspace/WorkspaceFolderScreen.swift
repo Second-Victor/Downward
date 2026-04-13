@@ -37,17 +37,21 @@ struct WorkspaceFolderScreen: View {
                     viewModel.presentCreateFile(in: folderURL)
                 }
                 .disabled(viewModel.isBusy)
+                .accessibilityLabel("New Markdown File")
+                .accessibilityHint("Creates a markdown file in the current folder.")
 
                 Button("Refresh", systemImage: "arrow.clockwise") {
                     viewModel.refresh()
                 }
                 .disabled(viewModel.isBusy)
+                .accessibilityHint("Reloads the current workspace snapshot.")
 
                 if showsSettingsButton {
                     Button("Settings", systemImage: "gearshape") {
                         viewModel.showSettings()
                     }
                     .disabled(viewModel.isBusy)
+                    .accessibilityHint("Shows workspace management options.")
                 }
             }
         }
@@ -164,12 +168,16 @@ private struct WorkspaceFolderRow: View {
                         viewModel.presentRename(for: file)
                     }
                 }
+                .accessibilityLabel("Rename \(node.displayName)")
+                .accessibilityHint("Changes the file name.")
 
                 Button("Delete", systemImage: "trash", role: .destructive) {
                     if case let .file(file) = node {
                         viewModel.presentDelete(for: file)
                     }
                 }
+                .accessibilityLabel("Delete \(node.displayName)")
+                .accessibilityHint("Deletes this file from the workspace.")
             }
             .swipeActions {
                 Button("Rename", systemImage: "pencil") {
@@ -187,6 +195,24 @@ private struct WorkspaceFolderRow: View {
             }
         }
     }
+}
+
+#Preview("Large Type Root") {
+    NavigationStack {
+        WorkspaceFolderScreen(
+            viewModel: {
+                let container = AppContainer.preview(
+                    launchState: .workspaceReady,
+                    accessState: .ready(displayName: PreviewSampleData.largeWorkspace.displayName),
+                    snapshot: PreviewSampleData.largeWorkspace
+                )
+                return container.workspaceViewModel
+            }(),
+            folderURL: nil,
+            showsSettingsButton: true
+        )
+    }
+    .environment(\.dynamicTypeSize, .accessibility3)
 }
 
 #Preview("Nested Folder") {

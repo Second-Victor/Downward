@@ -28,6 +28,7 @@ struct WorkspaceScreen: View {
         .task {
             viewModel.loadSnapshotIfNeeded()
         }
+        .accessibilityElement(children: .contain)
     }
 }
 

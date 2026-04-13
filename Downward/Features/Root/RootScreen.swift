@@ -118,6 +118,7 @@ private struct RegularWorkspaceShell: View {
 
         NavigationSplitView {
             WorkspaceScreen(viewModel: viewModel.workspaceViewModel)
+                .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 360)
         } detail: {
             NavigationStack(path: $session.path) {
                 WorkspacePlaceholderDetailView()
@@ -126,6 +127,7 @@ private struct RegularWorkspaceShell: View {
                     }
             }
         }
+        .navigationSplitViewStyle(.balanced)
         .onChange(of: session.path) { _, newPath in
             viewModel.didChange(path: newPath)
         }

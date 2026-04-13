@@ -13,14 +13,17 @@ struct SettingsScreen: View {
             Section("Workspace") {
                 LabeledContent("Name", value: workspaceName ?? "None")
                 LabeledContent("Access", value: accessDescription)
+                    .accessibilityHint(accessibilityAccessHint)
             }
 
             Section("Actions") {
                 Button(reconnectButtonTitle, action: reconnectWorkspaceAction)
+                    .accessibilityHint(reconnectHint)
                 Button("Clear Workspace", role: .destructive) {
                     isShowingClearConfirmation = true
                 }
                 .disabled(canClearWorkspace == false)
+                .accessibilityHint("Removes the saved workspace and closes any open document.")
             }
         }
         .navigationTitle("Settings")
@@ -66,6 +69,28 @@ struct SettingsScreen: View {
             true
         }
     }
+
+    private var reconnectHint: String {
+        switch accessState {
+        case .noneSelected:
+            "Choose a folder from Files."
+        case .restorable, .ready, .invalid:
+            "Choose the workspace folder again."
+        }
+    }
+
+    private var accessibilityAccessHint: String {
+        switch accessState {
+        case .noneSelected:
+            "No workspace is currently selected."
+        case .restorable:
+            "A saved workspace can be restored."
+        case .ready:
+            "The current workspace is available."
+        case .invalid:
+            "The saved workspace needs to be reconnected."
+        }
+    }
 }
 
 #Preview("Workspace Loaded") {
@@ -77,6 +102,18 @@ struct SettingsScreen: View {
             clearWorkspaceAction: {}
         )
     }
+}
+
+#Preview("Large Type") {
+    NavigationStack {
+        SettingsScreen(
+            workspaceName: PreviewSampleData.nestedWorkspace.displayName,
+            accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+            reconnectWorkspaceAction: {},
+            clearWorkspaceAction: {}
+        )
+    }
+    .environment(\.dynamicTypeSize, .accessibility3)
 }
 
 #Preview("No Workspace") {

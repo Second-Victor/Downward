@@ -6,31 +6,32 @@ struct EditorScreen: View {
 
     var body: some View {
         editorContent
-        .background(.background)
-        .navigationTitle(viewModel.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .task(id: documentURL) {
-            viewModel.handleAppear(for: documentURL)
-        }
-        .onDisappear {
-            viewModel.handleDisappear(for: documentURL)
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                if viewModel.showsConflictResolveAction {
-                    Button("Resolve") {
-                        viewModel.presentConflictResolution()
+            .background(.background)
+            .navigationTitle(viewModel.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .task(id: documentURL) {
+                viewModel.handleAppear(for: documentURL)
+            }
+            .onDisappear {
+                viewModel.handleDisappear(for: documentURL)
+            }
+            .toolbar {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if viewModel.showsConflictResolveAction {
+                        Button("Resolve") {
+                            viewModel.presentConflictResolution()
+                        }
+                        .accessibilityHint("Review options for the current file conflict.")
+                    }
+
+                    if viewModel.showsSaveStatusIndicator {
+                        EditorOverlayChrome(viewModel: viewModel)
                     }
                 }
-
-                if viewModel.showsSaveStatusIndicator {
-                    EditorOverlayChrome(viewModel: viewModel)
-                }
             }
-        }
-        .sheet(isPresented: conflictSheetBinding) {
-            ConflictResolutionView(viewModel: viewModel)
-        }
+            .sheet(isPresented: conflictSheetBinding) {
+                ConflictResolutionView(viewModel: viewModel)
+            }
     }
 
     @ViewBuilder
@@ -39,6 +40,8 @@ struct EditorScreen: View {
             TextEditor(text: viewModel.textBinding)
                 .scrollContentBackground(.hidden)
                 .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
+                .accessibilityLabel("Document Text")
+                .accessibilityHint("Edits the current markdown document.")
         } else if let error = viewModel.loadError {
             ContentUnavailableView(
                 error.title,
@@ -59,6 +62,39 @@ struct EditorScreen: View {
             get: { viewModel.isShowingConflictResolution },
             set: { viewModel.isShowingConflictResolution = $0 }
         )
+    }
+}
+
+#Preview("iPad Clean") {
+    NavigationSplitView {
+        WorkspaceScreen(
+            viewModel: {
+                let container = AppContainer.preview(
+                    launchState: .workspaceReady,
+                    accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+                    snapshot: PreviewSampleData.nestedWorkspace,
+                    document: PreviewSampleData.cleanDocument,
+                    path: [.editor(PreviewSampleData.cleanDocument.url)]
+                )
+                return container.workspaceViewModel
+            }()
+        )
+    } detail: {
+        NavigationStack {
+            EditorScreen(
+                viewModel: {
+                    let container = AppContainer.preview(
+                        launchState: .workspaceReady,
+                        accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+                        snapshot: PreviewSampleData.nestedWorkspace,
+                        document: PreviewSampleData.cleanDocument,
+                        path: [.editor(PreviewSampleData.cleanDocument.url)]
+                    )
+                    return container.editorViewModel
+                }(),
+                documentURL: PreviewSampleData.cleanDocument.url
+            )
+        }
     }
 }
 
