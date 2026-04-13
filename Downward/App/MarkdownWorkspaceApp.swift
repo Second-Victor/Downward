@@ -10,6 +10,7 @@ struct MarkdownWorkspaceApp: App {
             RootScreen(viewModel: container.rootViewModel)
                 .onChange(of: scenePhase, initial: true) { _, newPhase in
                     container.lifecycleObserver.update(phase: newPhase)
+                    container.rootViewModel.handleScenePhaseChange(newPhase)
                 }
         }
     }

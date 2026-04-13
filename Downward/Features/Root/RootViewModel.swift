@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import UniformTypeIdentifiers
+import SwiftUI
 
 @MainActor
 @Observable
@@ -79,6 +80,19 @@ final class RootViewModel {
     func handleFolderSelection(_ result: Result<[URL], Error>) {
         Task {
             await coordinator.handleFolderPickerResult(result)
+        }
+    }
+
+    func handleScenePhaseChange(_ phase: ScenePhase) {
+        switch phase {
+        case .active:
+            Task {
+                await coordinator.handleSceneDidBecomeActive()
+            }
+        case .inactive, .background:
+            editorViewModel.handleScenePhaseChange(phase)
+        @unknown default:
+            break
         }
     }
 

@@ -772,21 +772,21 @@ Make relaunch and scene changes feel safe and predictable.
 
 ### Tasks
 
-- [ ] Extend `AppModel`
+- [x] Extend `AppModel`
   - Responsibility added in this phase:
     - restore last open file path if safe
     - bootstrap workspace refresh on relaunch
     - clear invalid file selection when the file no longer exists
 
-- [ ] Extend `Services/SessionStore.swift`
+- [x] Extend `Services/SessionStore.swift`
   - Responsibility added in this phase:
     - persist lightweight last-file information
 
-- [ ] Extend `DocumentEditorViewModel`
+- [x] Extend `DocumentEditorViewModel`
   - Responsibility added in this phase:
     - flush pending save on disappear and lifecycle transitions where appropriate
 
-- [ ] Add lifecycle hooks where needed
+- [x] Add lifecycle hooks where needed
   - Responsibility:
     - revalidate workspace and editor state when returning to foreground
     - avoid stale restore paths after provider-side changes
@@ -794,15 +794,15 @@ Make relaunch and scene changes feel safe and predictable.
 ### Acceptance criteria
 
 - [x] Relaunch returns to the workspace when bookmark restore succeeds
-- [ ] Last file can be reopened safely if the app chooses to support it in MVP
-- [ ] Lifecycle transitions do not cause silent data loss
-- [ ] Foregrounding does not leave the editor showing stale state blindly
+- [x] Last file can be reopened safely if the app chooses to support it in MVP
+- [x] Lifecycle transitions do not cause silent data loss
+- [x] Foregrounding does not leave the editor showing stale state blindly
 
 ### Tests
 
-- [ ] Add or expand launch-flow tests
-- [ ] Add tests for session restore edge cases if implemented
-- [ ] Add tests for background and foreground save behavior if lifecycle hooks are added
+- [x] Add or expand launch-flow tests
+- [x] Add tests for session restore edge cases if implemented
+- [x] Add tests for background and foreground save behavior if lifecycle hooks are added
 
 ---
 

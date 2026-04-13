@@ -4,6 +4,7 @@ import Foundation
 final class AppContainer {
     let logger: DebugLogger
     let bookmarkStore: any BookmarkStore
+    let sessionStore: any SessionStore
     let workspaceManager: any WorkspaceManager
     let documentManager: any DocumentManager
     let errorReporter: any ErrorReporter
@@ -18,6 +19,7 @@ final class AppContainer {
     init(
         logger: DebugLogger,
         bookmarkStore: any BookmarkStore,
+        sessionStore: any SessionStore = StubSessionStore(),
         workspaceManager: any WorkspaceManager,
         documentManager: any DocumentManager,
         errorReporter: any ErrorReporter,
@@ -26,6 +28,7 @@ final class AppContainer {
     ) {
         self.logger = logger
         self.bookmarkStore = bookmarkStore
+        self.sessionStore = sessionStore
         self.workspaceManager = workspaceManager
         self.documentManager = documentManager
         self.errorReporter = errorReporter
@@ -39,6 +42,7 @@ final class AppContainer {
             session: session,
             workspaceManager: workspaceManager,
             documentManager: documentManager,
+            sessionStore: sessionStore,
             errorReporter: errorReporter,
             folderPickerBridge: folderPickerBridge,
             logger: logger
@@ -63,6 +67,7 @@ final class AppContainer {
         let logger = DebugLogger()
         let securityScopedAccess = LiveSecurityScopedAccessHandler()
         let bookmarkStore = UserDefaultsBookmarkStore()
+        let sessionStore = UserDefaultsSessionStore()
         let workspaceManager = LiveWorkspaceManager(
             bookmarkStore: bookmarkStore,
             securityScopedAccess: securityScopedAccess,
@@ -74,6 +79,7 @@ final class AppContainer {
         return AppContainer(
             logger: logger,
             bookmarkStore: bookmarkStore,
+            sessionStore: sessionStore,
             workspaceManager: workspaceManager,
             documentManager: documentManager,
             errorReporter: errorReporter,
@@ -91,6 +97,7 @@ final class AppContainer {
     ) -> AppContainer {
         let logger = DebugLogger()
         let bookmarkStore = StubBookmarkStore()
+        let sessionStore = StubSessionStore()
         let forcedRestoreResult: WorkspaceRestoreResult? = switch launchState {
         case .noWorkspaceSelected:
             .noWorkspaceSelected
@@ -120,6 +127,7 @@ final class AppContainer {
         let container = AppContainer(
             logger: logger,
             bookmarkStore: bookmarkStore,
+            sessionStore: sessionStore,
             workspaceManager: workspaceManager,
             documentManager: documentManager,
             errorReporter: errorReporter,

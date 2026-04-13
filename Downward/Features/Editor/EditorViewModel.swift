@@ -163,6 +163,23 @@ final class EditorViewModel {
         }
     }
 
+    func handleScenePhaseChange(_ phase: ScenePhase) {
+        switch phase {
+        case .inactive, .background:
+            guard document?.isDirty == true || saveInFlight || autosaveTask != nil else {
+                return
+            }
+
+            Task {
+                await flushPendingSaveIfNeeded()
+            }
+        case .active:
+            break
+        @unknown default:
+            break
+        }
+    }
+
     func presentConflictResolution() {
         guard activeConflict != nil else {
             return

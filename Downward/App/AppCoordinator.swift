@@ -7,6 +7,7 @@ final class AppCoordinator {
 
     private let workspaceManager: any WorkspaceManager
     private let documentManager: any DocumentManager
+    private let sessionStore: any SessionStore
     private let errorReporter: any ErrorReporter
     private let folderPickerBridge: any FolderPickerBridge
     private let logger: DebugLogger
@@ -16,6 +17,7 @@ final class AppCoordinator {
         session: AppSession,
         workspaceManager: any WorkspaceManager,
         documentManager: any DocumentManager,
+        sessionStore: any SessionStore = StubSessionStore(),
         errorReporter: any ErrorReporter,
         folderPickerBridge: any FolderPickerBridge,
         logger: DebugLogger
@@ -23,6 +25,7 @@ final class AppCoordinator {
         self.session = session
         self.workspaceManager = workspaceManager
         self.documentManager = documentManager
+        self.sessionStore = sessionStore
         self.errorReporter = errorReporter
         self.folderPickerBridge = folderPickerBridge
         self.logger = logger
@@ -39,6 +42,10 @@ final class AppCoordinator {
 
         let restoreResult = await workspaceManager.restoreWorkspace()
         applyRestoreResult(restoreResult, generation: generation)
+
+        if case let .ready(snapshot) = restoreResult {
+            await restoreLastOpenDocumentIfPossible(for: snapshot, generation: generation)
+        }
     }
 
     func retryRestore() async {
@@ -92,7 +99,7 @@ final class AppCoordinator {
                 named: proposedName,
                 in: folderURL
             )
-            applyWorkspaceMutationResult(mutationResult)
+            await applyWorkspaceMutationResult(mutationResult)
             return .success(mutationResult.outcome)
         } catch let error as AppError {
             if case let .workspaceAccessInvalid(displayName) = error {
@@ -151,7 +158,7 @@ final class AppCoordinator {
                 at: url,
                 to: proposedName
             )
-            applyWorkspaceMutationResult(mutationResult)
+            await applyWorkspaceMutationResult(mutationResult)
             return .success(mutationResult.outcome)
         } catch let error as AppError {
             if case let .workspaceAccessInvalid(displayName) = error {
@@ -204,7 +211,7 @@ final class AppCoordinator {
             }
 
             let mutationResult = try await workspaceManager.deleteFile(at: url)
-            applyWorkspaceMutationResult(mutationResult)
+            await applyWorkspaceMutationResult(mutationResult)
             return .success(mutationResult.outcome)
         } catch let error as AppError {
             if case let .workspaceAccessInvalid(displayName) = error {
@@ -244,6 +251,7 @@ final class AppCoordinator {
             let document = try await documentManager.openDocument(at: url, in: workspaceRootURL)
             session.openDocument = document
             session.lastError = nil
+            await saveRestorableDocumentSession(for: document)
             return .success(document)
         } catch let error as AppError {
             if case let .workspaceAccessInvalid(displayName) = error {
@@ -293,6 +301,7 @@ final class AppCoordinator {
                 overwriteConflict: overwriteConflict
             )
             session.lastError = nil
+            await saveRestorableDocumentSession(for: savedDocument)
             return .success(savedDocument)
         } catch let error as AppError {
             if case let .workspaceAccessInvalid(displayName) = error {
@@ -323,6 +332,7 @@ final class AppCoordinator {
         do {
             let reloadedDocument = try await documentManager.reloadDocument(from: document)
             session.lastError = nil
+            await saveRestorableDocumentSession(for: reloadedDocument)
             return .success(reloadedDocument)
         } catch let error as AppError {
             if case let .workspaceAccessInvalid(displayName) = error {
@@ -376,6 +386,7 @@ final class AppCoordinator {
 
         do {
             try await workspaceManager.clearWorkspaceSelection()
+            await clearRestorableDocumentSession()
             session.workspaceSnapshot = nil
             session.workspaceAccessState = .noneSelected
             session.openDocument = nil
@@ -401,6 +412,78 @@ final class AppCoordinator {
         }
     }
 
+    func handleSceneDidBecomeActive() async {
+        guard session.launchState == .workspaceReady else {
+            return
+        }
+
+        do {
+            let snapshot = try await workspaceManager.refreshCurrentWorkspace()
+            session.workspaceSnapshot = snapshot
+        } catch let error as AppError {
+            if case let .workspaceAccessInvalid(displayName) = error {
+                _ = transitionToWorkspaceReconnectState(
+                    displayName: session.currentWorkspaceName ?? displayName,
+                    message: "The workspace can no longer be accessed."
+                )
+                return
+            }
+
+            errorReporter.report(error, context: "Foreground workspace validation")
+            session.lastError = errorReporter.makeUserFacingError(from: error)
+            return
+        } catch {
+            let appError = AppError.workspaceRestoreFailed(
+                details: "The workspace could not be revalidated."
+            )
+            errorReporter.report(appError, context: "Foreground workspace validation")
+            session.lastError = errorReporter.makeUserFacingError(from: appError)
+            return
+        }
+
+        guard
+            let openDocument = session.openDocument,
+            openDocument.saveState != .saving
+        else {
+            return
+        }
+
+        do {
+            let revalidatedDocument = try await documentManager.revalidateDocument(openDocument)
+            session.openDocument = revalidatedDocument
+
+            if revalidatedDocument.conflictState.isConflicted {
+                if revalidatedDocument.conflictState.activeConflict?.kind == .missingOnDisk {
+                    await clearRestorableDocumentSession()
+                } else {
+                    await saveRestorableDocumentSession(for: revalidatedDocument)
+                }
+
+                if session.path.contains(where: \.isEditor) == false {
+                    session.lastError = revalidatedDocument.conflictState.activeConflict?.error
+                }
+            }
+        } catch let error as AppError {
+            if case let .workspaceAccessInvalid(displayName) = error {
+                _ = transitionToWorkspaceReconnectState(
+                    displayName: session.currentWorkspaceName ?? displayName,
+                    message: "The workspace can no longer be accessed."
+                )
+                return
+            }
+
+            errorReporter.report(error, context: "Foreground document validation")
+            session.lastError = errorReporter.makeUserFacingError(from: error)
+        } catch {
+            let appError = AppError.documentOpenFailed(
+                name: openDocument.displayName,
+                details: "The current file state could not be revalidated."
+            )
+            errorReporter.report(appError, context: "Foreground document validation")
+            session.lastError = errorReporter.makeUserFacingError(from: appError)
+        }
+    }
+
     func handleFolderPickerResult(_ result: Result<[URL], Error>) async {
         switch folderPickerBridge.selectedURL(from: result) {
         case .success(nil):
@@ -415,6 +498,7 @@ final class AppCoordinator {
 
             let generation = nextWorkspaceTransitionGeneration()
             logger.log("Selected workspace folder: \(url.lastPathComponent)")
+            await clearRestorableDocumentSession()
             let selectionResult = await workspaceManager.selectWorkspace(at: url)
             if isReplacingActiveWorkspace {
                 applyWorkspaceReplacementResult(selectionResult, generation: generation)
@@ -490,7 +574,7 @@ final class AppCoordinator {
         session.lastError = errorReporter.makeUserFacingError(from: error)
     }
 
-    private func applyWorkspaceMutationResult(_ mutationResult: WorkspaceMutationResult) {
+    private func applyWorkspaceMutationResult(_ mutationResult: WorkspaceMutationResult) async {
         session.workspaceSnapshot = mutationResult.snapshot
         session.lastError = nil
 
@@ -507,12 +591,14 @@ final class AppCoordinator {
                 openDocument.relativePath = relativePath
                 openDocument.displayName = displayName
                 session.openDocument = openDocument
+                await saveRestorableDocumentSession(for: openDocument)
             }
         case let .deletedFile(url, displayName):
             if session.openDocument?.url == url {
                 session.openDocument = nil
                 session.editorLoadError = nil
                 session.path.removeAll(where: { $0.editorURL == url })
+                await clearRestorableDocumentSession()
                 session.lastError = UserFacingError(
                     title: "Document Deleted",
                     message: "\(displayName) was deleted from the workspace.",
@@ -543,5 +629,96 @@ final class AppCoordinator {
         session.path = []
         session.lastError = reconnectError
         return reconnectError
+    }
+
+    private func restoreLastOpenDocumentIfPossible(
+        for snapshot: WorkspaceSnapshot,
+        generation: Int
+    ) async {
+        guard generation == workspaceTransitionGeneration else {
+            return
+        }
+
+        let restorableSession: RestorableDocumentSession
+        do {
+            guard let loadedSession = try await sessionStore.loadRestorableDocumentSession() else {
+                return
+            }
+
+            restorableSession = loadedSession
+        } catch {
+            logger.log("Ignoring unreadable restorable document session.")
+            await clearRestorableDocumentSession()
+            return
+        }
+
+        let documentURL = Self.resolveDocumentURL(
+            for: restorableSession.relativePath,
+            within: snapshot.rootURL
+        )
+
+        do {
+            let document = try await documentManager.openDocument(
+                at: documentURL,
+                in: snapshot.rootURL
+            )
+
+            guard generation == workspaceTransitionGeneration else {
+                return
+            }
+
+            session.openDocument = document
+            session.editorLoadError = nil
+            session.path = [.editor(document.url)]
+        } catch let error as AppError {
+            switch error {
+            case .documentUnavailable:
+                await clearRestorableDocumentSession()
+            case .workspaceAccessInvalid:
+                _ = transitionToWorkspaceReconnectState(
+                    displayName: snapshot.displayName,
+                    message: "The workspace can no longer be accessed."
+                )
+            default:
+                errorReporter.report(error, context: "Restoring last open document")
+                session.lastError = errorReporter.makeUserFacingError(from: error)
+            }
+        } catch {
+            let appError = AppError.documentOpenFailed(
+                name: documentURL.lastPathComponent,
+                details: "The previous editor document could not be restored."
+            )
+            errorReporter.report(appError, context: "Restoring last open document")
+            session.lastError = errorReporter.makeUserFacingError(from: appError)
+        }
+    }
+
+    private func saveRestorableDocumentSession(for document: OpenDocument) async {
+        do {
+            try await sessionStore.saveRestorableDocumentSession(
+                RestorableDocumentSession(relativePath: document.relativePath)
+            )
+        } catch {
+            logger.log("Ignoring session-store save failure for \(document.relativePath).")
+        }
+    }
+
+    private func clearRestorableDocumentSession() async {
+        do {
+            try await sessionStore.clearRestorableDocumentSession()
+        } catch {
+            logger.log("Ignoring session-store clear failure.")
+        }
+    }
+
+    private static func resolveDocumentURL(
+        for relativePath: String,
+        within rootURL: URL
+    ) -> URL {
+        relativePath
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .reduce(rootURL) { partialURL, component in
+                partialURL.appending(path: String(component))
+            }
     }
 }

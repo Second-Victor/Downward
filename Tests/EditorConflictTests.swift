@@ -147,6 +147,10 @@ private actor ConflictResolvingDocumentManager: DocumentManager {
         reloadedDocument
     }
 
+    func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
+        reloadedDocument
+    }
+
     func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument {
         if overwriteConflict {
             var savedDocument = document

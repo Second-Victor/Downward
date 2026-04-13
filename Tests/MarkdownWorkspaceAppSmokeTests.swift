@@ -102,6 +102,70 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testBootstrapRestoresLastOpenDocumentWhenWorkspaceRestoreSucceeds() async throws {
+        let session = AppSession()
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: PreviewSampleData.nestedWorkspace,
+                forcedRestoreResult: .ready(PreviewSampleData.nestedWorkspace)
+            ),
+            documentManager: RestorationDocumentManager(
+                openedDocument: PreviewSampleData.cleanDocument
+            ),
+            sessionStore: StubSessionStore(
+                initialSession: RestorableDocumentSession(relativePath: "Inbox.md")
+            ),
+            errorReporter: StubErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        await coordinator.bootstrapIfNeeded()
+
+        XCTAssertEqual(session.launchState, .workspaceReady)
+        XCTAssertEqual(session.workspaceSnapshot, PreviewSampleData.nestedWorkspace)
+        XCTAssertEqual(session.openDocument, PreviewSampleData.cleanDocument)
+        XCTAssertEqual(session.path, [.editor(PreviewSampleData.cleanDocument.url)])
+        XCTAssertNil(session.lastError)
+    }
+
+    @MainActor
+    func testBootstrapWithMissingLastFileKeepsWorkspaceReadyWithoutReconnect() async throws {
+        let sessionStore = StubSessionStore(
+            initialSession: RestorableDocumentSession(relativePath: "Missing.md")
+        )
+        let session = AppSession()
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: PreviewSampleData.nestedWorkspace,
+                forcedRestoreResult: .ready(PreviewSampleData.nestedWorkspace)
+            ),
+            documentManager: FailingDocumentManager(
+                openError: .documentUnavailable(name: "Missing.md")
+            ),
+            sessionStore: sessionStore,
+            errorReporter: StubErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        await coordinator.bootstrapIfNeeded()
+
+        let restoredSession = try await sessionStore.loadRestorableDocumentSession()
+
+        XCTAssertEqual(session.launchState, .workspaceReady)
+        XCTAssertEqual(session.workspaceSnapshot, PreviewSampleData.nestedWorkspace)
+        XCTAssertNil(session.openDocument)
+        XCTAssertEqual(session.path, [])
+        XCTAssertNil(session.lastError)
+        XCTAssertNil(restoredSession)
+    }
+
+    @MainActor
     func testRenameActiveOpenDocumentUpdatesEditorStateAndRoute() async {
         let session = AppSession()
         session.launchState = .workspaceReady
@@ -389,6 +453,48 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testForegroundRevalidationMarksMissingOpenDocumentWithoutReconnect() async throws {
+        let sessionStore = StubSessionStore(
+            initialSession: RestorableDocumentSession(relativePath: PreviewSampleData.cleanDocument.relativePath)
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceAccessState = .ready(displayName: PreviewSampleData.nestedWorkspace.displayName)
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.openDocument = PreviewSampleData.cleanDocument
+        session.path = [.editor(PreviewSampleData.cleanDocument.url)]
+
+        let missingDocument = LiveDocumentManager.makeConflictDocument(
+            from: PreviewSampleData.cleanDocument,
+            kind: .missingOnDisk
+        )
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: PreviewSampleData.nestedWorkspace
+            ),
+            documentManager: RestorationDocumentManager(
+                openedDocument: PreviewSampleData.cleanDocument,
+                revalidatedDocument: missingDocument
+            ),
+            sessionStore: sessionStore,
+            errorReporter: StubErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        await coordinator.handleSceneDidBecomeActive()
+        let restoredSession = try await sessionStore.loadRestorableDocumentSession()
+
+        XCTAssertEqual(session.launchState, .workspaceReady)
+        XCTAssertEqual(session.path, [.editor(PreviewSampleData.cleanDocument.url)])
+        XCTAssertEqual(session.openDocument?.conflictState, missingDocument.conflictState)
+        XCTAssertNil(session.lastError)
+        XCTAssertNil(restoredSession)
+    }
+
+    @MainActor
     private func makeWorkspaceSnapshotReplacingRootFile(
         oldURL: URL,
         with replacement: WorkspaceNode
@@ -459,8 +565,41 @@ private actor FailingDocumentManager: DocumentManager {
         throw openError
     }
 
+    func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
+        throw openError
+    }
+
     func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument {
         throw openError
+    }
+}
+
+private actor RestorationDocumentManager: DocumentManager {
+    let openedDocument: OpenDocument
+    let revalidatedDocument: OpenDocument?
+
+    init(
+        openedDocument: OpenDocument,
+        revalidatedDocument: OpenDocument? = nil
+    ) {
+        self.openedDocument = openedDocument
+        self.revalidatedDocument = revalidatedDocument
+    }
+
+    func openDocument(at url: URL, in workspaceRootURL: URL) async throws -> OpenDocument {
+        openedDocument
+    }
+
+    func reloadDocument(from document: OpenDocument) async throws -> OpenDocument {
+        openedDocument
+    }
+
+    func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
+        revalidatedDocument ?? document
+    }
+
+    func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument {
+        document
     }
 }
 

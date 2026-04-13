@@ -6,6 +6,7 @@ protocol DocumentManager: Sendable {
     /// Opens a document by resolving its path relative to the active workspace root.
     func openDocument(at url: URL, in workspaceRootURL: URL) async throws -> OpenDocument
     func reloadDocument(from document: OpenDocument) async throws -> OpenDocument
+    func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument
     func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument
 }
 
@@ -31,6 +32,41 @@ actor LiveDocumentManager: DocumentManager {
             workspaceRootURL: document.workspaceRootURL,
             fallbackName: document.displayName
         )
+    }
+
+    /// Rechecks the current on-disk version without replacing the in-memory text. Changed or missing files
+    /// move into explicit conflict state so lifecycle events never discard edits silently.
+    func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
+        let securityScopedAccess = self.securityScopedAccess
+
+        return try await Task.detached(priority: .utility) {
+            try securityScopedAccess.withAccess(
+                toDescendantAt: document.relativePath,
+                within: document.workspaceRootURL
+            ) { securedURL in
+                switch Self.loadVersionState(at: securedURL, fallbackName: document.displayName) {
+                case let .success(versionState):
+                    guard document.loadedVersion.matchesCurrentDisk(versionState.version) else {
+                        return Self.makeConflictDocument(
+                            from: document,
+                            kind: .modifiedOnDisk
+                        )
+                    }
+
+                    var validatedDocument = document
+                    validatedDocument.url = securedURL
+                    validatedDocument.displayName = versionState.displayName
+                    return validatedDocument
+                case .failure(.missing):
+                    return Self.makeConflictDocument(
+                        from: document,
+                        kind: .missingOnDisk
+                    )
+                case let .failure(.appError(error)):
+                    throw error
+                }
+            }
+        }.value
     }
 
     /// Writes the latest text only after confirming the on-disk version still matches the loaded snapshot.
@@ -146,7 +182,7 @@ actor LiveDocumentManager: DocumentManager {
             .joined(separator: "/")
     }
 
-    nonisolated private static func makeConflictDocument(
+    nonisolated static func makeConflictDocument(
         from document: OpenDocument,
         kind: DocumentConflict.Kind
     ) -> OpenDocument {
@@ -166,8 +202,8 @@ actor LiveDocumentManager: DocumentManager {
         }
 
         var conflictedDocument = document
-        conflictedDocument.isDirty = true
-        conflictedDocument.saveState = .unsaved
+        conflictedDocument.isDirty = document.isDirty
+        conflictedDocument.saveState = document.isDirty ? .unsaved : .idle
         conflictedDocument.conflictState = .needsResolution(
             DocumentConflict(kind: kind, error: userFacingError)
         )
@@ -337,6 +373,17 @@ actor StubDocumentManager: DocumentManager {
 
     func reloadDocument(from document: OpenDocument) async throws -> OpenDocument {
         try await openDocument(at: document.url, in: document.workspaceRootURL)
+    }
+
+    func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
+        guard let currentDocument = sampleDocuments[document.url] else {
+            return LiveDocumentManager.makeConflictDocument(
+                from: document,
+                kind: .missingOnDisk
+            )
+        }
+
+        return currentDocument
     }
 
     func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument {

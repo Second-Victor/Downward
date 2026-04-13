@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import XCTest
 @testable import Downward
 
@@ -110,6 +111,24 @@ final class EditorAutosaveTests: XCTestCase {
     }
 
     @MainActor
+    func testBackgroundTransitionFlushesPendingDirtyDocumentImmediately() async throws {
+        let documentManager = RecordingDocumentManager(saveDelay: .milliseconds(10))
+        let system = makeEditorSystem(
+            documentManager: documentManager,
+            autosaveDelay: .seconds(5)
+        )
+
+        system.viewModel.handleTextChange("Background flush")
+        system.viewModel.handleScenePhaseChange(.background)
+        try await Task.sleep(for: .milliseconds(40))
+
+        let savedTexts = await documentManager.savedTexts
+
+        XCTAssertEqual(savedTexts, ["Background flush"])
+        XCTAssertFalse(system.session.openDocument?.isDirty ?? true)
+    }
+
+    @MainActor
     private func makeEditorSystem(
         documentManager: any DocumentManager,
         autosaveDelay: Duration = .milliseconds(40)
@@ -164,6 +183,10 @@ private actor RecordingDocumentManager: DocumentManager {
     }
 
     func reloadDocument(from document: OpenDocument) async throws -> OpenDocument {
+        document
+    }
+
+    func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
         document
     }
 
