@@ -5,6 +5,7 @@ final class AppContainer {
     let logger: DebugLogger
     let bookmarkStore: any BookmarkStore
     let sessionStore: any SessionStore
+    let editorAppearanceStore: EditorAppearanceStore
     let workspaceManager: any WorkspaceManager
     let documentManager: any DocumentManager
     let errorReporter: any ErrorReporter
@@ -20,6 +21,7 @@ final class AppContainer {
         logger: DebugLogger,
         bookmarkStore: any BookmarkStore,
         sessionStore: any SessionStore = StubSessionStore(),
+        editorAppearanceStore: EditorAppearanceStore,
         workspaceManager: any WorkspaceManager,
         documentManager: any DocumentManager,
         errorReporter: any ErrorReporter,
@@ -29,6 +31,7 @@ final class AppContainer {
         self.logger = logger
         self.bookmarkStore = bookmarkStore
         self.sessionStore = sessionStore
+        self.editorAppearanceStore = editorAppearanceStore
         self.workspaceManager = workspaceManager
         self.documentManager = documentManager
         self.errorReporter = errorReporter
@@ -52,14 +55,19 @@ final class AppContainer {
         let workspaceViewModel = WorkspaceViewModel(session: session, coordinator: coordinator)
         self.workspaceViewModel = workspaceViewModel
 
-        let editorViewModel = EditorViewModel(session: session, coordinator: coordinator)
+        let editorViewModel = EditorViewModel(
+            session: session,
+            coordinator: coordinator,
+            editorAppearanceStore: editorAppearanceStore
+        )
         self.editorViewModel = editorViewModel
 
         self.rootViewModel = RootViewModel(
             session: session,
             coordinator: coordinator,
             workspaceViewModel: workspaceViewModel,
-            editorViewModel: editorViewModel
+            editorViewModel: editorViewModel,
+            editorAppearanceStore: editorAppearanceStore
         )
     }
 
@@ -68,6 +76,7 @@ final class AppContainer {
         let securityScopedAccess = LiveSecurityScopedAccessHandler()
         let bookmarkStore = UserDefaultsBookmarkStore()
         let sessionStore = UserDefaultsSessionStore()
+        let editorAppearanceStore = EditorAppearanceStore()
         let workspaceManager = LiveWorkspaceManager(
             bookmarkStore: bookmarkStore,
             securityScopedAccess: securityScopedAccess,
@@ -80,6 +89,7 @@ final class AppContainer {
             logger: logger,
             bookmarkStore: bookmarkStore,
             sessionStore: sessionStore,
+            editorAppearanceStore: editorAppearanceStore,
             workspaceManager: workspaceManager,
             documentManager: documentManager,
             errorReporter: errorReporter,
@@ -93,11 +103,13 @@ final class AppContainer {
         accessState: WorkspaceAccessState? = nil,
         snapshot: WorkspaceSnapshot? = nil,
         document: OpenDocument? = nil,
-        path: [AppRoute] = []
+        path: [AppRoute] = [],
+        editorAppearancePreferences: EditorAppearancePreferences = .default
     ) -> AppContainer {
         let logger = DebugLogger()
         let bookmarkStore = StubBookmarkStore()
         let sessionStore = StubSessionStore()
+        let editorAppearanceStore = EditorAppearanceStore(initialPreferences: editorAppearancePreferences)
         let forcedRestoreResult: WorkspaceRestoreResult? = switch launchState {
         case .noWorkspaceSelected:
             .noWorkspaceSelected
@@ -128,6 +140,7 @@ final class AppContainer {
             logger: logger,
             bookmarkStore: bookmarkStore,
             sessionStore: sessionStore,
+            editorAppearanceStore: editorAppearanceStore,
             workspaceManager: workspaceManager,
             documentManager: documentManager,
             errorReporter: errorReporter,

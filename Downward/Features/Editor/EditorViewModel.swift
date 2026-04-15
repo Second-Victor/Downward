@@ -12,6 +12,7 @@ final class EditorViewModel {
     var isResolvingConflict = false
 
     private let coordinator: AppCoordinator
+    private let editorAppearanceStore: EditorAppearanceStore
     private var autosaveTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
     private var loadGeneration = 0
@@ -27,10 +28,12 @@ final class EditorViewModel {
     init(
         session: AppSession,
         coordinator: AppCoordinator,
+        editorAppearanceStore: EditorAppearanceStore,
         autosaveDelay: Duration = .milliseconds(750)
     ) {
         self.session = session
         self.coordinator = coordinator
+        self.editorAppearanceStore = editorAppearanceStore
         self.autosaveDelay = autosaveDelay
     }
 
@@ -122,6 +125,10 @@ final class EditorViewModel {
 
     var saveFailureMessage: String? {
         saveFailure?.message
+    }
+
+    var editorFont: Font {
+        editorAppearanceStore.editorFont
     }
 
     func handleTextChange(_ text: String) {

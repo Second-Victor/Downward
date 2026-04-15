@@ -36,6 +36,7 @@ Core product behaviors:
 - the app stores persistent bookmark access to that workspace
 - the workspace is restored on relaunch when possible
 - the app browses nested folders and supported text files
+- real folders remain visible in the browser even when they are currently empty or only contain unsupported files
 - files open as plain UTF-8 text in `TextEditor`
 - the active editor autosaves back to the real workspace file
 - the active editor should not repeatedly interrupt the user with conflict UI during ordinary typing
@@ -107,19 +108,6 @@ These behaviors are now part of the app's contract and must not be casually brok
 
 5. **Workspace mutations must stay coherent**
    - Create, rename, and delete must refresh the browser and keep editor/session state coherent.
-
----
-
-## Current known limitations
-
-These are intentional limits of the current app and should not be described as bugs unless the user explicitly asks to change them:
-
-- one workspace is active at a time
-- one live editor document session is active at a time
-- documents are treated as UTF-8 plain text
-- in-app mutations currently cover file create, rename, and delete, not folder rename/move
-- same-document external refresh is supported for the active editor session; broader background sync is not
-- conflict UI still appears for real missing-file, move/delete, or unrecoverable coordinated write cases
 
 ---
 
@@ -233,14 +221,22 @@ Any future work touching `DocumentManager`, `EditorViewModel`, `AppCoordinator`,
 
 If a proposed change makes the save model noisier, more manual, or more popup-heavy, treat that as a regression unless the user explicitly requested it.
 
-### Contributor checklist for persistence changes
+---
 
-Before shipping a change that touches save, restore, revalidation, or file mutation behavior, verify all of the following:
+## Real-device QA checklist
 
-- the selected workspace folder is still the only source of truth
-- the app's own successful saves cannot later self-conflict
-- newer in-memory edits survive older in-flight save completions
-- stale async completions cannot reattach an old document or route
-- rename/delete flows keep `openDocument`, navigation, and `SessionStore` coherent
-- restore falls back calmly when the last-open file is missing or unreadable
-- targeted regression tests were added or updated for the risky behavior
+Before treating persistence, restore, mutation, or conflict work as release-ready, verify the app on a real iPhone or iPad with both local Files storage and iCloud Drive when available.
+
+Minimum manual QA pass:
+
+1. Select a workspace from Files, relaunch the app, and confirm the workspace restores.
+2. Open a file, type normally, and confirm autosave stays calm with no repeated conflict prompts.
+3. Edit the same file externally or on another device and confirm the active editor refreshes calmly when safe.
+4. Rename the open file and confirm the editor stays attached to the renamed file.
+5. Delete the open file and confirm the app leaves the editor in a sane recovery state.
+6. Switch rapidly between files and confirm no stale editor title, text, or save state remains visible.
+7. Background and foreground the app during edits and after external changes, then confirm revalidation stays coherent.
+8. Relaunch with a valid last-open file and with a missing last-open file; confirm restore is calm in both cases.
+9. Repeat the core flows once with `On My iPhone` / `On My iPad` storage and once with iCloud Drive if available.
+
+If a simulator-only run passes but a real-device pass reveals provider timing or access issues, prefer documenting the limitation and adding targeted diagnostics/tests over broad architectural churn.

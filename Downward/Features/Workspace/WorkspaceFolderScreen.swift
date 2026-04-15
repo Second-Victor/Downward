@@ -15,12 +15,12 @@ struct WorkspaceFolderScreen: View {
                 )
             } else if viewModel.nodes(in: folderURL).isEmpty {
                 ContentUnavailableView(
-                    folderURL == nil ? "No Markdown Files" : "No Visible Items",
+                    folderURL == nil ? "No Supported Files" : "No Visible Items",
                     systemImage: folderURL == nil ? "doc.text.magnifyingglass" : "folder",
                     description: Text(
                         folderURL == nil
                             ? "This workspace does not contain any supported files yet."
-                            : "This folder does not contain any supported markdown files."
+                            : "This folder does not contain any supported Markdown or text files."
                     )
                 )
             } else {
@@ -37,8 +37,8 @@ struct WorkspaceFolderScreen: View {
                     viewModel.presentCreateFile(in: folderURL)
                 }
                 .disabled(viewModel.isBusy)
-                .accessibilityLabel("New Markdown File")
-                .accessibilityHint("Creates a markdown file in the current folder.")
+                .accessibilityLabel("New Text File")
+                .accessibilityHint("Creates a Markdown or text file in the current folder.")
 
                 Button("Refresh", systemImage: "arrow.clockwise") {
                     viewModel.refresh()
@@ -55,7 +55,7 @@ struct WorkspaceFolderScreen: View {
                 }
             }
         }
-        .alert("New Markdown File", isPresented: createPromptBinding) {
+        .alert("New Text File", isPresented: createPromptBinding) {
             TextField("File Name", text: createFileNameBinding)
 
             Button("Create") {
@@ -67,7 +67,7 @@ struct WorkspaceFolderScreen: View {
                 viewModel.cancelCreateFile()
             }
         } message: {
-            Text("Create a new markdown file in this folder.")
+            Text("Create a new Markdown or text file in this folder.")
         }
         .alert("Rename File", isPresented: renamePromptBinding) {
             TextField("File Name", text: renameFileNameBinding)

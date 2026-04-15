@@ -4,7 +4,7 @@ protocol WorkspaceEnumerating: Sendable {
     nonisolated func makeSnapshot(rootURL: URL, displayName: String) throws -> WorkspaceSnapshot
 }
 
-/// Walks the workspace recursively and keeps only supported files plus their visible ancestor folders.
+/// Walks the workspace recursively, keeping all real folders while filtering files down to supported types.
 struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
     nonisolated func makeSnapshot(rootURL: URL, displayName: String) throws -> WorkspaceSnapshot {
         let rootNodes = try makeNodes(in: rootURL)
@@ -44,10 +44,6 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
 
             if resourceValues.isDirectory == true {
                 let children = try makeNodes(in: childURL)
-                guard children.isEmpty == false else {
-                    continue
-                }
-
                 nodes.append(
                     .folder(
                         .init(

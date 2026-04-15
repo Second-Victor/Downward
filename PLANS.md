@@ -20,6 +20,7 @@ A robust MVP is not just “open a file and type.” It must do all of the follo
 
 - restore workspace access after relaunch
 - browse the real nested folder hierarchy
+- keep real folders visible even when they are empty
 - open markdown files reliably
 - autosave without interrupting ordinary typing
 - preserve local edits while save acknowledgements arrive asynchronously
@@ -58,7 +59,6 @@ If any of those fail, the app stops feeling trustworthy.
 4. App resolves the folder URL.
 5. App loads the workspace automatically.
 6. App restores the last open file when it is still safe to do so.
-7. If the last file is missing or unreadable, the app falls back calmly to the workspace browser and clears the stale restore target.
 
 ### Journey 3 — Browse and open
 
@@ -136,6 +136,7 @@ The product wins by being calm, native, and dependable, not by shipping a large 
 #### Browser
 
 - recursive nested folder browsing
+- show real folders even when they currently contain no supported files
 - folders listed before files
 - supported markdown/text files only
 - empty states and error states
@@ -147,6 +148,7 @@ The product wins by being calm, native, and dependable, not by shipping a large 
 
 - open plain text markdown files
 - edit with `TextEditor`
+- persist editor font family and size preferences
 - debounce autosave
 - preserve newer edits when earlier save acknowledgements arrive
 - save directly back to the workspace file
@@ -213,23 +215,53 @@ The MVP-plus build is successful when all of the following are true:
 
 ---
 
-## Current known limitations
-
-These limits are acceptable for the current product stage and should stay explicit in docs and tasks:
-
-- the app edits one workspace at a time
-- the app keeps one active live editor session at a time
-- files are expected to be UTF-8 plain text
-- in-app file management currently covers file create, rename, and delete, not folder rename/move
-- external same-document refresh is focused on the active editor session rather than a full background sync model
-- the app does not try to silently resolve every outside move/rename; it falls back to explicit recovery when the saved relative path is no longer valid
-
----
-
 ## Near-term product priorities
 
 1. keep the save model calm and trustworthy
-2. keep workspace, editor, and restore state coherent
-3. harden regression coverage around persistence and lifecycle behavior
-4. improve operational polish and diagnostics without expanding core feature scope
-5. only then expand features beyond the current MVP-plus surface
+2. keep workspace and editor state coherent during file mutations
+3. harden external-change handling and regression tests
+4. improve polish around recovery, restore, and empty/error states
+5. only then expand features beyond the MVP surface
+
+---
+
+## Future roadmap
+
+### Near-term polish
+
+The next sensible work after stabilization is still small in scope:
+
+- add highest-risk UI tests
+- profile larger workspaces and document-load paths
+- keep accessibility and recovery copy polished where it improves real use
+- keep release validation and provider-backed diagnostics lightweight but repeatable
+
+### Next feature wave
+
+The first real feature wave should improve everyday use without changing the app's core philosophy:
+
+- lightweight workspace search or filter
+- recent-file convenience that remains workspace-relative
+- iPad / hardware-keyboard productivity improvements
+- a minimal document info surface for the active file
+
+These should all preserve the current model: one workspace, direct file editing, calm autosave, and minimal UI.
+
+### Later optional expansions
+
+Larger ideas should stay clearly deferred until the product earns them:
+
+- markdown preview
+- syntax highlighting
+- tabs or multi-document editing
+- multi-window workflow improvements
+- Git or plugin-style integrations
+- broader import support beyond UTF-8 plain text
+
+---
+
+## Current known limitations
+
+- real-device Files and iCloud provider timing can vary, so live same-document refresh is best-effort rather than a hard realtime guarantee
+- in-app mutations currently cover files only, not folder rename/move
+- the app supports one active workspace and one live editor session at a time

@@ -107,6 +107,7 @@ final class EditorConflictTests: XCTestCase {
         let viewModel = EditorViewModel(
             session: session,
             coordinator: coordinator,
+            editorAppearanceStore: EditorAppearanceStore(),
             autosaveDelay: autosaveDelay
         )
         viewModel.handleAppear(for: PreviewSampleData.cleanDocument.url)

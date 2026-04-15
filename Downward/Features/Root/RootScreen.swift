@@ -11,7 +11,7 @@ struct RootScreen: View {
             case .noWorkspaceSelected:
                 LaunchStateView(
                     title: "Choose a Workspace",
-                    message: "Choose one folder from Files to browse and edit markdown files inside it.",
+                    message: "Choose one folder from Files to browse and edit Markdown and text files inside it.",
                     symbolName: "folder.badge.plus",
                     isLoading: false,
                     primaryActionTitle: "Open Folder",
@@ -155,6 +155,7 @@ private struct WorkspaceRouteDestination: View {
             SettingsScreen(
                 workspaceName: viewModel.workspaceName,
                 accessState: viewModel.workspaceAccessState,
+                editorAppearanceStore: viewModel.editorAppearanceStore,
                 reconnectWorkspaceAction: viewModel.presentFolderPicker,
                 clearWorkspaceAction: viewModel.clearWorkspace
             )

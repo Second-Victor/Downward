@@ -5,7 +5,10 @@ import Foundation
 /// The current editor buffer is authoritative for autosave; coordinated reload/revalidation only
 /// interrupts when the path disappears or a coordinated read/write fails unrecoverably.
 actor PlainTextDocumentSession {
-    nonisolated private static let observationFallbackInterval: Duration = .seconds(1)
+    /// Some provider-backed locations do not emit reliable `NSFilePresenter` callbacks.
+    /// Keep a low-frequency fallback so external changes can still surface on device, but avoid
+    /// polling often enough to make clean editing feel noisy or to add unnecessary provider churn.
+    nonisolated private static let observationFallbackInterval: Duration = .seconds(3)
 
     private let workspaceRootURL: URL
     private let relativePath: String

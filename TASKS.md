@@ -2,81 +2,132 @@
 
 ## Purpose
 
-This file is the forward-looking backlog for the current Downward codebase. Earlier implementation phases are complete and are retained here only as a compact status record.
+This file is the forward roadmap for the current Downward codebase. The stabilization and release-readiness phases are complete; what remains should be future-facing, realistic, and aligned with the app's existing file-based editor model.
 
 Status legend:
 
 - `[x]` complete in the current codebase
-- `[~]` partially complete or worth refining
-- `[ ]` not started / planned backlog
-- `[!]` high-risk area that should keep strong regression coverage
+- `[~]` worth refining soon
+- `[ ]` planned backlog
+- `[!]` high-risk surface that should keep strong regression coverage
 
 ---
 
-## Phase status summary
+## Completed foundation
 
-### Phase 1 — Harden active-document save and external-change behavior
+These are already in place and should be treated as protected behavior, not as open feature work:
 
-- [x] complete
-- [x] active-document autosave stays calm during routine typing
-- [x] save acknowledgements merge confirmed disk metadata without clobbering newer edits
-- [x] same-document external refresh follows the same calm policy as foreground revalidation
-- [x] regression tests cover self-save conflict prevention and external same-document refresh
-
-### Phase 2 — Workspace mutation coherence while editor is open
-
-- [x] complete
-- [x] open-file rename updates document identity, route, and restore session
-- [x] open-file delete clears stale editor state intentionally
-- [x] nested mutation refreshes keep browser/editor state coherent
-
-### Phase 3 — Restore and reconnect polish
-
-- [x] complete
-- [x] workspace bookmark restore is validated before reuse
-- [x] last-open document restore is relative-path based and only happens when safe
-- [x] stale restore state is cleared instead of reopening ghost editor UI
-
-### Phase 4 — Browser/editor polish and operational cleanup
-
-- [x] complete
-- [x] browser selection and editor content stay coherent under refresh and async races
-- [x] stale routes are trimmed intentionally after refresh or invalidation
-- [x] lifecycle revalidation cannot overwrite a newer selection
-
-### Phase 5 — Editor quality-of-life and shipping polish
-
-- [x] complete
-- [x] save-state chrome is failure-only during routine editing
-- [x] the editor shows quiet identity/path context and an intentional empty-file state
-- [x] UTF-8 and line-ending policy is explicit at the document boundary
-- [x] focused tests cover empty-file, large-file, and route-scoped editor status behavior
-
-### Phase 6 — Release readiness, cleanup, and documentation sync
-
-- [x] complete
-- [x] stale phase-era copy and dead stub-era error paths removed
-- [x] root docs synced to the current architecture and persistence model
-- [x] task list converted into a real forward backlog
-- [x] critical regression coverage reviewed and tightened where high-value
-- [x] restore now clears unreadable last-open document targets instead of retrying them forever
+- [x] calm autosave with save-ack merge semantics
+- [x] same-document live refresh with calm revalidation policy
+- [x] open-file rename/delete coherence while the editor is visible
+- [x] workspace restore, reconnect, and stale-session cleanup
+- [x] browser/editor coherence under async races and refreshes
+- [x] empty-folder support in the workspace browser
+- [x] release-readiness polish for disclosure UI, supported-file copy, and real-device QA guidance
+- [x] persisted editor font family and size preferences
 
 ---
 
-## Critical behavior coverage
+## Protected surfaces
 
-These behaviors are currently covered well enough that future changes should treat them as protected surfaces:
+Future changes should keep these areas strongly regression-covered:
 
-- [x] bookmark persistence and invalid bookmark restore handling
-- [x] session-store persistence for last open document identity
-- [x] workspace enumeration, filtering, sorting, and descendant-folder retention
-- [x] workspace create, rename, and delete behavior
-- [x] open-document load/save/revalidate behavior
-- [x] calm autosave, queued-save ordering, and save-ack merge semantics
-- [x] external same-document refresh while editing
-- [x] missing-file and conflict recovery flows
-- [x] restore/reconnect behavior and stale-session cleanup
-- [x] browser/editor coherence during refresh, switching, and async races
+- [!] bookmark persistence and invalid-bookmark recovery
+- [!] session-store restore for the last open document
+- [!] workspace enumeration, filtering, sorting, and empty-folder visibility
+- [!] create / rename / delete behavior inside the workspace
+- [!] active-document open / save / reload / revalidate behavior
+- [!] autosave ordering and save-ack merge semantics
+- [!] same-document external refresh while editing
+- [!] missing-file and conflict recovery flows
+- [!] restore / reconnect behavior and stale-session cleanup
+- [!] browser / editor coherence during refresh, switching, and async races
+
+---
+
+## Future feature themes
+
+The roadmap from here should stay grouped into three layers:
+
+1. **Near-term polish**
+   Small, high-confidence improvements that make the app feel tighter, safer, and easier to validate.
+2. **Next feature wave**
+   Features that materially improve everyday use without changing the app's core philosophy.
+3. **Later optional expansions**
+   Valid ideas, but not required for the current minimal file-based editor direction.
+
+---
+
+## Near-term polish
+
+### Validation and QA
+
+- [ ] Add targeted UI tests for the highest-risk end-to-end flows:
+  - first-launch workspace pick
+  - open document and autosave
+  - open-file rename/delete from the browser
+  - reconnect after invalid workspace restore
+- [ ] Keep expanding regression tests before any future save/conflict refactor
+- [ ] Add one lightweight release checklist for pre-ship simulator + real-device sanity passes
+
+### Workspace and editor quality
+
+- [ ] Profile larger workspace refreshes and document-load paths, then document any practical size limits if needed
+- [ ] Continue small accessibility polish where it improves real use:
+  - VoiceOver wording on file/folder rows
+  - recovery messaging clarity
+  - Dynamic Type checks on edge-state screens
+- [ ] Refine recovery messaging only where it reduces ambiguity during reconnect, missing-file, or failed-save flows
+
+### Tooling and maintainability
+
+- [ ] Keep debug-only diagnostics around save/revalidate/restore transitions easy to inspect during real-device investigation
+- [ ] Add one short contributor note for testing provider-backed changes before merging persistence-sensitive work
+
+---
+
+## Next feature wave
+
+### Browser productivity
+
+- [ ] Add lightweight file search/filter within the current workspace snapshot
+- [ ] Add a recent-files or quick-reopen surface that stays workspace-relative and minimal
+- [ ] Evaluate folder rename/move support if it becomes a real product requirement
+
+### Editor productivity
+
+- [ ] Add keyboard shortcuts for common actions on iPad and hardware-keyboard use:
+  - refresh workspace
+  - create file
+  - open settings
+  - reload conflicted file where applicable
+- [ ] Add a lightweight document info surface for the active file:
+  - relative path
+  - last saved time
+  - file size if already available cheaply
+- [ ] Consider a small set of editor preferences only if they stay minimal and do not create a new storage model
+
+### Recovery and workflow polish
+
+- [ ] Improve recovery UX for missing-file and reconnect states if real-device QA shows recurring confusion
+- [ ] Consider a small “recently opened” restore aid only if it remains relative-path based and workspace-scoped
+
+---
+
+## Later optional expansions
+
+These are reasonable ideas, but they are not part of the current stable-release direction:
+
+- [ ] markdown preview
+- [ ] syntax highlighting
+- [ ] custom text engine
+- [ ] tabs or multi-document editing
+- [ ] multi-window / multi-scene workflow improvements
+- [ ] Git integration
+- [ ] plugin architecture
+- [ ] app-owned mirrored storage model
+- [ ] formatting toolbar / rich text features
+- [ ] broader import policy beyond UTF-8 plain text
 
 ---
 
@@ -87,50 +138,15 @@ These behaviors are currently covered well enough that future changes should tre
 - [x] documents are treated as UTF-8 plain text
 - [x] in-app mutations cover files, not folder rename/move
 - [x] external same-document refresh is focused on the active editor session rather than general background sync
+- [x] real-device file-provider timing can vary, so live same-document refresh is best-effort rather than a hard realtime guarantee
 
 These are explicit limits, not accidental gaps.
 
 ---
 
-## Backlog after Phase 6
-
-### Persistence and diagnostics
-
-- [x] Add lightweight debug-only diagnostics around save/revalidate transitions to make real-device file-provider issues easier to investigate
-- [x] Add one short contributor checklist in `AGENTS.md` for changes touching save, restore, or mutation flows
-- [x] Audit key user-facing recovery strings for consistency with the current app behavior
-
-### Test coverage follow-up
-
-- [ ] Add targeted UI tests for the highest-risk end-to-end flows:
-  - first-launch workspace pick
-  - open document and autosave
-  - open-file rename/delete from the browser
-  - reconnect after invalid workspace restore
-- [ ] Keep expanding regression tests before any future save/conflict refactor
-
-### Workspace and editor refinement
-
-- [ ] Investigate folder rename/move support if it becomes a product requirement
-- [ ] Consider broader workspace refresh diagnostics or profiling for larger real-world folders
-- [x] Keep UTF-8-only plain-text support explicit unless a broader import policy is requested
-
-### Deferred unless explicitly requested
-
-- [ ] live markdown preview
-- [ ] syntax highlighting
-- [ ] custom text engine
-- [ ] tabs or multi-document editing
-- [ ] Git integration
-- [ ] plugin architecture
-- [ ] app-owned mirrored storage model
-- [ ] formatting toolbar / rich text features
-
----
-
 ## Working rule from here
 
-Before implementing new work, check:
+Before implementing any new work, check:
 
 1. does it preserve calm autosave behavior?
 2. does it keep the workspace folder as source of truth?

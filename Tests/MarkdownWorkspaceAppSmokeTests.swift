@@ -14,6 +14,7 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         let container = AppContainer(
             logger: DebugLogger(),
             bookmarkStore: StubBookmarkStore(),
+            editorAppearanceStore: EditorAppearanceStore(),
             workspaceManager: LiveWorkspaceManager(
                 bookmarkStore: StubBookmarkStore(),
                 securityScopedAccess: SmokeTestSecurityScopedAccessHandler(),
@@ -147,6 +148,7 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         let viewModel = EditorViewModel(
             session: session,
             coordinator: coordinator,
+            editorAppearanceStore: EditorAppearanceStore(),
             autosaveDelay: .milliseconds(20)
         )
 
@@ -1161,6 +1163,47 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testForegroundWorkspaceAccessLossTransitionsToReconnectAndClearsEditorState() async {
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceAccessState = .ready(displayName: PreviewSampleData.nestedWorkspace.displayName)
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.openDocument = PreviewSampleData.cleanDocument
+        session.path = [.folder(PreviewSampleData.year2026URL), .editor(PreviewSampleData.cleanDocument.url)]
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: PreviewSampleData.nestedWorkspace,
+                refreshError: .workspaceAccessInvalid(displayName: PreviewSampleData.nestedWorkspace.displayName)
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        await coordinator.handleSceneDidBecomeActive()
+
+        XCTAssertEqual(session.launchState, .workspaceAccessInvalid)
+        XCTAssertEqual(
+            session.workspaceAccessState,
+            .invalid(
+                displayName: PreviewSampleData.nestedWorkspace.displayName,
+                error: UserFacingError(
+                    title: "Workspace Needs Reconnect",
+                    message: "The workspace can no longer be accessed.",
+                    recoverySuggestion: "Reconnect the folder to continue."
+                )
+            )
+        )
+        XCTAssertNil(session.workspaceSnapshot)
+        XCTAssertNil(session.openDocument)
+        XCTAssertEqual(session.path, [])
+        XCTAssertEqual(session.lastError?.title, "Workspace Needs Reconnect")
+    }
+
+    @MainActor
     private func makeWorkspaceSnapshotReplacingRootFile(
         oldURL: URL,
         with replacement: WorkspaceNode
@@ -1488,6 +1531,7 @@ private actor MutationTestingWorkspaceManager: WorkspaceManager {
     let renameOutcome: WorkspaceMutationOutcome?
     let deleteOutcome: WorkspaceMutationOutcome?
     let clearError: AppError?
+    let refreshError: AppError?
     private(set) var deleteCalls: [URL] = []
 
     init(
@@ -1495,13 +1539,15 @@ private actor MutationTestingWorkspaceManager: WorkspaceManager {
         selectResult: WorkspaceRestoreResult? = nil,
         renameOutcome: WorkspaceMutationOutcome? = nil,
         deleteOutcome: WorkspaceMutationOutcome? = nil,
-        clearError: AppError? = nil
+        clearError: AppError? = nil,
+        refreshError: AppError? = nil
     ) {
         self.refreshSnapshot = refreshSnapshot
         self.selectResult = selectResult
         self.renameOutcome = renameOutcome
         self.deleteOutcome = deleteOutcome
         self.clearError = clearError
+        self.refreshError = refreshError
     }
 
     func restoreWorkspace() async -> WorkspaceRestoreResult {
@@ -1517,7 +1563,11 @@ private actor MutationTestingWorkspaceManager: WorkspaceManager {
     }
 
     func refreshCurrentWorkspace() async throws -> WorkspaceSnapshot {
-        refreshSnapshot
+        if let refreshError {
+            throw refreshError
+        }
+
+        return refreshSnapshot
     }
 
     func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {

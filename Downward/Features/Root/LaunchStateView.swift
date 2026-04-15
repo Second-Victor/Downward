@@ -56,7 +56,7 @@ struct LaunchStateView: View {
 #Preview("No Workspace") {
     LaunchStateView(
         title: "Choose a Workspace",
-        message: "Pick one folder to browse and edit markdown files.",
+        message: "Pick one folder to browse and edit Markdown and text files.",
         symbolName: "folder.badge.plus",
         isLoading: false,
         primaryActionTitle: "Open Folder",
@@ -69,7 +69,7 @@ struct LaunchStateView: View {
 #Preview("Large Type") {
     LaunchStateView(
         title: "Choose a Workspace",
-        message: "Pick one folder to browse and edit markdown files.",
+        message: "Pick one folder to browse and edit Markdown and text files.",
         symbolName: "folder.badge.plus",
         isLoading: false,
         primaryActionTitle: "Open Folder",

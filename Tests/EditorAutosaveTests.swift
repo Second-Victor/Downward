@@ -487,6 +487,7 @@ final class EditorAutosaveTests: XCTestCase {
         let viewModel = EditorViewModel(
             session: session,
             coordinator: coordinator,
+            editorAppearanceStore: EditorAppearanceStore(),
             autosaveDelay: autosaveDelay
         )
         viewModel.handleAppear(for: initialDocument.url)

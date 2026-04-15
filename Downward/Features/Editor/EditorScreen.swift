@@ -40,13 +40,15 @@ struct EditorScreen: View {
         if viewModel.currentRouteDocument != nil {
             ZStack(alignment: .topLeading) {
                 TextEditor(text: viewModel.textBinding)
+                    .font(viewModel.editorFont)
                     .scrollContentBackground(.hidden)
                     .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
                     .accessibilityLabel("Document Text")
-                    .accessibilityHint("Edits the current markdown document.")
+                    .accessibilityHint("Edits the current text document.")
 
                 if viewModel.showsEmptyDocumentPlaceholder {
                     Text("Start typing…")
+                        .font(viewModel.editorFont)
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
                         .padding(.leading, 5)

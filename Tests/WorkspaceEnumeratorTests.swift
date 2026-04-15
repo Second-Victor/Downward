@@ -68,7 +68,7 @@ final class WorkspaceEnumeratorTests: XCTestCase {
         XCTAssertEqual(yearFolder.children.map(\.displayName), ["2026-04-13.md"])
     }
 
-    func testEnumeratorKeepsFoldersOnlyWhenTheyContainSupportedDescendants() throws {
+    func testEnumeratorIncludesEmptyFoldersAndFoldersWithoutSupportedFiles() throws {
         let rootURL = try makeTemporaryWorkspace()
         defer { removeItemIfPresent(at: rootURL) }
 
@@ -83,14 +83,33 @@ final class WorkspaceEnumeratorTests: XCTestCase {
         try createFile(named: "Ignore.png", in: unsupportedFolderURL)
 
         let emptyFolderURL = try createDirectory(named: "Empty", in: rootURL)
-        try createDirectory(named: "OnlyDirectories", in: emptyFolderURL)
+        let onlyDirectoriesURL = try createDirectory(named: "OnlyDirectories", in: emptyFolderURL)
+        try createDirectory(named: "NestedEmpty", in: onlyDirectoriesURL)
 
         let snapshot = try LiveWorkspaceEnumerator().makeSnapshot(
             rootURL: rootURL,
             displayName: "Workspace"
         )
 
-        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Deep", "Supported"])
+        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Deep", "Empty", "Supported", "Unsupported"])
+
+        guard case let .folder(emptyFolder) = snapshot.rootNodes[1] else {
+            return XCTFail("Expected Empty to be represented as a folder.")
+        }
+
+        XCTAssertEqual(emptyFolder.children.map(\.displayName), ["OnlyDirectories"])
+
+        guard case let .folder(onlyDirectoriesFolder) = emptyFolder.children.first else {
+            return XCTFail("Expected OnlyDirectories to be represented as a nested empty folder.")
+        }
+
+        XCTAssertEqual(onlyDirectoriesFolder.children.map(\.displayName), ["NestedEmpty"])
+
+        guard case let .folder(unsupportedFolder) = snapshot.rootNodes[3] else {
+            return XCTFail("Expected Unsupported to be represented as a folder.")
+        }
+
+        XCTAssertTrue(unsupportedFolder.children.isEmpty)
     }
 
     private func makeTemporaryWorkspace() throws -> URL {
