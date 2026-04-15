@@ -379,6 +379,7 @@ Render:
 Responsibilities:
 
 - expose the current snapshot to SwiftUI screens
+- own lightweight snapshot-local search state and filtered file results
 - drive refresh state
 - manage create/rename/delete prompts
 - route file and settings actions through the coordinator

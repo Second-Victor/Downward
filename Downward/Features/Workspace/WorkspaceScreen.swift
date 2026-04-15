@@ -77,6 +77,23 @@ struct WorkspaceScreen: View {
     }
 }
 
+#Preview("Search Results") {
+    NavigationStack {
+        WorkspaceScreen(
+            viewModel: {
+                let container = AppContainer.preview(
+                    launchState: .workspaceReady,
+                    accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+                    snapshot: PreviewSampleData.nestedWorkspace
+                )
+                let viewModel = container.workspaceViewModel
+                viewModel.searchQuery = "read"
+                return viewModel
+            }()
+        )
+    }
+}
+
 #Preview("Loading") {
     NavigationStack {
         WorkspaceScreen(

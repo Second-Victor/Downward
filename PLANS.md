@@ -240,7 +240,6 @@ The next sensible work after stabilization is still small in scope:
 
 The first real feature wave should improve everyday use without changing the app's core philosophy:
 
-- lightweight workspace search or filter
 - recent-file convenience that remains workspace-relative
 - iPad / hardware-keyboard productivity improvements
 - a minimal document info surface for the active file

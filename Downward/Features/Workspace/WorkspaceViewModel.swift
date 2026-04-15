@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class WorkspaceViewModel {
     let session: AppSession
+    var searchQuery = ""
     var isLoading = false
     var isRefreshing = false
     var isPerformingFileOperation = false
@@ -38,8 +39,20 @@ final class WorkspaceViewModel {
         session.workspaceSnapshot?.rootNodes ?? []
     }
 
+    var searchResults: [WorkspaceSearchResult] {
+        guard let snapshot = session.workspaceSnapshot else {
+            return []
+        }
+
+        return WorkspaceSearchEngine.results(in: snapshot, matching: searchQuery)
+    }
+
     var isEmpty: Bool {
         isLoading == false && loadError == nil && nodes.isEmpty
+    }
+
+    var isSearching: Bool {
+        searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 
     var isShowingErrorState: Bool {
@@ -60,6 +73,10 @@ final class WorkspaceViewModel {
 
     var pendingDeleteTitle: String {
         pendingDeleteFile?.displayName ?? "Delete File"
+    }
+
+    var searchQueryDescription: String {
+        searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func loadSnapshotIfNeeded() {
@@ -163,7 +180,15 @@ final class WorkspaceViewModel {
         node.url == selectedDocumentURL
     }
 
+    func isSelectedDocumentURL(_ url: URL) -> Bool {
+        url == selectedDocumentURL
+    }
+
     func title(for folderURL: URL?) -> String {
+        if isSearching {
+            return "Search"
+        }
+
         guard let folderURL else {
             return workspaceTitle
         }

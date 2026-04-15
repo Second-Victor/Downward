@@ -1204,6 +1204,32 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testSearchResultOpensCorrectEditorDocument() async throws {
+        let container = AppContainer.preview(
+            launchState: .workspaceReady,
+            accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+            snapshot: PreviewSampleData.nestedWorkspace
+        )
+        let workspaceViewModel = container.workspaceViewModel
+        let editorViewModel = container.editorViewModel
+
+        workspaceViewModel.searchQuery = "read"
+        let result = try XCTUnwrap(workspaceViewModel.searchResults.first)
+
+        container.session.path = [.editor(result.url)]
+        editorViewModel.handleAppear(for: result.url)
+
+        try await waitUntil {
+            container.session.openDocument?.url == result.url
+        }
+
+        XCTAssertEqual(container.session.openDocument?.displayName, result.displayName)
+        XCTAssertEqual(container.session.openDocument?.relativePath, result.relativePath)
+        XCTAssertEqual(container.session.path, [.editor(result.url)])
+        XCTAssertNil(container.session.editorLoadError)
+    }
+
+    @MainActor
     private func makeWorkspaceSnapshotReplacingRootFile(
         oldURL: URL,
         with replacement: WorkspaceNode

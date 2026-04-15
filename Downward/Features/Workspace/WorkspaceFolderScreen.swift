@@ -7,7 +7,9 @@ struct WorkspaceFolderScreen: View {
 
     var body: some View {
         Group {
-            if let folderURL, viewModel.isFolderMissing(folderURL) {
+            if viewModel.isSearching {
+                WorkspaceSearchResultsView(viewModel: viewModel)
+            } else if let folderURL, viewModel.isFolderMissing(folderURL) {
                 ContentUnavailableView(
                     "Folder Unavailable",
                     systemImage: "folder.badge.questionmark",
@@ -31,6 +33,7 @@ struct WorkspaceFolderScreen: View {
             }
         }
         .navigationTitle(viewModel.title(for: folderURL))
+        .searchable(text: searchQueryBinding, prompt: "Search Files")
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("New File", systemImage: "plus") {
@@ -144,6 +147,13 @@ struct WorkspaceFolderScreen: View {
                     viewModel.cancelDelete()
                 }
             }
+        )
+    }
+
+    private var searchQueryBinding: Binding<String> {
+        Binding(
+            get: { viewModel.searchQuery },
+            set: { viewModel.searchQuery = $0 }
         )
     }
 }

@@ -90,7 +90,7 @@ The roadmap from here should stay grouped into three layers:
 
 ### Browser productivity
 
-- [ ] Add lightweight file search/filter within the current workspace snapshot
+- [x] Add lightweight file search/filter within the current workspace snapshot
 - [ ] Add a recent-files or quick-reopen surface that stays workspace-relative and minimal
 - [ ] Evaluate folder rename/move support if it becomes a real product requirement
 
