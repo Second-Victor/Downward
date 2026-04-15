@@ -176,6 +176,75 @@ final class EditorAutosaveTests: XCTestCase {
     }
 
     @MainActor
+    func testEmptyFileCanOpenEditAndSaveNormally() async throws {
+        let fixture = try makeLiveDocumentFixture(
+            named: "Empty.md",
+            contents: ""
+        )
+        defer { removeItemIfPresent(at: fixture.workspaceURL) }
+
+        let liveManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let initialDocument = try await liveManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let system = makeEditorSystem(
+            documentManager: liveManager,
+            initialDocument: initialDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+
+        XCTAssertEqual(system.session.openDocument?.text, "")
+        XCTAssertTrue(system.viewModel.showsEmptyDocumentPlaceholder)
+
+        system.viewModel.handleTextChange("# Empty\n\nNow it has content.")
+        try await waitUntil {
+            system.session.openDocument?.isDirty == false
+                && system.session.openDocument?.text == "# Empty\n\nNow it has content."
+        }
+
+        XCTAssertFalse(system.viewModel.showsEmptyDocumentPlaceholder)
+        XCTAssertNil(system.viewModel.documentLocationText)
+        XCTAssertEqual(
+            try String(contentsOf: fixture.fileURL, encoding: .utf8),
+            "# Empty\n\nNow it has content."
+        )
+    }
+
+    @MainActor
+    func testReasonablyLargeMarkdownFileCanOpenAndSaveWithoutStateChurn() async throws {
+        let largeBody = Array(repeating: "- bullet item for markdown workspace regression coverage", count: 4_000)
+            .joined(separator: "\n")
+        let fixture = try makeLiveDocumentFixture(
+            named: "Large.md",
+            contents: "# Large\n\n\(largeBody)\n"
+        )
+        defer { removeItemIfPresent(at: fixture.workspaceURL) }
+
+        let liveManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let initialDocument = try await liveManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let system = makeEditorSystem(
+            documentManager: liveManager,
+            initialDocument: initialDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+
+        let revisedText = initialDocument.text + "\n## Tail\n\nExtra line."
+        system.viewModel.handleTextChange(revisedText)
+        try await waitUntil {
+            system.session.openDocument?.isDirty == false
+                && system.session.openDocument?.text == revisedText
+        }
+
+        XCTAssertFalse(system.viewModel.showsSaveStatusIndicator)
+        XCTAssertFalse(system.viewModel.showsUnsavedIndicator)
+        XCTAssertEqual(try String(contentsOf: fixture.fileURL, encoding: .utf8), revisedText)
+    }
+
+    @MainActor
     func testSaveAcknowledgementMergesConfirmedVersionWithoutClobberingNewerEdits() async throws {
         let initialDocument = makeVersionedDocument(versionIndex: 0, text: PreviewSampleData.cleanDocument.text)
         let documentManager = VersionTrackingDocumentManager(
@@ -301,6 +370,31 @@ final class EditorAutosaveTests: XCTestCase {
     }
 
     @MainActor
+    func testSaveFailureChromeAndPathStayScopedToActiveDocument() async throws {
+        var nestedDocument = PreviewSampleData.failedSaveDocument
+        nestedDocument.saveState = .failed(PreviewSampleData.saveFailedError)
+        nestedDocument.isDirty = true
+
+        let system = makeEditorSystem(
+            documentManager: RecordingDocumentManager(saveDelay: .milliseconds(10)),
+            initialDocument: nestedDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+        system.session.path = [.editor(nestedDocument.url)]
+
+        XCTAssertTrue(system.viewModel.showsSaveStatusIndicator)
+        XCTAssertEqual(system.viewModel.title, nestedDocument.displayName)
+        XCTAssertEqual(system.viewModel.documentLocationText, "Journal/2026")
+
+        system.session.path = [.editor(PreviewSampleData.cleanDocument.url)]
+
+        XCTAssertNil(system.viewModel.currentRouteDocument)
+        XCTAssertFalse(system.viewModel.showsSaveStatusIndicator)
+        XCTAssertEqual(system.viewModel.title, PreviewSampleData.cleanDocument.displayName)
+        XCTAssertNil(system.viewModel.documentLocationText)
+    }
+
+    @MainActor
     func testDisappearFlushesPendingDirtyDocumentImmediately() async throws {
         let documentManager = RecordingDocumentManager(saveDelay: .milliseconds(10))
         let system = makeEditorSystem(
@@ -367,22 +461,25 @@ final class EditorAutosaveTests: XCTestCase {
     private func makeEditorSystem(
         documentManager: any DocumentManager,
         initialDocument: OpenDocument = PreviewSampleData.cleanDocument,
+        workspaceSnapshot: WorkspaceSnapshot? = nil,
         autosaveDelay: Duration = .milliseconds(40)
     ) -> (session: AppSession, coordinator: AppCoordinator, viewModel: EditorViewModel) {
+        let snapshot = workspaceSnapshot ?? makeWorkspaceSnapshot(containing: initialDocument)
         let session = AppSession()
         session.launchState = .workspaceReady
-        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.workspaceSnapshot = snapshot
         session.openDocument = initialDocument
+        session.path = [.editor(initialDocument.url)]
 
         let logger = DebugLogger()
         let coordinator = AppCoordinator(
             session: session,
             workspaceManager: StubWorkspaceManager(
                 bookmarkStore: StubBookmarkStore(),
-                readySnapshot: PreviewSampleData.nestedWorkspace
+                readySnapshot: snapshot
             ),
             documentManager: documentManager,
-            errorReporter: StubErrorReporter(logger: logger),
+            errorReporter: DefaultErrorReporter(logger: logger),
             folderPickerBridge: StubFolderPickerBridge(),
             logger: logger
         )
@@ -395,6 +492,24 @@ final class EditorAutosaveTests: XCTestCase {
         viewModel.handleAppear(for: initialDocument.url)
 
         return (session, coordinator, viewModel)
+    }
+
+    @MainActor
+    private func makeWorkspaceSnapshot(containing document: OpenDocument) -> WorkspaceSnapshot {
+        WorkspaceSnapshot(
+            rootURL: document.workspaceRootURL,
+            displayName: document.workspaceRootURL.lastPathComponent,
+            rootNodes: [
+                .file(
+                    .init(
+                        url: document.url,
+                        displayName: document.displayName,
+                        subtitle: nil
+                    )
+                ),
+            ],
+            lastUpdated: PreviewSampleData.previewDate
+        )
     }
 
     @MainActor

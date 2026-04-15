@@ -217,8 +217,7 @@ final class WorkspaceViewModel {
             }
 
             switch result {
-            case let .success(snapshot):
-                session.workspaceSnapshot = snapshot
+            case .success:
                 loadError = nil
             case let .failure(error):
                 if hadSnapshot {

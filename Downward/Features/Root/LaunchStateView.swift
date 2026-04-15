@@ -59,10 +59,10 @@ struct LaunchStateView: View {
         message: "Pick one folder to browse and edit markdown files.",
         symbolName: "folder.badge.plus",
         isLoading: false,
-        primaryActionTitle: "Use Sample Workspace",
+        primaryActionTitle: "Open Folder",
         primaryAction: {},
-        secondaryActionTitle: "Folder Picker Deferred",
-        secondaryAction: {}
+        secondaryActionTitle: nil,
+        secondaryAction: nil
     )
 }
 

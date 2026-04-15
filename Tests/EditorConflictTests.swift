@@ -99,7 +99,7 @@ final class EditorConflictTests: XCTestCase {
                 readySnapshot: PreviewSampleData.nestedWorkspace
             ),
             documentManager: documentManager,
-            errorReporter: StubErrorReporter(logger: logger),
+            errorReporter: DefaultErrorReporter(logger: logger),
             folderPickerBridge: StubFolderPickerBridge(),
             logger: logger
         )
@@ -161,5 +161,11 @@ private actor ConflictResolvingDocumentManager: DocumentManager {
         }
 
         return conflictedSaveResult
+    }
+
+    func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            continuation.finish()
+        }
     }
 }

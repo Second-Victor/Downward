@@ -4,6 +4,8 @@ import SwiftUI
 @MainActor
 @Observable
 final class EditorViewModel {
+    private static let observationSuppressionInterval: Duration = .seconds(1)
+
     let session: AppSession
     let autosaveDelay: Duration
     var isShowingConflictResolution = false
@@ -18,6 +20,9 @@ final class EditorViewModel {
     private var saveInFlight = false
     private var queuedSaveGeneration: Int?
     private var visibleEditorURLs: Set<URL> = []
+    private var documentObservationTask: Task<Void, Never>?
+    private var observedDocumentIdentity: String?
+    private var suppressObservationUntil: ContinuousClock.Instant?
 
     init(
         session: AppSession,
@@ -47,6 +52,23 @@ final class EditorViewModel {
 
     var title: String {
         currentRouteDocument?.displayName ?? activeEditorURL?.lastPathComponent ?? "Editor"
+    }
+
+    var documentLocationText: String? {
+        guard let currentRouteDocument else {
+            return nil
+        }
+
+        let components = currentRouteDocument.relativePath.split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count > 1 else {
+            return nil
+        }
+
+        return components.dropLast().joined(separator: "/")
+    }
+
+    var showsEmptyDocumentPlaceholder: Bool {
+        currentRouteDocument?.text.isEmpty == true
     }
 
     var textBinding: Binding<String> {
@@ -98,6 +120,10 @@ final class EditorViewModel {
         "exclamationmark.triangle.fill"
     }
 
+    var saveFailureMessage: String? {
+        saveFailure?.message
+    }
+
     func handleTextChange(_ text: String) {
         guard let currentRouteDocument else {
             return
@@ -123,6 +149,9 @@ final class EditorViewModel {
 
         if session.openDocument?.url == documentURL {
             session.editorLoadError = nil
+            if let currentRouteDocument {
+                startObservingDocumentChanges(for: currentRouteDocument)
+            }
             return
         }
 
@@ -141,7 +170,11 @@ final class EditorViewModel {
                 return
             }
 
-            if case let .failure(error) = result {
+            switch result {
+            case let .success(document):
+                await coordinator.activateLoadedDocument(document)
+                startObservingDocumentChanges(for: document)
+            case let .failure(error):
                 session.editorLoadError = error
             }
         }
@@ -149,6 +182,9 @@ final class EditorViewModel {
 
     func handleDisappear(for documentURL: URL) {
         visibleEditorURLs.remove(documentURL)
+        if hasVisibleEditor == false {
+            stopObservingDocumentChanges()
+        }
 
         if let activeConflict = session.openDocument?.url == documentURL
             ? session.openDocument?.conflictState.activeConflict
@@ -298,6 +334,7 @@ final class EditorViewModel {
         let snapshot = currentDocument
 
         let result = await coordinator.saveDocument(snapshot)
+        suppressObservationUntil = ContinuousClock.now + Self.observationSuppressionInterval
         saveInFlight = false
         applySaveResult(
             result,
@@ -441,5 +478,85 @@ final class EditorViewModel {
 
     private var activeEditorURL: URL? {
         session.path.last?.editorURL ?? currentRouteURL
+    }
+
+    private func startObservingDocumentChanges(for document: OpenDocument) {
+        let identity = documentObservationIdentity(for: document)
+        guard observedDocumentIdentity != identity else {
+            return
+        }
+
+        stopObservingDocumentChanges()
+        observedDocumentIdentity = identity
+        let observedDocument = document
+
+        documentObservationTask = Task { [weak self] in
+            guard let self else {
+                return
+            }
+
+            let streamResult = await coordinator.observeDocumentChanges(for: observedDocument)
+            guard Task.isCancelled == false else {
+                return
+            }
+
+            guard case let .success(stream) = streamResult else {
+                return
+            }
+
+            for await _ in stream {
+                guard Task.isCancelled == false else {
+                    break
+                }
+
+                guard self.hasVisibleEditor else {
+                    continue
+                }
+
+                guard self.currentRouteDocument != nil else {
+                    continue
+                }
+
+                guard self.saveInFlight == false else {
+                    continue
+                }
+
+                guard self.currentRouteDocument?.isDirty != true else {
+                    continue
+                }
+
+                if let suppressObservationUntil, ContinuousClock.now < suppressObservationUntil {
+                    continue
+                }
+
+                let result = await coordinator.revalidateObservedDocument(matching: observedDocument)
+                guard Task.isCancelled == false else {
+                    break
+                }
+
+                guard let result else {
+                    continue
+                }
+
+                switch result {
+                case let .success(revalidatedDocument):
+                    if revalidatedDocument.conflictState.needsResolution {
+                        isShowingConflictResolution = true
+                    }
+                case .failure:
+                    break
+                }
+            }
+        }
+    }
+
+    private func stopObservingDocumentChanges() {
+        documentObservationTask?.cancel()
+        documentObservationTask = nil
+        observedDocumentIdentity = nil
+    }
+
+    private func documentObservationIdentity(for document: OpenDocument) -> String {
+        "\(document.workspaceRootURL.path)|\(document.relativePath)"
     }
 }

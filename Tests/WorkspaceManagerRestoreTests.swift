@@ -236,6 +236,11 @@ private struct FakeSecurityScopedAccessHandler: SecurityScopedAccessHandling {
         }
     }
 
+    func beginAccess(to url: URL) throws -> SecurityScopedAccessLease {
+        try validateAccess(to: url)
+        return SecurityScopedAccessLease(url: url, stopHandler: nil)
+    }
+
     func withAccess<Value>(to url: URL, operation: (URL) throws -> Value) throws -> Value {
         try validateAccess(to: url)
         return try operation(url)

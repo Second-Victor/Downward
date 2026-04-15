@@ -1,6 +1,6 @@
 import Foundation
 
-/// Centralized sample fixtures for previews and stub managers during the scaffold phases.
+/// Centralized sample fixtures for previews and lightweight stub managers.
 enum PreviewSampleData {
     static let previewDate = Date(timeIntervalSince1970: 1_710_000_000)
 
@@ -36,7 +36,7 @@ enum PreviewSampleData {
     static let saveFailedError = UserFacingError(
         title: "Save Failed",
         message: "The most recent save did not complete.",
-        recoverySuggestion: "Keep editing for now. Save wiring arrives in Phase 2."
+        recoverySuggestion: "Keep editing and try again."
     )
 
     static let failedLoadError = UserFacingError(
@@ -204,11 +204,11 @@ enum PreviewSampleData {
         text: """
         # Monday
 
-        Shipping the navigation skeleton today.
+        Shipping a calm workspace editor.
 
-        - Root launch states
-        - Workspace browser shell
-        - Editor placeholder flow
+        - Quiet autosave
+        - Standard navigation
+        - Reliable restore
         """,
         loadedVersion: makeVersion("preview-v2", fileSize: 128),
         isDirty: true,
@@ -224,11 +224,23 @@ enum PreviewSampleData {
         text: """
         # Ideas
 
-        Save is not wired yet, but failure UI is scaffolded.
+        The latest autosave failed and needs attention.
         """,
         loadedVersion: makeVersion("preview-v3", fileSize: 72),
         isDirty: true,
         saveState: .failed(saveFailedError),
+        conflictState: .none
+    )
+
+    static let emptyDocument = OpenDocument(
+        url: referencesURL.appending(path: "Empty.md"),
+        workspaceRootURL: workspaceRootURL,
+        relativePath: "References/Empty.md",
+        displayName: "Empty.md",
+        text: "",
+        loadedVersion: makeVersion("preview-v3-empty", fileSize: 0),
+        isDirty: false,
+        saveState: .saved(previewDate),
         conflictState: .none
     )
 
@@ -303,6 +315,7 @@ enum PreviewSampleData {
         cleanDocument.url: cleanDocument,
         dirtyDocument.url: dirtyDocument,
         failedSaveDocument.url: failedSaveDocument,
+        emptyDocument.url: emptyDocument,
         conflictDocument.url: conflictDocument,
         preservedConflictDocument.url: preservedConflictDocument,
         missingDocument.url: missingDocument,

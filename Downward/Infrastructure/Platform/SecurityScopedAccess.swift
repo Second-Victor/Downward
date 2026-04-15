@@ -6,11 +6,46 @@ struct ResolvedSecurityScopedURL: Equatable, Sendable {
     let isStale: Bool
 }
 
+final class SecurityScopedAccessLease: @unchecked Sendable {
+    nonisolated let url: URL
+
+    private let stopHandler: (@Sendable () -> Void)?
+    private let lock = NSLock()
+    nonisolated(unsafe) private var isActive = true
+
+    nonisolated init(
+        url: URL,
+        stopHandler: (@Sendable () -> Void)?
+    ) {
+        self.url = url
+        self.stopHandler = stopHandler
+    }
+
+    nonisolated func endAccess() {
+        let handler: (@Sendable () -> Void)? = lock.withLock {
+            guard isActive else {
+                return nil
+            }
+
+            isActive = false
+            return stopHandler
+        }
+
+        handler?()
+    }
+
+    nonisolated
+    deinit {
+        endAccess()
+    }
+}
+
 /// Wraps security-scoped URL access so folder selection and bookmark restore stay out of views.
 protocol SecurityScopedAccessHandling: Sendable {
     nonisolated func makeBookmark(for url: URL) throws -> Data
     nonisolated func resolveBookmark(_ data: Data) throws -> ResolvedSecurityScopedURL
     nonisolated func validateAccess(to url: URL) throws
+    nonisolated func beginAccess(to url: URL) throws -> SecurityScopedAccessLease
     nonisolated func withAccess<Value>(
         to url: URL,
         operation: (URL) throws -> Value
@@ -55,6 +90,20 @@ struct LiveSecurityScopedAccessHandler: SecurityScopedAccessHandling {
         _ = try withSecurityScopedAccess(to: url) { _ in () }
     }
 
+    nonisolated func beginAccess(to url: URL) throws -> SecurityScopedAccessLease {
+        let didStartAccess = url.startAccessingSecurityScopedResource()
+        guard didStartAccess else {
+            throw AppError.workspaceAccessInvalid(displayName: url.lastPathComponent)
+        }
+
+        return SecurityScopedAccessLease(
+            url: url,
+            stopHandler: {
+                url.stopAccessingSecurityScopedResource()
+            }
+        )
+    }
+
     nonisolated func withAccess<Value>(
         to url: URL,
         operation: (URL) throws -> Value
@@ -97,5 +146,13 @@ struct LiveSecurityScopedAccessHandler: SecurityScopedAccessHandling {
             .reduce(rootURL) { partialURL, component in
                 partialURL.appending(path: String(component))
             }
+    }
+}
+
+private extension NSLock {
+    nonisolated func withLock<Value>(_ operation: () -> Value) -> Value {
+        lock()
+        defer { unlock() }
+        return operation()
     }
 }

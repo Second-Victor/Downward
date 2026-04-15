@@ -74,7 +74,7 @@ final class AppContainer {
             workspaceEnumerator: LiveWorkspaceEnumerator()
         )
         let documentManager = LiveDocumentManager(securityScopedAccess: securityScopedAccess)
-        let errorReporter = StubErrorReporter(logger: logger)
+        let errorReporter = DefaultErrorReporter(logger: logger)
 
         return AppContainer(
             logger: logger,
@@ -122,7 +122,7 @@ final class AppContainer {
             forcedRestoreResult: forcedRestoreResult
         )
         let documentManager = StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL)
-        let errorReporter = StubErrorReporter(logger: logger)
+        let errorReporter = DefaultErrorReporter(logger: logger)
 
         let container = AppContainer(
             logger: logger,

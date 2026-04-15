@@ -9,8 +9,6 @@ enum AppError: Error, Equatable, LocalizedError, Sendable {
     case documentUnavailable(name: String)
     case documentOpenFailed(name: String, details: String)
     case documentSaveFailed(name: String, details: String)
-    case unsupportedOperation(details: String)
-    case stubFailure(details: String)
 
     var errorDescription: String? {
         switch self {
@@ -30,10 +28,6 @@ enum AppError: Error, Equatable, LocalizedError, Sendable {
             "The document \(name) could not be opened: \(details)"
         case let .documentSaveFailed(name, details):
             "The document \(name) could not be saved: \(details)"
-        case let .unsupportedOperation(details):
-            "Unsupported operation: \(details)"
-        case let .stubFailure(details):
-            "Stub failure: \(details)"
         }
     }
 }

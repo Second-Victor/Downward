@@ -9,6 +9,7 @@ struct EditorScreen: View {
             .background(.background)
             .navigationTitle(viewModel.title)
             .navigationBarTitleDisplayMode(.inline)
+            .editorNavigationSubtitle(viewModel.documentLocationText)
             .task(id: documentURL) {
                 viewModel.handleAppear(for: documentURL)
             }
@@ -36,12 +37,23 @@ struct EditorScreen: View {
 
     @ViewBuilder
     private var editorContent: some View {
-        if viewModel.document != nil {
-            TextEditor(text: viewModel.textBinding)
-                .scrollContentBackground(.hidden)
-                .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
-                .accessibilityLabel("Document Text")
-                .accessibilityHint("Edits the current markdown document.")
+        if viewModel.currentRouteDocument != nil {
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: viewModel.textBinding)
+                    .scrollContentBackground(.hidden)
+                    .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
+                    .accessibilityLabel("Document Text")
+                    .accessibilityHint("Edits the current markdown document.")
+
+                if viewModel.showsEmptyDocumentPlaceholder {
+                    Text("Start typing…")
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 8)
+                        .padding(.leading, 5)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
         } else if let error = viewModel.loadError {
             ContentUnavailableView(
                 error.title,
@@ -62,6 +74,17 @@ struct EditorScreen: View {
             get: { viewModel.isShowingConflictResolution },
             set: { viewModel.isShowingConflictResolution = $0 }
         )
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func editorNavigationSubtitle(_ subtitle: String?) -> some View {
+        if let subtitle {
+            navigationSubtitle(subtitle)
+        } else {
+            self
+        }
     }
 }
 
@@ -185,6 +208,24 @@ struct EditorScreen: View {
                 return container.editorViewModel
             }(),
             documentURL: PreviewSampleData.preservedConflictDocument.url
+        )
+    }
+}
+
+#Preview("Empty File") {
+    NavigationStack {
+        EditorScreen(
+            viewModel: {
+                let container = AppContainer.preview(
+                    launchState: .workspaceReady,
+                    accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+                    snapshot: PreviewSampleData.nestedWorkspace,
+                    document: PreviewSampleData.emptyDocument,
+                    path: [.editor(PreviewSampleData.emptyDocument.url)]
+                )
+                return container.editorViewModel
+            }(),
+            documentURL: PreviewSampleData.emptyDocument.url
         )
     }
 }

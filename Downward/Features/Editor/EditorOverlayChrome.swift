@@ -6,9 +6,10 @@ struct EditorOverlayChrome: View {
     var body: some View {
         Label(viewModel.saveStateText, systemImage: viewModel.saveStateSymbolName)
             .font(.caption)
-            .foregroundStyle(.orange)
+            .foregroundStyle(.red)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(viewModel.saveStateText)
+            .accessibilityValue(viewModel.saveFailureMessage ?? "")
             .accessibilityHint("The latest save did not complete.")
     }
 }

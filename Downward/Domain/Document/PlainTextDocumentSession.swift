@@ -278,13 +278,13 @@ actor PlainTextDocumentSession {
             UserFacingError(
                 title: "File Changed Elsewhere",
                 message: "\(document.displayName) changed on disk after it was opened.",
-                recoverySuggestion: "Reload from disk, overwrite the newer version, or keep your edits in memory for now."
+                recoverySuggestion: "Reload from disk, replace the file with your current text, or keep your edits in memory for now."
             )
         case .missingOnDisk:
             UserFacingError(
                 title: "File No Longer Exists",
                 message: "\(document.displayName) was moved or deleted outside the app.",
-                recoverySuggestion: "Reload if it returns, overwrite to recreate it at this path, or keep your edits in memory for now."
+                recoverySuggestion: "Reload if it returns, replace it at this path, or keep your edits in memory for now."
             )
         }
 
@@ -387,7 +387,7 @@ actor PlainTextDocumentSession {
                 // Write directly to the coordinated URL. An additional atomic replace here would create
                 // another filesystem-level replacement step on provider-backed files, which is exactly the
                 // noisy path this live document session is replacing.
-                try text.write(to: coordinatedURL, atomically: false, encoding: .utf8)
+                try writeUTF8Text(text, to: coordinatedURL, fallbackName: fallbackName)
 
                 let resourceValues = try coordinatedURL.resourceValues(forKeys: documentResourceKeys)
                 guard resourceValues.isDirectory != true else {
@@ -455,7 +455,7 @@ actor PlainTextDocumentSession {
                 )
             }
 
-            let text = try String(contentsOf: url, encoding: .utf8)
+            let text = try readUTF8Text(from: url)
 
             return .success(
                 CoordinatedDocumentState(
@@ -526,6 +526,36 @@ actor PlainTextDocumentSession {
                 String(format: "%02x", byte)
             }.joined()
         )
+    }
+
+    /// The editor treats workspace files as strict UTF-8 plain text. It does not normalize line endings;
+    /// whatever line breaks are present in the in-memory buffer are written back as-is.
+    nonisolated private static func readUTF8Text(from url: URL) throws -> String {
+        let data = try Data(contentsOf: url)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw AppError.documentOpenFailed(
+                name: url.lastPathComponent,
+                details: "The file is not valid UTF-8 text."
+            )
+        }
+
+        return text
+    }
+
+    /// Encodes the current editor buffer directly as UTF-8 without rewriting line endings.
+    nonisolated private static func writeUTF8Text(
+        _ text: String,
+        to url: URL,
+        fallbackName: String
+    ) throws {
+        guard let data = text.data(using: .utf8) else {
+            throw AppError.documentSaveFailed(
+                name: fallbackName,
+                details: "The current text could not be encoded as UTF-8."
+            )
+        }
+
+        try data.write(to: url, options: [])
     }
 
     nonisolated private static func wrapFilesystemError<Success>(

@@ -6,7 +6,7 @@ protocol ErrorReporter: Sendable {
     func makeUserFacingError(from error: AppError) -> UserFacingError
 }
 
-struct StubErrorReporter: ErrorReporter {
+struct DefaultErrorReporter: ErrorReporter {
     private let logger: DebugLogger
 
     init(logger: DebugLogger) {
@@ -53,26 +53,19 @@ struct StubErrorReporter: ErrorReporter {
             UserFacingError(
                 title: "Document Unavailable",
                 message: "\(name) is no longer available at this location.",
-                recoverySuggestion: "Return to the browser and refresh if the file moved."
+                recoverySuggestion: "Return to the browser and choose another file if it moved."
             )
         case let .documentOpenFailed(name, details):
             UserFacingError(
                 title: "Can’t Open Document",
                 message: "\(name) could not be loaded. \(details)",
-                recoverySuggestion: "Return to the browser and try again."
+                recoverySuggestion: "Return to the browser and choose another file."
             )
         case let .documentSaveFailed(name, details):
             UserFacingError(
                 title: "Save Failed",
                 message: "\(name) could not be saved. \(details)",
-                recoverySuggestion: "Keep editing and try again."
-            )
-        case let .unsupportedOperation(details),
-             let .stubFailure(details):
-            UserFacingError(
-                title: "Not Available Yet",
-                message: details,
-                recoverySuggestion: "This flow is stubbed for the current phase."
+                recoverySuggestion: "Keep editing, then try again."
             )
         }
     }

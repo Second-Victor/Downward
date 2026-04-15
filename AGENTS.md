@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This repository is for a **SwiftUI-only markdown editor** for iPhone and iPad. The product goal is a calm, reliable editor that lets the user choose a folder from Files, browse nested folders, open markdown files, edit them as plain text, and save safely.
+This repository is for **Downward**, a SwiftUI markdown editor for iPhone and iPad that works directly against a user-selected workspace folder from Files. The app must feel like a normal text editor: open a folder, browse nested files, edit plain text, autosave quietly, and only surface conflict UI for real exceptional cases.
 
-This file tells any engineer or coding agent how work must be done in this repository.
+This document tells engineers and coding agents how to work in this repository without regressing the app's file-safety and editor behavior.
 
 ---
 
@@ -12,35 +12,37 @@ This file tells any engineer or coding agent how work must be done in this repos
 
 When working in this repo, follow documents in this order:
 
-1. `AGENTS.md` — coding rules, repo conventions, and non-negotiable constraints
-2. `PLANS.md` — product scope, MVP boundaries, and success criteria
-3. `ARCHITECTURE.md` — structure, file responsibilities, and system design
-4. `TASKS.md` — execution order and acceptance criteria
+1. `AGENTS.md` — coding rules, guardrails, and non-negotiable constraints
+2. `PLANS.md` — product scope, UX intent, and success criteria
+3. `ARCHITECTURE.md` — current system shape and file responsibilities
+4. `TASKS.md` — execution order, backlog, and acceptance criteria
 
-If there is a conflict:
+If there is a conflict between documents:
 
-- prefer **data safety and save correctness**
-- then prefer **SwiftUI-only implementation**
-- then prefer **the smallest MVP that satisfies the user story**
-- do not add clever abstractions that expand scope without solving a real problem
+- prefer **user data safety**
+- then prefer **seamless editor behavior**
+- then prefer **the existing SwiftUI-first architecture**
+- then prefer **the smallest change that preserves the current working save model**
 
 ---
 
 ## Product summary
 
-Build a minimal but robust markdown editor with these core behaviors:
+Downward is a **folder-based file editor**, not a notes database.
 
-- user selects **one workspace folder** from Files
-- app stores persistent access to that folder with a bookmark
-- app restores the folder on relaunch when possible
-- app recursively browses nested folders and markdown files
-- app opens markdown files as plain text
-- app edits with `TextEditor`
-- app autosaves safely
-- app detects save conflicts before overwriting newer disk content
-- app keeps the UI minimal and native
+Core product behaviors:
 
-This is not a notes database. It is a **folder-based file editor**.
+- user selects one workspace folder from Files
+- the app stores persistent bookmark access to that workspace
+- the workspace is restored on relaunch when possible
+- the app browses nested folders and supported text files
+- files open as plain UTF-8 text in `TextEditor`
+- the active editor autosaves back to the real workspace file
+- the active editor should not repeatedly interrupt the user with conflict UI during ordinary typing
+- the app can revalidate and refresh the open document when it changes externally
+- conflict UI is reserved for true exceptional cases such as delete/move or a real divergent external change that cannot be merged away quietly
+
+The user-selected workspace remains the source of truth. Do not introduce an app-owned mirrored document store for MVP or near-MVP work.
 
 ---
 
@@ -49,74 +51,75 @@ This is not a notes database. It is a **folder-based file editor**.
 ### Platform and language
 
 - Use **Swift 6.3 or newer**
-- Use **SwiftUI only**
-- Use **Observation** with `@Observable` for UI-facing models
+- Support **iPhone** first and **iPad** with the same codebase
+- Use **SwiftUI** for app UI
+- Use **Observation** with `@Observable` for UI-facing state
 - Use modern Swift concurrency
-- Support **iPhone** first
-- Support **iPad** with the same codebase and adaptive layout
-- Do not add macOS support during MVP unless explicitly requested
+- Do not add macOS support unless explicitly requested
 
 ### UI framework rules
 
-- Do not introduce UIKit or AppKit
-- Do not wrap `UIViewController`, `UITextView`, or `UIDocumentPickerViewController`
-- Do not switch away from `TextEditor` during MVP
-- Use SwiftUI presentation and navigation APIs only
-- Use `#Preview` for every view file that renders UI
+- Keep the UI layer SwiftUI-first
+- Do not replace the editor with a custom text engine during MVP-plus work
+- Do not move away from `TextEditor` unless explicitly requested
+- Platform bridges are allowed only at clear infrastructure boundaries where SwiftUI does not provide a complete solution yet, such as folder picking or security-scoped file access
+- Do not introduce UIKit-driven editor UI just to work around a product problem that can be solved in the existing architecture
+- Use `#Preview` for UI files that render views
 
 ### Dependency rules
 
 - Do not add third-party packages
-- Use only Apple frameworks already available in the SDK unless explicitly approved
-- Prefer Foundation, SwiftUI, Observation, UniformTypeIdentifiers, and CryptoKit only where needed
+- Prefer Apple frameworks already in use: `SwiftUI`, `Observation`, `Foundation`, `UniformTypeIdentifiers`, `CryptoKit`
+- Add a new Apple framework only when it solves a real problem in the file or lifecycle model and the architecture docs are updated with the reason
 
 ### Persistence rules
 
-- Do not introduce SwiftData for MVP
+- Do not introduce SwiftData for file contents
 - Use lightweight persistence only for:
   - workspace bookmark data
-  - last opened file reference
-  - simple session restore metadata if implemented
-- Keep file contents in the user-selected folder rather than copying them into app-owned storage
+  - last-open document session metadata
+  - small app/session flags if needed
+- Do not mirror workspace files into app-owned storage as the primary editing model
+- The active document must save back to the user-selected workspace location
+- Normal autosave should be silent for the active editor
+- Do not reintroduce aggressive conflict prompts for routine typing
 
 ---
 
-## MVP boundaries
+## Current product invariants
 
-### Must be in MVP
+These behaviors are now part of the app's contract and must not be casually broken:
 
-- choose a folder
-- persist workspace access
-- restore workspace access on launch
-- browse nested folders
-- open `.md` and `.markdown` files
-- optionally support `.txt`
-- edit as plain text
-- autosave
-- safe save conflict detection
-- create file
-- rename file
-- delete file
-- empty states
-- error states
-- previews for UI views
-- sample data for previews
-- unit tests for core file and save logic
+1. **Workspace-root editing**
+   - Files are edited in place within the chosen workspace.
+   - Relative paths inside the workspace matter.
 
-### Must not be in MVP
+2. **Editor buffer remains authoritative while typing**
+   - A successful save acknowledgement must update the confirmed on-disk version without clobbering newer in-memory edits.
+   - Newer keystrokes must survive older in-flight save completions.
 
-- live markdown preview
-- syntax highlighting
-- custom text engine
-- Git integration
-- plugin system
-- sync engine
-- tag database
-- backlinks or wiki links
-- multiple windows
-- tabbed editing
-- custom keyboard accessory bar full of formatting buttons
-- custom storage layer that mirrors the workspace
+3. **Conflict UI is exceptional**
+   - Do not show conflict UI for the app's own ordinary autosave flow.
+   - Only surface conflict resolution when the app cannot safely proceed silently.
+
+4. **Revalidation must not self-conflict**
+   - Foreground or live revalidation must not treat the app's own recent save as an external modification.
+
+5. **Workspace mutations must stay coherent**
+   - Create, rename, and delete must refresh the browser and keep editor/session state coherent.
+
+---
+
+## Current known limitations
+
+These are intentional limits of the current app and should not be described as bugs unless the user explicitly asks to change them:
+
+- one workspace is active at a time
+- one live editor document session is active at a time
+- documents are treated as UTF-8 plain text
+- in-app mutations currently cover file create, rename, and delete, not folder rename/move
+- same-document external refresh is supported for the active editor session; broader background sync is not
+- conflict UI still appears for real missing-file, move/delete, or unrecoverable coordinated write cases
 
 ---
 
@@ -124,42 +127,38 @@ This is not a notes database. It is a **folder-based file editor**.
 
 ### 1. File safety first
 
-- Never silently discard unsaved edits
-- Never silently overwrite a newer on-disk version
-- Never assume a folder bookmark is valid without checking
-- Always treat Files/iCloud provider behavior as asynchronous and fallible
-- Centralize all reads, writes, moves, deletes, and metadata checks
+- Never silently discard in-memory edits
+- Never regress the save pipeline into repeated self-conflicts
+- Never assume bookmark access is valid without checking
+- Treat Files/iCloud/provider operations as asynchronous and fallible
+- Centralize reads, writes, reloads, revalidation, and conflict mapping
 
-### 2. SwiftUI purity
+### 2. Seamless editing over noisy conservatism
 
-- The app must remain SwiftUI-only
-- If a task seems easier in UIKit, stop and document the limitation rather than silently bridging
-- The MVP should be shaped around what SwiftUI can do well:
-  - `NavigationStack`
-  - `TextEditor`
-  - `fileImporter`
-  - sheets, alerts, confirmation dialogs, and overlays
+- The active editor should behave like a normal text editor
+- Autosave should be quiet when it succeeds
+- Prefer calm recovery UX over repeated blocking prompts
+- Preserve manual reload/overwrite flows for true edge cases
 
-### 3. Small clear files
+### 3. Small, explicit responsibilities
 
-- One primary type per file
-- Keep file responsibilities narrow and named clearly
-- Prefer explicit feature folders over giant utility folders
-- Put business logic into services and view models, not Views
+- Keep one primary type per file where practical
+- Prefer clear domain names over vague utility names
+- Keep file-system and persistence semantics out of Views
+- Put coordination logic in managers/coordinators/view models, not in screens
 
-### 4. Main actor discipline
+### 4. Main-actor discipline
 
 - UI-facing observable state belongs on `@MainActor`
-- File I/O must not run on the main actor
-- Long-running work must be cancellable
-- Async results must not overwrite newer state
+- File I/O and digest/version work must not block the main actor
+- Long-running tasks should be cancellable or generation-guarded
+- Async completions must not overwrite newer state blindly
 
-### 5. Testability over cleverness
+### 5. Testability over abstraction theatre
 
-- Prefer simple protocols or lightweight seams only where they improve testability
-- Use concrete types until abstraction is needed
-- Services should be easy to fake for previews and tests
-- Avoid architecture that exists only to look “clean”
+- Use protocols only where they create a real seam for tests or previews
+- Prefer concrete types until there is a real need to abstract
+- Save, conflict, restore, and mutation flows should remain easy to test in isolation
 
 ---
 
@@ -167,234 +166,81 @@ This is not a notes database. It is a **folder-based file editor**.
 
 ### Naming
 
-- App entry point uses `MarkdownWorkspaceApp`
-- Types use clear nouns:
-  - `WorkspaceService`
-  - `DocumentService`
-  - `WorkspaceBrowserViewModel`
-  - `DocumentEditorScreen`
-- Avoid vague names like `Manager2`, `Helper`, `Thing`, or `DataStore` without a domain prefix
+Use the actual app/domain names that exist in the project:
+
+- app entry point: `MarkdownWorkspaceApp`
+- root composition: `AppContainer`
+- root state owner: `AppSession`
+- orchestration: `AppCoordinator`
+- workspace domain: `WorkspaceManager`, `WorkspaceSnapshot`, `WorkspaceNode`
+- document domain: `DocumentManager`, `OpenDocument`, `DocumentVersion`, `DocumentConflictState`
+
+Do not reintroduce older names like `WorkspaceService` or `DocumentService` in new code unless the architecture docs are intentionally changed.
 
 ### File layout
 
-Use the structure defined in `ARCHITECTURE.md`. Do not invent parallel structures unless the architecture file is updated first.
+Use the structure described in `ARCHITECTURE.md`. Do not create parallel feature trees without updating that document first.
 
 ### One responsibility per Swift file
 
-Each Swift file must have one clear job. Good examples:
+Good examples:
 
-- `WorkspaceNode.swift` defines the tree node type
-- `WorkspaceEnumerator.swift` walks the directory tree
-- `WorkspaceNodeRow.swift` renders one row
-- `DocumentEditorViewModel.swift` owns editor state and actions
+- `AppCoordinator.swift` coordinates workspace, editor, and restore flows
+- `WorkspaceManager.swift` owns workspace selection and mutations
+- `DocumentManager.swift` owns document open/reload/revalidate/save
+- `EditorViewModel.swift` owns editor text, autosave, and conflict presentation state
 
 Bad examples:
 
-- `WorkspaceStuff.swift`
-- `Utilities.swift`
-- a single file containing unrelated models, views, services, and extensions
+- `AppStuff.swift`
+- `Helpers.swift`
+- giant mixed files containing unrelated screens, models, and services
 
 ### Documentation comments
 
-Add documentation comments to:
+Add concise documentation comments to:
 
-- public or internal services with non-obvious behavior
-- save pipeline methods
-- bookmark restoration methods
+- save/revalidation methods
 - conflict handling logic
-- preview sample factories if their intent is not obvious
-
-Short comments are enough. Do not narrate obvious code.
+- any live-refresh or external-change reconciliation logic
+- bookmark/session restore boundaries
+- any non-obvious file mutation or path-rewrite code
 
 ---
 
 ## Swift style rules
 
 - Prefer value types for immutable models
-- Prefer `actor` for stateful file I/O services when serialization matters
-- Avoid force unwraps
-- Avoid `try!`
+- Prefer `actor` for serialized file/persistence boundaries
+- Avoid force unwraps and `try!`
 - Prefer explicit error handling and user-facing recovery paths
-- Prefer `Task` and structured concurrency over GCD
-- Prefer `Task.sleep(for:)` over nanosecond-based sleep
-- Prefer `URL.appending(path:)` where appropriate
-- Prefer `localizedStandardCompare(_:)` or similar user-friendly sorting for visible file names
-- Prefer `localizedStandardContains(_:)` when filtering user-entered search text
-- Keep async work cancellable
-- Do not put file system side effects in property observers
+- Prefer structured concurrency over GCD
+- Prefer generation checks when async work can race with newer state
+- Prefer small pure helpers for path/version/conflict transforms
 
 ---
 
-## SwiftUI style rules
+## Rules for future document and save work
 
-- Use `NavigationStack` for the baseline MVP navigation flow
-- Keep iPad adaptation additive, not architecture-breaking
-- Use `foregroundStyle()` instead of `foregroundColor()`
-- Use `clipShape(.rect(cornerRadius:))` instead of `cornerRadius()`
-- Use `Button` instead of `onTapGesture()` for primary interactions
-- Use separate `View` types instead of large computed subviews
-- Do not over-style the interface
-- Respect Dynamic Type
-- Do not hard-code tiny font sizes
-- Keep spacing mostly system-driven
-- Do not use `AnyView` unless there is no practical alternative
-- Avoid giant custom view modifiers for simple styling
-- Keep editor chrome minimal
+Any future work touching `DocumentManager`, `EditorViewModel`, `AppCoordinator`, or workspace mutation flows must preserve all of the following:
 
----
+- successful save acknowledgements update the confirmed disk version
+- newer local edits are preserved if a save finishes late
+- routine autosave does not trigger repeated conflict UI
+- revalidation does not self-conflict after the app's own saves
+- delete/move handling remains explicit and recoverable
+- tests are updated or added for any changed save/conflict behavior
 
-## Observation rules
+If a proposed change makes the save model noisier, more manual, or more popup-heavy, treat that as a regression unless the user explicitly requested it.
 
-- Use `@Observable` for UI-facing state owners
-- Mark observable view models `@MainActor`
-- Do not use `ObservableObject` for new code
-- Keep derived UI state inside the view model when it is reused by more than one view
-- Do not let Views derive complex save/conflict logic on their own
+### Contributor checklist for persistence changes
 
----
+Before shipping a change that touches save, restore, revalidation, or file mutation behavior, verify all of the following:
 
-## File-system rules
-
-### Workspace access
-
-- Workspace access starts from a user-selected folder
-- Persist access using bookmark data
-- Restore bookmark data on launch
-- Treat stale bookmark resolution as a first-class recovery state
-- Encapsulate `startAccessingSecurityScopedResource()` usage in one place
-
-### Reads and writes
-
-- Read file contents through `DocumentService`
-- Enumerate folders through `WorkspaceService`
-- Coordinate writes centrally
-- Use atomic or replace-based writes where practical
-- Refresh metadata after successful save
-- Re-check file version before overwrite
-
-### Conflict handling
-
-- Store the loaded version for an open document
-- Before saving, compare current disk metadata with loaded metadata
-- If the file changed externally, move into conflict state
-- Present user choices rather than overwriting silently
-
----
-
-## View rules
-
-### Every view file must have previews
-
-Any SwiftUI view that renders UI must include at least one `#Preview`.
-
-For screens with distinct states, include multiple previews when useful:
-
-- empty
-- loading
-- populated
-- dirty
-- saving
-- conflict
-- error
-
-### Every preview must use sample data
-
-Do not create empty previews that do not demonstrate the real state of the screen.
-
-Use shared preview data from `PreviewSupport/`.
-
-Examples of preview-worthy states:
-
-- `WorkspacePickerScreen` with no workspace
-- `ReconnectWorkspaceScreen` with a stale bookmark message
-- `WorkspaceBrowserScreen` with a nested tree
-- `FolderContentsScreen` with mixed folders and files
-- `DocumentEditorScreen` with:
-  - clean content
-  - unsaved content
-  - failed save
-  - conflict warning
-
-### Preview ownership
-
-- Sample models belong in `PreviewSampleData.swift`
-- Fake services for preview-only injection belong in `PreviewServices.swift`
-- Do not bury random sample values inside multiple unrelated view files unless they are tiny and truly local
-
----
-
-## Testing rules
-
-### Unit tests are required for
-
-- bookmark persistence
-- bookmark restore failure handling
-- file filtering and supported extensions
-- folder tree construction
-- sorting rules
-- document dirty-state transitions
-- debounced autosave
-- save conflict detection
-- create / rename / delete file operations
-- stale async result rejection where applicable
-
-### UI tests are useful for
-
-- first launch no-workspace flow
-- workspace picker presentation
-- nested folder browsing
-- opening a document
-- typing and autosave behavior
-- conflict alert presentation
-- create / rename / delete flows
-
-### Test philosophy
-
-- prioritize unit tests for services and view models
-- add UI tests for end-to-end confidence on the highest-risk flows
-- do not write fragile UI tests for minor layout details
-
----
-
-## Definition of done for any change
-
-A change is not done until all of the following are true:
-
-- code matches the current task in `TASKS.md`
-- architecture boundaries are respected
-- the change does not expand scope unintentionally
-- relevant previews compile and show realistic data
-- relevant tests pass or are added
-- no direct file I/O was added to a View
-- no save semantics were weakened
-- no conflict path was bypassed
-- naming is consistent with the repo
-
----
-
-## Common mistakes to avoid
-
-- using `TextEditor` state directly as the source of truth without a view model
-- putting bookmark restore logic in a View
-- making file operations from button actions inside the view body
-- flattening the workspace into a single file list
-- removing folders that only contain supported descendants deeper in the tree
-- hiding the unsaved indicator as soon as saving starts
-- assuming save success before disk confirmation
-- creating a giant all-purpose app state object with every detail in it
-- introducing UIKit “just for one thing”
-- adding live preview or syntax highlighting before the save pipeline is solid
-
----
-
-## Implementation mindset
-
-When choosing between two approaches, prefer the one that is:
-
-1. safer for user data
-2. smaller in scope
-3. easier to test
-4. more native to SwiftUI
-5. easier to preview
-
-A smaller and reliable markdown editor is better than a more ambitious but fragile one.
+- the selected workspace folder is still the only source of truth
+- the app's own successful saves cannot later self-conflict
+- newer in-memory edits survive older in-flight save completions
+- stale async completions cannot reattach an old document or route
+- rename/delete flows keep `openDocument`, navigation, and `SessionStore` coherent
+- restore falls back calmly when the last-open file is missing or unreadable
+- targeted regression tests were added or updated for the risky behavior

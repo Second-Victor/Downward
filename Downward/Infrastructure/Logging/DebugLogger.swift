@@ -6,4 +6,8 @@ struct DebugLogger: Sendable {
         print("[Downward] \(message)")
         #endif
     }
+
+    func log(category: String, _ message: String) {
+        log("[\(category)] \(message)")
+    }
 }

@@ -52,6 +52,29 @@ final class DocumentManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testOpenDocumentThrowsForInvalidUTF8File() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let fileURL = workspaceURL.appending(path: "Broken.md")
+        try Data([0xFF, 0xFE, 0x00]).write(to: fileURL)
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+
+        do {
+            _ = try await manager.openDocument(at: fileURL, in: workspaceURL)
+            XCTFail("Expected invalid UTF-8 open to throw.")
+        } catch let error as AppError {
+            guard case let .documentOpenFailed(name, details) = error else {
+                return XCTFail("Expected documentOpenFailed error.")
+            }
+
+            XCTAssertEqual(name, "Broken.md")
+            XCTAssertEqual(details, "The file is not valid UTF-8 text.")
+        }
+    }
+
+    @MainActor
     func testOpenDocumentUsesWorkspaceRootSecurityScopeForDescendants() async throws {
         let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
         defer { removeItemIfPresent(at: workspaceURL) }
@@ -299,6 +322,10 @@ private struct FakeDocumentSecurityAccessHandler: SecurityScopedAccessHandling {
 
     func validateAccess(to url: URL) throws {}
 
+    func beginAccess(to url: URL) throws -> SecurityScopedAccessLease {
+        SecurityScopedAccessLease(url: url, stopHandler: nil)
+    }
+
     func withAccess<Value>(to url: URL, operation: (URL) throws -> Value) throws -> Value {
         try operation(url)
     }
@@ -340,6 +367,10 @@ private final class RecordingDocumentSecurityAccessHandler: @unchecked Sendable,
     }
 
     func validateAccess(to url: URL) throws {}
+
+    func beginAccess(to url: URL) throws -> SecurityScopedAccessLease {
+        SecurityScopedAccessLease(url: url, stopHandler: nil)
+    }
 
     func withAccess<Value>(to url: URL, operation: (URL) throws -> Value) throws -> Value {
         fatalError("Document access should go through the workspace root descendant API.")

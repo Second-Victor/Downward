@@ -69,7 +69,9 @@ final class AppCoordinator {
         }
 
         do {
-            return .success(try await workspaceManager.refreshCurrentWorkspace())
+            let snapshot = try await workspaceManager.refreshCurrentWorkspace()
+            await applyRefreshedWorkspaceSnapshot(snapshot)
+            return .success(snapshot)
         } catch is CancellationError {
             return nil
         } catch let error as AppError {
@@ -241,17 +243,11 @@ final class AppCoordinator {
 
     func loadDocument(at url: URL) async -> Result<OpenDocument, UserFacingError> {
         guard let workspaceRootURL = session.workspaceSnapshot?.rootURL else {
-            let userFacingError = errorReporter.makeUserFacingError(from: .missingWorkspaceSelection)
-            session.editorLoadError = userFacingError
-            return .failure(userFacingError)
+            return .failure(errorReporter.makeUserFacingError(from: .missingWorkspaceSelection))
         }
 
         do {
-            session.editorLoadError = nil
             let document = try await documentManager.openDocument(at: url, in: workspaceRootURL)
-            session.openDocument = document
-            session.lastError = nil
-            await saveRestorableDocumentSession(for: document)
             return .success(document)
         } catch let error as AppError {
             if case let .workspaceAccessInvalid(displayName) = error {
@@ -263,9 +259,7 @@ final class AppCoordinator {
             }
 
             let userFacingError = errorReporter.makeUserFacingError(from: error)
-            session.editorLoadError = userFacingError
             errorReporter.report(error, context: "Opening document")
-            session.lastError = nil
             return .failure(userFacingError)
         } catch {
             let appError = AppError.documentOpenFailed(
@@ -273,11 +267,17 @@ final class AppCoordinator {
                 details: "The document could not be opened."
             )
             let userFacingError = errorReporter.makeUserFacingError(from: appError)
-            session.editorLoadError = userFacingError
             errorReporter.report(appError, context: "Opening document")
-            session.lastError = nil
             return .failure(userFacingError)
         }
+    }
+
+    /// Applies a loaded document only after the caller has confirmed it is still the intended route.
+    func activateLoadedDocument(_ document: OpenDocument) async {
+        session.openDocument = document
+        session.editorLoadError = nil
+        session.lastError = nil
+        await saveRestorableDocumentSession(for: document)
     }
 
     func updateDocumentText(_ text: String) {
@@ -295,6 +295,11 @@ final class AppCoordinator {
         _ document: OpenDocument,
         overwriteConflict: Bool = false
     ) async -> Result<OpenDocument, UserFacingError> {
+        logger.log(
+            category: "Persistence",
+            "Saving \(document.relativePath) (overwriteConflict: \(overwriteConflict), dirty: \(document.isDirty), conflict: \(document.conflictState.isConflicted))"
+        )
+
         do {
             let savedDocument = try await documentManager.saveDocument(
                 document,
@@ -302,6 +307,10 @@ final class AppCoordinator {
             )
             session.lastError = nil
             await saveRestorableDocumentSession(for: savedDocument)
+            logger.log(
+                category: "Persistence",
+                "Save completed for \(savedDocument.relativePath) (dirty: \(savedDocument.isDirty), conflict: \(savedDocument.conflictState.isConflicted))"
+            )
             return .success(savedDocument)
         } catch let error as AppError {
             if case let .workspaceAccessInvalid(displayName) = error {
@@ -322,6 +331,104 @@ final class AppCoordinator {
                 details: "The document could not be saved."
             )
             errorReporter.report(appError, context: "Saving document")
+            let userFacingError = errorReporter.makeUserFacingError(from: appError)
+            session.lastError = userFacingError
+            return .failure(userFacingError)
+        }
+    }
+
+    func observeDocumentChanges(
+        for document: OpenDocument
+    ) async -> Result<AsyncStream<Void>, UserFacingError> {
+        do {
+            return .success(try await documentManager.observeDocumentChanges(for: document))
+        } catch let error as AppError {
+            if case let .workspaceAccessInvalid(displayName) = error {
+                let reconnectError = transitionToWorkspaceReconnectState(
+                    displayName: session.currentWorkspaceName ?? displayName,
+                    message: "The workspace can no longer be accessed."
+                )
+                return .failure(reconnectError)
+            }
+
+            errorReporter.report(error, context: "Observing document changes")
+            let userFacingError = errorReporter.makeUserFacingError(from: error)
+            session.lastError = userFacingError
+            return .failure(userFacingError)
+        } catch {
+            let appError = AppError.documentOpenFailed(
+                name: document.displayName,
+                details: "The document could not be observed for external changes."
+            )
+            errorReporter.report(appError, context: "Observing document changes")
+            let userFacingError = errorReporter.makeUserFacingError(from: appError)
+            session.lastError = userFacingError
+            return .failure(userFacingError)
+        }
+    }
+
+    func revalidateObservedDocument(
+        matching observedDocument: OpenDocument
+    ) async -> Result<OpenDocument, UserFacingError>? {
+        guard
+            let openDocument = session.openDocument,
+            isSameLogicalDocument(openDocument, observedDocument)
+        else {
+            return nil
+        }
+
+        do {
+            let revalidatedDocument = try await documentManager.revalidateDocument(openDocument)
+            guard
+                let currentDocument = session.openDocument,
+                isSameLogicalDocument(currentDocument, observedDocument)
+            else {
+                return nil
+            }
+
+            let documentChanged = revalidatedDocument != currentDocument
+            logger.log(
+                category: "Persistence",
+                "Revalidated \(revalidatedDocument.relativePath) (changed: \(documentChanged), dirty: \(revalidatedDocument.isDirty), conflict: \(revalidatedDocument.conflictState.isConflicted))"
+            )
+            if documentChanged {
+                session.openDocument = revalidatedDocument
+            }
+
+            if revalidatedDocument.conflictState.isConflicted {
+                if revalidatedDocument.conflictState.activeConflict?.kind == .missingOnDisk {
+                    await clearRestorableDocumentSession()
+                } else {
+                    await saveRestorableDocumentSession(for: revalidatedDocument)
+                }
+
+                if session.path.contains(where: \.isEditor) == false {
+                    session.lastError = revalidatedDocument.conflictState.activeConflict?.error
+                }
+            } else if documentChanged {
+                await saveRestorableDocumentSession(for: revalidatedDocument)
+            }
+
+            return .success(revalidatedDocument)
+        } catch let error as AppError {
+            if case let .workspaceAccessInvalid(displayName) = error {
+                let reconnectError = transitionToWorkspaceReconnectState(
+                    displayName: session.currentWorkspaceName ?? displayName,
+                    message: "The workspace can no longer be accessed."
+                )
+                return .failure(reconnectError)
+            }
+
+            errorReporter.report(error, context: "Observed document revalidation")
+            let userFacingError = errorReporter.makeUserFacingError(from: error)
+            session.lastError = userFacingError
+            return .failure(userFacingError)
+        } catch {
+            let appError = AppError.documentOpenFailed(
+                name: openDocument.displayName,
+                details: "The current file state could not be refreshed."
+            )
+            errorReporter.report(appError, context: "Observed document revalidation")
             let userFacingError = errorReporter.makeUserFacingError(from: appError)
             session.lastError = userFacingError
             return .failure(userFacingError)
@@ -419,7 +526,7 @@ final class AppCoordinator {
 
         do {
             let snapshot = try await workspaceManager.refreshCurrentWorkspace()
-            session.workspaceSnapshot = snapshot
+            await applyRefreshedWorkspaceSnapshot(snapshot)
         } catch let error as AppError {
             if case let .workspaceAccessInvalid(displayName) = error {
                 _ = transitionToWorkspaceReconnectState(
@@ -448,40 +555,7 @@ final class AppCoordinator {
             return
         }
 
-        do {
-            let revalidatedDocument = try await documentManager.revalidateDocument(openDocument)
-            session.openDocument = revalidatedDocument
-
-            if revalidatedDocument.conflictState.isConflicted {
-                if revalidatedDocument.conflictState.activeConflict?.kind == .missingOnDisk {
-                    await clearRestorableDocumentSession()
-                } else {
-                    await saveRestorableDocumentSession(for: revalidatedDocument)
-                }
-
-                if session.path.contains(where: \.isEditor) == false {
-                    session.lastError = revalidatedDocument.conflictState.activeConflict?.error
-                }
-            }
-        } catch let error as AppError {
-            if case let .workspaceAccessInvalid(displayName) = error {
-                _ = transitionToWorkspaceReconnectState(
-                    displayName: session.currentWorkspaceName ?? displayName,
-                    message: "The workspace can no longer be accessed."
-                )
-                return
-            }
-
-            errorReporter.report(error, context: "Foreground document validation")
-            session.lastError = errorReporter.makeUserFacingError(from: error)
-        } catch {
-            let appError = AppError.documentOpenFailed(
-                name: openDocument.displayName,
-                details: "The current file state could not be revalidated."
-            )
-            errorReporter.report(appError, context: "Foreground document validation")
-            session.lastError = errorReporter.makeUserFacingError(from: appError)
-        }
+        _ = await revalidateObservedDocument(matching: openDocument)
     }
 
     func handleFolderPickerResult(_ result: Result<[URL], Error>) async {
@@ -490,6 +564,7 @@ final class AppCoordinator {
             return
         case let .success(.some(url)):
             let isReplacingActiveWorkspace = session.launchState == .workspaceReady && session.workspaceSnapshot != nil
+            let shouldAttemptDocumentRestoreAfterSelection = session.launchState == .workspaceAccessInvalid
 
             if isReplacingActiveWorkspace == false {
                 session.launchState = .restoringWorkspace
@@ -498,12 +573,25 @@ final class AppCoordinator {
 
             let generation = nextWorkspaceTransitionGeneration()
             logger.log("Selected workspace folder: \(url.lastPathComponent)")
-            await clearRestorableDocumentSession()
             let selectionResult = await workspaceManager.selectWorkspace(at: url)
             if isReplacingActiveWorkspace {
                 applyWorkspaceReplacementResult(selectionResult, generation: generation)
             } else {
                 applyRestoreResult(selectionResult, generation: generation)
+            }
+
+            guard generation == workspaceTransitionGeneration else {
+                return
+            }
+
+            guard case let .ready(snapshot) = selectionResult else {
+                return
+            }
+
+            if shouldAttemptDocumentRestoreAfterSelection {
+                await restoreLastOpenDocumentIfPossible(for: snapshot, generation: generation)
+            } else {
+                await clearRestorableDocumentSession()
             }
         case let .failure(error):
             if session.launchState == .workspaceReady {
@@ -518,6 +606,128 @@ final class AppCoordinator {
     private func nextWorkspaceTransitionGeneration() -> Int {
         workspaceTransitionGeneration += 1
         return workspaceTransitionGeneration
+    }
+
+    private func isSameLogicalDocument(
+        _ lhs: OpenDocument,
+        _ rhs: OpenDocument
+    ) -> Bool {
+        if lhs.url == rhs.url {
+            return true
+        }
+
+        return lhs.workspaceRootURL == rhs.workspaceRootURL && lhs.relativePath == rhs.relativePath
+    }
+
+    private var shouldPreserveCurrentEditorDespiteMissingSnapshotEntry: Bool {
+        guard let openDocument = session.openDocument else {
+            return false
+        }
+
+        return openDocument.isDirty || openDocument.saveState == .saving || openDocument.conflictState.isConflicted
+    }
+
+    /// Reconciles stale navigation and selection after a workspace refresh without disturbing
+    /// an in-flight or intentionally preserved editor session.
+    private func applyRefreshedWorkspaceSnapshot(_ snapshot: WorkspaceSnapshot) async {
+        let previousPath = session.path
+        session.workspaceSnapshot = snapshot
+        session.workspaceAccessState = .ready(displayName: snapshot.displayName)
+
+        if shouldPreserveCurrentEditorDespiteMissingSnapshotEntry == false {
+            let reconciledPath = reconciledNavigationPath(from: session.path, within: snapshot)
+            if reconciledPath != session.path {
+                session.path = reconciledPath
+            }
+        }
+
+        guard let openDocument = session.openDocument else {
+            if session.path.contains(where: \.isEditor) == false {
+                session.editorLoadError = nil
+            }
+            return
+        }
+
+        guard snapshotContainsFile(at: openDocument.url, in: snapshot) == false else {
+            return
+        }
+
+        guard shouldPreserveCurrentEditorDespiteMissingSnapshotEntry == false else {
+            return
+        }
+
+        let hadVisibleEditorRoute = previousPath.contains { $0.editorURL == openDocument.url }
+        session.openDocument = nil
+        session.editorLoadError = nil
+        session.path.removeAll(where: \.isEditor)
+        await clearRestorableDocumentSession()
+
+        if hadVisibleEditorRoute {
+            session.lastError = UserFacingError(
+                title: "Document Unavailable",
+                message: "\(openDocument.displayName) is no longer available in the workspace.",
+                recoverySuggestion: "Choose another file from the browser."
+            )
+        }
+    }
+
+    private func reconciledNavigationPath(
+        from path: [AppRoute],
+        within snapshot: WorkspaceSnapshot
+    ) -> [AppRoute] {
+        var reconciledPath: [AppRoute] = []
+
+        for route in path {
+            switch route {
+            case .settings:
+                reconciledPath.append(route)
+            case let .folder(folderURL):
+                guard snapshotContainsFolder(at: folderURL, in: snapshot) else {
+                    return reconciledPath
+                }
+                reconciledPath.append(route)
+            case let .editor(documentURL):
+                guard snapshotContainsFile(at: documentURL, in: snapshot) else {
+                    return reconciledPath
+                }
+                reconciledPath.append(route)
+            }
+        }
+
+        return reconciledPath
+    }
+
+    private func snapshotContainsFolder(
+        at url: URL,
+        in snapshot: WorkspaceSnapshot
+    ) -> Bool {
+        snapshotContainsNode(at: url, matchingFolder: true, nodes: snapshot.rootNodes)
+    }
+
+    private func snapshotContainsFile(
+        at url: URL,
+        in snapshot: WorkspaceSnapshot
+    ) -> Bool {
+        snapshotContainsNode(at: url, matchingFolder: false, nodes: snapshot.rootNodes)
+    }
+
+    private func snapshotContainsNode(
+        at url: URL,
+        matchingFolder: Bool,
+        nodes: [WorkspaceNode]
+    ) -> Bool {
+        for node in nodes {
+            if node.url == url, node.isFolder == matchingFolder {
+                return true
+            }
+
+            if let children = node.children,
+               snapshotContainsNode(at: url, matchingFolder: matchingFolder, nodes: children) {
+                return true
+            }
+        }
+
+        return false
     }
 
     private func applyRestoreResult(_ restoreResult: WorkspaceRestoreResult, generation: Int) {
@@ -673,6 +883,16 @@ final class AppCoordinator {
         } catch let error as AppError {
             switch error {
             case .documentUnavailable:
+                logger.log(
+                    category: "Restore",
+                    "Clearing stale last-open session for missing document \(restorableSession.relativePath)."
+                )
+                await clearRestorableDocumentSession()
+            case .documentOpenFailed:
+                logger.log(
+                    category: "Restore",
+                    "Clearing stale last-open session for unreadable document \(restorableSession.relativePath)."
+                )
                 await clearRestorableDocumentSession()
             case .workspaceAccessInvalid:
                 _ = transitionToWorkspaceReconnectState(

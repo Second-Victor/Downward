@@ -26,11 +26,6 @@ struct WorkspaceRowView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.tint)
                     .accessibilityHidden(true)
-            } else if node.isFolder {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
             }
         }
         .padding(.vertical, 4)
