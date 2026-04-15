@@ -81,7 +81,7 @@ final class DocumentManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testSaveDetectsExternalModificationBeforeOverwrite() async throws {
+    func testSaveOverwritesOutsideWriteForActiveBufferWithoutConflict() async throws {
         let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
         defer { removeItemIfPresent(at: workspaceURL) }
 
@@ -103,16 +103,69 @@ final class DocumentManagerTests: XCTestCase {
 
         try Data("# Entry\n\nChanged elsewhere.".utf8).write(to: fileURL, options: .atomic)
 
-        let saveResult = try await manager.saveDocument(document, overwriteConflict: false)
+        let savedDocument = try await manager.saveDocument(document, overwriteConflict: false)
 
-        guard case let .needsResolution(conflict) = saveResult.conflictState else {
-            return XCTFail("Expected a conflict state when disk contents changed externally.")
-        }
+        XCTAssertEqual(savedDocument.conflictState, .none)
+        XCTAssertFalse(savedDocument.isDirty)
+        XCTAssertEqual(savedDocument.text, "# Entry\n\nLocal edits.")
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "# Entry\n\nLocal edits.")
+    }
 
-        XCTAssertEqual(conflict.kind, .modifiedOnDisk)
-        XCTAssertTrue(saveResult.isDirty)
-        XCTAssertEqual(saveResult.saveState, .unsaved)
-        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "# Entry\n\nChanged elsewhere.")
+    @MainActor
+    func testRevalidateRefreshesCleanDocumentAfterOutsideWriteWithoutConflict() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let fileURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "External.md",
+            contents: """
+            # Entry
+
+            Original text.
+            """
+        )
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+        let document = try await manager.openDocument(at: fileURL, in: workspaceURL)
+
+        try "# Entry\n\nChanged elsewhere.".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let revalidatedDocument = try await manager.revalidateDocument(document)
+
+        XCTAssertEqual(revalidatedDocument.conflictState, .none)
+        XCTAssertFalse(revalidatedDocument.isDirty)
+        XCTAssertEqual(revalidatedDocument.text, "# Entry\n\nChanged elsewhere.")
+    }
+
+    @MainActor
+    func testRevalidatePreservesDirtyBufferAfterOutsideWriteWithoutConflict() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let fileURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Dirty.md",
+            contents: """
+            # Entry
+
+            Original text.
+            """
+        )
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+        var document = try await manager.openDocument(at: fileURL, in: workspaceURL)
+        document.text = "# Entry\n\nLocal edits still in memory."
+        document.isDirty = true
+        document.saveState = .unsaved
+
+        try "# Entry\n\nChanged elsewhere.".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let revalidatedDocument = try await manager.revalidateDocument(document)
+
+        XCTAssertEqual(revalidatedDocument.conflictState, .none)
+        XCTAssertTrue(revalidatedDocument.isDirty)
+        XCTAssertEqual(revalidatedDocument.text, "# Entry\n\nLocal edits still in memory.")
     }
 
     @MainActor
@@ -151,7 +204,7 @@ final class DocumentManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testConflictResolutionSupportsReloadAndExplicitOverwrite() async throws {
+    func testMissingFileCanBeRecreatedWithExplicitOverwrite() async throws {
         let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
         defer { removeItemIfPresent(at: workspaceURL) }
 
@@ -171,18 +224,48 @@ final class DocumentManagerTests: XCTestCase {
         document.isDirty = true
         document.saveState = .unsaved
 
-        try Data("# Entry\n\nDisk replacement.".utf8).write(to: fileURL, options: .atomic)
+        try FileManager.default.removeItem(at: fileURL)
         let conflictedDocument = try await manager.saveDocument(document, overwriteConflict: false)
-
-        let reloadedDocument = try await manager.reloadDocument(from: conflictedDocument)
-        XCTAssertEqual(reloadedDocument.text, "# Entry\n\nDisk replacement.")
-        XCTAssertFalse(reloadedDocument.isDirty)
-        XCTAssertEqual(reloadedDocument.conflictState, .none)
 
         let overwrittenDocument = try await manager.saveDocument(document, overwriteConflict: true)
         XCTAssertFalse(overwrittenDocument.isDirty)
         XCTAssertEqual(overwrittenDocument.conflictState, .none)
         XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "# Entry\n\nLocal edits.")
+
+        guard case let .needsResolution(conflict) = conflictedDocument.conflictState else {
+            return XCTFail("Expected a missing-file conflict before explicit overwrite.")
+        }
+        XCTAssertEqual(conflict.kind, .missingOnDisk)
+    }
+
+    @MainActor
+    func testSuccessfulSaveReturnsUpdatedLoadedVersionForFutureConflictChecks() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let fileURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Revalidate.md",
+            contents: """
+            # Entry
+
+            Original text.
+            """
+        )
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+        var document = try await manager.openDocument(at: fileURL, in: workspaceURL)
+        let originalVersion = document.loadedVersion
+        document.text = "# Entry\n\nSaved text."
+        document.isDirty = true
+        document.saveState = .unsaved
+
+        let savedDocument = try await manager.saveDocument(document, overwriteConflict: false)
+
+        XCTAssertEqual(savedDocument.text, "# Entry\n\nSaved text.")
+        XCTAssertNotEqual(savedDocument.loadedVersion.contentDigest, originalVersion.contentDigest)
+        XCTAssertFalse(savedDocument.isDirty)
+        XCTAssertEqual(savedDocument.conflictState, .none)
     }
 
     private func makeTemporaryDirectory(named name: String) throws -> URL {

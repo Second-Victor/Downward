@@ -323,44 +323,116 @@ final class EditorViewModel {
         generation: Int,
         triggerConflictResolutionOnConflict: Bool
     ) {
+        guard
+            let currentDocument = session.openDocument,
+            isSameLogicalDocument(currentDocument, snapshot)
+        else {
+            isShowingConflictResolution = false
+            return
+        }
+
         switch result {
-        case let .success(savedDocument):
-            guard
-                generation == editGeneration,
-                let currentDocument = session.openDocument,
-                currentDocument.text == snapshot.text
-            else {
-                return
+        case let .success(acknowledgedDocument):
+            let mergedDocument: OpenDocument
+            if acknowledgedDocument.conflictState.isConflicted {
+                mergedDocument = mergeConflictedSaveResult(
+                    acknowledgedDocument,
+                    into: currentDocument,
+                    for: snapshot
+                )
+            } else {
+                mergedDocument = mergeSuccessfulSaveAcknowledgement(
+                    acknowledgedDocument,
+                    into: currentDocument,
+                    for: snapshot
+                )
             }
 
-            session.openDocument = savedDocument
+            session.openDocument = mergedDocument
 
-            if savedDocument.conflictState.needsResolution {
+            if mergedDocument.conflictState.needsResolution {
                 if triggerConflictResolutionOnConflict {
                     isShowingConflictResolution = true
                 } else {
-                    session.lastError = savedDocument.conflictState.activeConflict?.error
+                    session.lastError = mergedDocument.conflictState.activeConflict?.error
                 }
                 return
             }
 
             isShowingConflictResolution = false
         case let .failure(error):
-            if
-                generation == editGeneration,
-                var currentDocument = session.openDocument,
-                currentDocument.text == snapshot.text
-            {
-                currentDocument.saveState = .failed(error)
-                currentDocument.isDirty = true
-                if currentDocument.conflictState.needsResolution == false {
-                    currentDocument.conflictState = .none
-                }
-                session.openDocument = currentDocument
+            guard generation == editGeneration, currentDocument.text == snapshot.text else {
+                isShowingConflictResolution = false
+                return
             }
+
+            var failedDocument = currentDocument
+            failedDocument.saveState = .failed(error)
+            failedDocument.isDirty = true
+            if failedDocument.conflictState.needsResolution == false {
+                failedDocument.conflictState = .none
+            }
+            session.openDocument = failedDocument
 
             isShowingConflictResolution = false
         }
+    }
+
+    /// Merges a confirmed save acknowledgement back into the editor while preserving newer in-memory edits.
+    /// This keeps the last confirmed disk version current so later autosaves and foreground revalidation do
+    /// not treat the app's own successful write as an external modification.
+    private func mergeSuccessfulSaveAcknowledgement(
+        _ savedDocument: OpenDocument,
+        into currentDocument: OpenDocument,
+        for snapshot: OpenDocument
+    ) -> OpenDocument {
+        var mergedDocument = currentDocument
+        mergedDocument.url = savedDocument.url
+        mergedDocument.relativePath = savedDocument.relativePath
+        mergedDocument.displayName = savedDocument.displayName
+        mergedDocument.loadedVersion = savedDocument.loadedVersion
+        mergedDocument.conflictState = .none
+
+        if currentDocument.text == snapshot.text {
+            mergedDocument.text = savedDocument.text
+            mergedDocument.isDirty = false
+            mergedDocument.saveState = savedDocument.saveState
+        } else {
+            mergedDocument.isDirty = true
+            mergedDocument.saveState = .unsaved
+        }
+
+        return mergedDocument
+    }
+
+    private func mergeConflictedSaveResult(
+        _ conflictedDocument: OpenDocument,
+        into currentDocument: OpenDocument,
+        for snapshot: OpenDocument
+    ) -> OpenDocument {
+        guard currentDocument.text != snapshot.text else {
+            return conflictedDocument
+        }
+
+        var mergedDocument = currentDocument
+        mergedDocument.url = conflictedDocument.url
+        mergedDocument.relativePath = conflictedDocument.relativePath
+        mergedDocument.displayName = conflictedDocument.displayName
+        mergedDocument.isDirty = true
+        mergedDocument.saveState = .unsaved
+        mergedDocument.conflictState = conflictedDocument.conflictState
+        return mergedDocument
+    }
+
+    private func isSameLogicalDocument(
+        _ lhs: OpenDocument,
+        _ rhs: OpenDocument
+    ) -> Bool {
+        if lhs.url == rhs.url {
+            return true
+        }
+
+        return lhs.workspaceRootURL == rhs.workspaceRootURL && lhs.relativePath == rhs.relativePath
     }
 
     private var hasVisibleEditor: Bool {

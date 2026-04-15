@@ -5,6 +5,150 @@ import XCTest
 
 final class EditorAutosaveTests: XCTestCase {
     @MainActor
+    func testLiveDocumentManagerAutosavesSequentialEditsWithoutConflict() async throws {
+        let fixture = try makeLiveDocumentFixture(
+            named: "Sequential.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+        defer { removeItemIfPresent(at: fixture.workspaceURL) }
+
+        let liveManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let initialDocument = try await liveManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let system = makeEditorSystem(
+            documentManager: liveManager,
+            initialDocument: initialDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+
+        system.viewModel.handleTextChange("# Entry\n\nFirst autosave.")
+        try await Task.sleep(for: .milliseconds(120))
+        system.viewModel.handleTextChange("# Entry\n\nSecond autosave.")
+        try await Task.sleep(for: .milliseconds(120))
+        system.viewModel.handleTextChange("# Entry\n\nFinal autosave.")
+        try await Task.sleep(for: .milliseconds(160))
+
+        XCTAssertEqual(system.session.openDocument?.text, "# Entry\n\nFinal autosave.")
+        XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
+        XCTAssertFalse(system.viewModel.isShowingConflictResolution)
+        XCTAssertFalse(system.session.openDocument?.isDirty ?? true)
+        XCTAssertEqual(
+            try String(contentsOf: fixture.fileURL, encoding: .utf8),
+            "# Entry\n\nFinal autosave."
+        )
+    }
+
+    @MainActor
+    func testLiveDocumentManagerDoesNotConflictWhenTypingAcrossDelayedAutosaves() async throws {
+        let fixture = try makeLiveDocumentFixture(
+            named: "Delayed.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+        defer { removeItemIfPresent(at: fixture.workspaceURL) }
+
+        let baseManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let initialDocument = try await baseManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let delayedManager = DelayedLiveDocumentManager(
+            base: baseManager,
+            saveDelay: .milliseconds(120)
+        )
+        let system = makeEditorSystem(
+            documentManager: delayedManager,
+            initialDocument: initialDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+
+        system.viewModel.handleTextChange("# Entry\n\nFirst revision.")
+        try await Task.sleep(for: .milliseconds(40))
+        system.viewModel.handleTextChange("# Entry\n\nSecond revision.")
+        try await Task.sleep(for: .milliseconds(70))
+        system.viewModel.handleTextChange("# Entry\n\nThird revision.")
+        try await Task.sleep(for: .milliseconds(420))
+
+        XCTAssertEqual(system.session.openDocument?.text, "# Entry\n\nThird revision.")
+        XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
+        XCTAssertFalse(system.viewModel.isShowingConflictResolution)
+        XCTAssertFalse(system.session.openDocument?.isDirty ?? true)
+        XCTAssertEqual(
+            try String(contentsOf: fixture.fileURL, encoding: .utf8),
+            "# Entry\n\nThird revision."
+        )
+    }
+
+    @MainActor
+    func testLiveDocumentManagerForegroundRevalidationDoesNotConflictAfterOwnAutosave() async throws {
+        let fixture = try makeLiveDocumentFixture(
+            named: "Foreground.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+        defer { removeItemIfPresent(at: fixture.workspaceURL) }
+
+        let liveManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let initialDocument = try await liveManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let system = makeEditorSystem(
+            documentManager: liveManager,
+            initialDocument: initialDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+
+        system.viewModel.handleTextChange("# Entry\n\nAutosaved text.")
+        try await Task.sleep(for: .milliseconds(140))
+
+        await system.coordinator.handleSceneDidBecomeActive()
+
+        XCTAssertEqual(system.session.launchState, .workspaceReady)
+        XCTAssertEqual(system.session.openDocument?.text, "# Entry\n\nAutosaved text.")
+        XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
+        XCTAssertNil(system.session.lastError)
+        XCTAssertFalse(system.viewModel.isShowingConflictResolution)
+    }
+
+    @MainActor
+    func testSaveAcknowledgementMergesConfirmedVersionWithoutClobberingNewerEdits() async throws {
+        let initialDocument = makeVersionedDocument(versionIndex: 0, text: PreviewSampleData.cleanDocument.text)
+        let documentManager = VersionTrackingDocumentManager(
+            initialDocument: initialDocument,
+            saveDelay: .milliseconds(120)
+        )
+        let system = makeEditorSystem(
+            documentManager: documentManager,
+            initialDocument: initialDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+
+        system.viewModel.handleTextChange("First revision")
+        try await Task.sleep(for: .milliseconds(40))
+        system.viewModel.handleTextChange("Second revision")
+
+        try await Task.sleep(for: .milliseconds(140))
+
+        XCTAssertEqual(system.session.openDocument?.text, "Second revision")
+        XCTAssertEqual(system.session.openDocument?.loadedVersion.contentDigest, "version-1")
+        XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
+        XCTAssertTrue(system.session.openDocument?.isDirty ?? false)
+        XCTAssertEqual(system.session.openDocument?.saveState, .saving)
+
+        try await Task.sleep(for: .milliseconds(180))
+
+        let saveInputs = await documentManager.saveInputs
+
+        XCTAssertEqual(saveInputs.map(\.text), ["First revision", "Second revision"])
+        XCTAssertEqual(saveInputs.map(\.loadedVersion.contentDigest), ["version-0", "version-1"])
+        XCTAssertEqual(system.session.openDocument?.text, "Second revision")
+        XCTAssertEqual(system.session.openDocument?.loadedVersion.contentDigest, "version-2")
+        XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
+        XCTAssertFalse(system.session.openDocument?.isDirty ?? true)
+    }
+
+    @MainActor
     func testAutosaveDebounceOnlySavesLatestSnapshot() async throws {
         let documentManager = RecordingDocumentManager(saveDelay: .milliseconds(10))
         let system = makeEditorSystem(documentManager: documentManager)
@@ -129,14 +273,42 @@ final class EditorAutosaveTests: XCTestCase {
     }
 
     @MainActor
+    func testForegroundRevalidationDoesNotConflictAfterMergedSaveAcknowledgement() async throws {
+        let initialDocument = makeVersionedDocument(versionIndex: 0, text: PreviewSampleData.cleanDocument.text)
+        let documentManager = VersionTrackingDocumentManager(
+            initialDocument: initialDocument,
+            saveDelay: .milliseconds(120)
+        )
+        let system = makeEditorSystem(
+            documentManager: documentManager,
+            initialDocument: initialDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+
+        system.viewModel.handleTextChange("First revision")
+        try await Task.sleep(for: .milliseconds(40))
+        system.viewModel.handleTextChange("Second revision")
+        try await Task.sleep(for: .milliseconds(340))
+
+        await system.coordinator.handleSceneDidBecomeActive()
+
+        XCTAssertEqual(system.session.launchState, .workspaceReady)
+        XCTAssertEqual(system.session.openDocument?.text, "Second revision")
+        XCTAssertEqual(system.session.openDocument?.loadedVersion.contentDigest, "version-2")
+        XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
+        XCTAssertNil(system.session.lastError)
+    }
+
+    @MainActor
     private func makeEditorSystem(
         documentManager: any DocumentManager,
+        initialDocument: OpenDocument = PreviewSampleData.cleanDocument,
         autosaveDelay: Duration = .milliseconds(40)
-    ) -> (session: AppSession, viewModel: EditorViewModel) {
+    ) -> (session: AppSession, coordinator: AppCoordinator, viewModel: EditorViewModel) {
         let session = AppSession()
         session.launchState = .workspaceReady
         session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
-        session.openDocument = PreviewSampleData.cleanDocument
+        session.openDocument = initialDocument
 
         let logger = DebugLogger()
         let coordinator = AppCoordinator(
@@ -156,9 +328,47 @@ final class EditorAutosaveTests: XCTestCase {
             coordinator: coordinator,
             autosaveDelay: autosaveDelay
         )
-        viewModel.handleAppear(for: PreviewSampleData.cleanDocument.url)
+        viewModel.handleAppear(for: initialDocument.url)
 
-        return (session, viewModel)
+        return (session, coordinator, viewModel)
+    }
+
+    @MainActor
+    private func makeVersionedDocument(versionIndex: Int, text: String) -> OpenDocument {
+        var document = PreviewSampleData.cleanDocument
+        document.text = text
+        document.loadedVersion = DocumentVersion(
+            contentModificationDate: Date(timeIntervalSince1970: TimeInterval(1_710_000_000 + versionIndex)),
+            fileSize: text.utf8.count,
+            contentDigest: "version-\(versionIndex)"
+        )
+        document.isDirty = false
+        document.saveState = .idle
+        document.conflictState = .none
+        return document
+    }
+
+    private func makeLiveDocumentFixture(
+        named name: String,
+        contents: String
+    ) throws -> (workspaceURL: URL, fileURL: URL) {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appending(path: "EditorAutosaveTests")
+            .appending(path: UUID().uuidString)
+            .appending(path: "Workspace")
+        try FileManager.default.createDirectory(
+            at: workspaceURL,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+
+        let fileURL = workspaceURL.appending(path: name)
+        try contents.write(to: fileURL, atomically: true, encoding: .utf8)
+        return (workspaceURL, fileURL)
+    }
+
+    private func removeItemIfPresent(at url: URL) {
+        try? FileManager.default.removeItem(at: url)
     }
 }
 
@@ -207,5 +417,168 @@ private actor RecordingDocumentManager: DocumentManager {
         savedDocument.saveState = .saved(Date(timeIntervalSince1970: 1_710_000_100))
         savedDocument.conflictState = .none
         return savedDocument
+    }
+}
+
+private actor VersionTrackingDocumentManager: DocumentManager {
+    let saveDelay: Duration
+
+    private let workspaceRootURL: URL
+    private let fileURL: URL
+    private let displayName: String
+    private var diskText: String
+    private var diskVersion: DocumentVersion
+    private var nextVersionIndex: Int
+
+    private(set) var saveInputs: [OpenDocument] = []
+
+    init(initialDocument: OpenDocument, saveDelay: Duration) {
+        self.saveDelay = saveDelay
+        workspaceRootURL = initialDocument.workspaceRootURL
+        fileURL = initialDocument.url
+        displayName = initialDocument.displayName
+        diskText = initialDocument.text
+        diskVersion = initialDocument.loadedVersion
+        nextVersionIndex = 1
+    }
+
+    func openDocument(at url: URL, in workspaceRootURL: URL) async throws -> OpenDocument {
+        makeDocument(
+            text: diskText,
+            loadedVersion: diskVersion,
+            isDirty: false,
+            saveState: .idle,
+            conflictState: .none
+        )
+    }
+
+    func reloadDocument(from document: OpenDocument) async throws -> OpenDocument {
+        makeDocument(
+            text: diskText,
+            loadedVersion: diskVersion,
+            isDirty: false,
+            saveState: .idle,
+            conflictState: .none
+        )
+    }
+
+    func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
+        guard document.loadedVersion.matchesCurrentDisk(diskVersion) else {
+            return LiveDocumentManager.makeConflictDocument(
+                from: document,
+                kind: .modifiedOnDisk
+            )
+        }
+
+        return document
+    }
+
+    func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument {
+        try? await Task.sleep(for: saveDelay)
+        saveInputs.append(document)
+
+        guard overwriteConflict || document.loadedVersion.matchesCurrentDisk(diskVersion) else {
+            return LiveDocumentManager.makeConflictDocument(
+                from: document,
+                kind: .modifiedOnDisk
+            )
+        }
+
+        let savedVersion = makeVersion(index: nextVersionIndex, text: document.text)
+        nextVersionIndex += 1
+        diskText = document.text
+        diskVersion = savedVersion
+
+        return makeDocument(
+            text: document.text,
+            loadedVersion: savedVersion,
+            isDirty: false,
+            saveState: .saved(Date(timeIntervalSince1970: TimeInterval(1_710_000_100 + nextVersionIndex))),
+            conflictState: .none
+        )
+    }
+
+    private func makeDocument(
+        text: String,
+        loadedVersion: DocumentVersion,
+        isDirty: Bool,
+        saveState: DocumentSaveState,
+        conflictState: DocumentConflictState
+    ) -> OpenDocument {
+        OpenDocument(
+            url: fileURL,
+            workspaceRootURL: workspaceRootURL,
+            relativePath: "Inbox.md",
+            displayName: displayName,
+            text: text,
+            loadedVersion: loadedVersion,
+            isDirty: isDirty,
+            saveState: saveState,
+            conflictState: conflictState
+        )
+    }
+
+    private func makeVersion(index: Int, text: String) -> DocumentVersion {
+        DocumentVersion(
+            contentModificationDate: Date(timeIntervalSince1970: TimeInterval(1_710_000_000 + index)),
+            fileSize: text.utf8.count,
+            contentDigest: "version-\(index)"
+        )
+    }
+}
+
+private actor DelayedLiveDocumentManager: DocumentManager {
+    private let base: any DocumentManager
+    private let saveDelay: Duration
+
+    init(base: any DocumentManager, saveDelay: Duration) {
+        self.base = base
+        self.saveDelay = saveDelay
+    }
+
+    func openDocument(at url: URL, in workspaceRootURL: URL) async throws -> OpenDocument {
+        try await base.openDocument(at: url, in: workspaceRootURL)
+    }
+
+    func reloadDocument(from document: OpenDocument) async throws -> OpenDocument {
+        try await base.reloadDocument(from: document)
+    }
+
+    func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
+        try await base.revalidateDocument(document)
+    }
+
+    func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument {
+        try? await Task.sleep(for: saveDelay)
+        return try await base.saveDocument(document, overwriteConflict: overwriteConflict)
+    }
+}
+
+private struct TestDocumentSecurityAccessHandler: SecurityScopedAccessHandling {
+    func makeBookmark(for url: URL) throws -> Data {
+        Data()
+    }
+
+    func resolveBookmark(_ data: Data) throws -> ResolvedSecurityScopedURL {
+        ResolvedSecurityScopedURL(url: URL(fileURLWithPath: "/tmp"), displayName: "tmp", isStale: false)
+    }
+
+    func validateAccess(to url: URL) throws {}
+
+    func withAccess<Value>(to url: URL, operation: (URL) throws -> Value) throws -> Value {
+        try operation(url)
+    }
+
+    func withAccess<Value>(
+        toDescendantAt relativePath: String,
+        within workspaceRootURL: URL,
+        operation: (URL) throws -> Value
+    ) throws -> Value {
+        let descendantURL = relativePath
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .reduce(workspaceRootURL) { partialURL, component in
+                partialURL.appending(path: String(component))
+            }
+        return try operation(descendantURL)
     }
 }
