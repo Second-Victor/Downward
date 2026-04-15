@@ -5,8 +5,14 @@ protocol DocumentManager: Sendable {
     /// Opens a document by resolving its path relative to the active workspace root.
     func openDocument(at url: URL, in workspaceRootURL: URL) async throws -> OpenDocument
     func reloadDocument(from document: OpenDocument) async throws -> OpenDocument
+    /// Revalidates the active document using the same policy as live observation:
+    /// clean buffers can silently refresh from disk, dirty buffers keep the local text authoritative,
+    /// and only missing paths or unrecoverable failures escalate into explicit recovery UI.
     func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument
     func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument
+    /// Emits change signals for the currently open file so the caller can rerun `revalidateDocument(_:)`
+    /// instead of duplicating separate live-refresh conflict rules.
+    func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void>
 }
 
 actor LiveDocumentManager: DocumentManager {
@@ -42,6 +48,11 @@ actor LiveDocumentManager: DocumentManager {
     func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument {
         let session = session(for: document)
         return try await session.saveDocument(document, overwriteConflict: overwriteConflict)
+    }
+
+    func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void> {
+        let session = session(for: document)
+        return try await session.observeChanges()
     }
 
     nonisolated static func makeConflictDocument(
@@ -137,5 +148,11 @@ actor StubDocumentManager: DocumentManager {
         savedDocument.conflictState = .none
         sampleDocuments[document.url] = savedDocument
         return savedDocument
+    }
+
+    func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            continuation.finish()
+        }
     }
 }

@@ -5,9 +5,16 @@ import Foundation
 /// The current editor buffer is authoritative for autosave; coordinated reload/revalidation only
 /// interrupts when the path disappears or a coordinated read/write fails unrecoverably.
 actor PlainTextDocumentSession {
+    nonisolated private static let observationFallbackInterval: Duration = .seconds(1)
+
     private let workspaceRootURL: URL
     private let relativePath: String
     private let securityScopedAccess: any SecurityScopedAccessHandling
+    private var observationLease: SecurityScopedAccessLease?
+    private var observationURL: URL?
+    private var filePresenter: PlainTextDocumentFilePresenter?
+    private var observationFallbackTask: Task<Void, Never>?
+    private var changeContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
 
     init(
         relativePath: String,
@@ -55,9 +62,31 @@ actor PlainTextDocumentSession {
         try await openDocument(fallbackName: document.displayName)
     }
 
+    /// Starts live observation for the active file. The stream does not apply its own conflict policy;
+    /// callers should feed events back through `revalidateDocument(_:)` so foreground refresh and
+    /// live refresh always share the same calm external-change behavior.
+    func observeChanges() async throws -> AsyncStream<Void> {
+        try ensureObservationStarted()
+        let identifier = UUID()
+
+        return AsyncStream { continuation in
+            changeContinuations[identifier] = continuation
+            startObservationFallbackIfNeeded()
+            continuation.onTermination = { [weak self] _ in
+                Task {
+                    await self?.removeChangeContinuation(for: identifier)
+                }
+            }
+        }
+    }
+
     /// Revalidates the active document without treating the editor's own coordinated saves as conflicts.
-    /// If the file changed elsewhere while the buffer is clean, the latest disk contents replace the view.
-    /// If the user still has local edits, the current buffer remains authoritative and autosave can persist it.
+    /// Policy:
+    /// - matching disk metadata: keep the current document as-is
+    /// - disk now matches the current editor text: advance the confirmed disk version silently
+    /// - clean buffer + safe external change: reload from disk silently
+    /// - dirty buffer + external drift: keep the local buffer authoritative and avoid conflict UI
+    /// - missing path: move into explicit recovery because the file can no longer be reconciled safely
     func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
         let relativePath = self.relativePath
         let workspaceRootURL = self.workspaceRootURL
@@ -170,6 +199,74 @@ actor PlainTextDocumentSession {
                 }
             }
         }.value
+    }
+
+    private func ensureObservationStarted() throws {
+        guard filePresenter == nil else {
+            return
+        }
+
+        let lease = try securityScopedAccess.beginAccess(to: workspaceRootURL)
+        let observedURL = Self.resolveDescendantURL(relativePath, within: lease.url)
+        let presenter = PlainTextDocumentFilePresenter(
+            url: observedURL,
+            onChange: { [weak self] in
+                Task {
+                    await self?.emitObservedChange()
+                }
+            }
+        )
+
+        NSFileCoordinator.addFilePresenter(presenter)
+        observationLease = lease
+        observationURL = observedURL
+        filePresenter = presenter
+    }
+
+    private func emitObservedChange() {
+        guard changeContinuations.isEmpty == false else {
+            return
+        }
+
+        for continuation in changeContinuations.values {
+            continuation.yield(())
+        }
+    }
+
+    private func removeChangeContinuation(for identifier: UUID) {
+        changeContinuations.removeValue(forKey: identifier)
+        guard changeContinuations.isEmpty else {
+            return
+        }
+
+        observationFallbackTask?.cancel()
+        observationFallbackTask = nil
+
+        if let filePresenter {
+            NSFileCoordinator.removeFilePresenter(filePresenter)
+            self.filePresenter = nil
+        }
+
+        observationURL = nil
+        observationLease?.endAccess()
+        observationLease = nil
+    }
+
+    private func startObservationFallbackIfNeeded() {
+        guard observationFallbackTask == nil else {
+            return
+        }
+
+        observationFallbackTask = Task { [weak self] in
+            while Task.isCancelled == false {
+                try? await Task.sleep(for: Self.observationFallbackInterval)
+                guard Task.isCancelled == false else {
+                    break
+                }
+
+                await self?.emitObservedChange()
+            }
+        }
     }
 
     nonisolated static func makeConflictDocument(
@@ -465,6 +562,17 @@ actor PlainTextDocumentSession {
             .isDirectoryKey,
         ]
     }
+
+    nonisolated private static func resolveDescendantURL(
+        _ relativePath: String,
+        within rootURL: URL
+    ) -> URL {
+        relativePath
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .reduce(rootURL) { partialURL, component in
+                partialURL.appending(path: String(component))
+            }
+    }
 }
 
 private struct CoordinatedDocumentState: Sendable {
@@ -480,4 +588,35 @@ private struct CoordinatedPresenceState: Sendable {
 private enum AppErrorOrMissing: Error, Sendable {
     case appError(AppError)
     case missing
+}
+
+private final class PlainTextDocumentFilePresenter: NSObject, NSFilePresenter {
+    nonisolated let presentedItemURL: URL?
+    nonisolated let presentedItemOperationQueue: OperationQueue
+
+    nonisolated private let onChange: @Sendable () -> Void
+
+    nonisolated init(
+        url: URL,
+        onChange: @escaping @Sendable () -> Void
+    ) {
+        presentedItemURL = url
+        presentedItemOperationQueue = OperationQueue()
+        presentedItemOperationQueue.qualityOfService = .utility
+        presentedItemOperationQueue.maxConcurrentOperationCount = 1
+        self.onChange = onChange
+    }
+
+    nonisolated func presentedItemDidChange() {
+        onChange()
+    }
+
+    nonisolated func presentedItemDidMove(to newURL: URL) {
+        onChange()
+    }
+
+    nonisolated func accommodatePresentedItemDeletion(completionHandler: @escaping (Error?) -> Void) {
+        onChange()
+        completionHandler(nil)
+    }
 }

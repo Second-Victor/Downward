@@ -28,7 +28,10 @@ final class EditorAutosaveTests: XCTestCase {
         system.viewModel.handleTextChange("# Entry\n\nSecond autosave.")
         try await Task.sleep(for: .milliseconds(120))
         system.viewModel.handleTextChange("# Entry\n\nFinal autosave.")
-        try await Task.sleep(for: .milliseconds(160))
+        try await waitUntil {
+            system.session.openDocument?.text == "# Entry\n\nFinal autosave."
+                && system.session.openDocument?.isDirty == false
+        }
 
         XCTAssertEqual(system.session.openDocument?.text, "# Entry\n\nFinal autosave.")
         XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
@@ -68,7 +71,10 @@ final class EditorAutosaveTests: XCTestCase {
         system.viewModel.handleTextChange("# Entry\n\nSecond revision.")
         try await Task.sleep(for: .milliseconds(70))
         system.viewModel.handleTextChange("# Entry\n\nThird revision.")
-        try await Task.sleep(for: .milliseconds(420))
+        try await waitUntil {
+            system.session.openDocument?.text == "# Entry\n\nThird revision."
+                && system.session.openDocument?.isDirty == false
+        }
 
         XCTAssertEqual(system.session.openDocument?.text, "# Entry\n\nThird revision.")
         XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
@@ -108,6 +114,64 @@ final class EditorAutosaveTests: XCTestCase {
         XCTAssertEqual(system.session.openDocument?.text, "# Entry\n\nAutosaved text.")
         XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
         XCTAssertNil(system.session.lastError)
+        XCTAssertFalse(system.viewModel.isShowingConflictResolution)
+    }
+
+    @MainActor
+    func testLiveObservationReloadsCleanEditorAfterOutsideWrite() async throws {
+        let fixture = try makeLiveDocumentFixture(
+            named: "Observed.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+        defer { removeItemIfPresent(at: fixture.workspaceURL) }
+
+        let liveManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let initialDocument = try await liveManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let system = makeEditorSystem(
+            documentManager: liveManager,
+            initialDocument: initialDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+
+        try "# Entry\n\nUpdated from Mac.".write(to: fixture.fileURL, atomically: true, encoding: .utf8)
+        try await waitUntil {
+            system.session.openDocument?.text == "# Entry\n\nUpdated from Mac."
+        }
+
+        XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
+        XCTAssertFalse(system.session.openDocument?.isDirty ?? true)
+        XCTAssertFalse(system.viewModel.isShowingConflictResolution)
+    }
+
+    @MainActor
+    func testLiveObservationPreservesDirtyBufferDuringOutsideWrite() async throws {
+        let fixture = try makeLiveDocumentFixture(
+            named: "DirtyObserved.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+        defer { removeItemIfPresent(at: fixture.workspaceURL) }
+
+        let liveManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let initialDocument = try await liveManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let system = makeEditorSystem(
+            documentManager: liveManager,
+            initialDocument: initialDocument,
+            autosaveDelay: .seconds(5)
+        )
+
+        system.viewModel.handleTextChange("# Entry\n\nLocal buffer wins.")
+        try "# Entry\n\nUpdated from Mac.".write(to: fixture.fileURL, atomically: true, encoding: .utf8)
+        try await Task.sleep(for: .milliseconds(120))
+
+        XCTAssertEqual(system.session.openDocument?.text, "# Entry\n\nLocal buffer wins.")
+        XCTAssertTrue(system.session.openDocument?.isDirty ?? false)
+        XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
         XCTAssertFalse(system.viewModel.isShowingConflictResolution)
     }
 
@@ -370,6 +434,23 @@ final class EditorAutosaveTests: XCTestCase {
     private func removeItemIfPresent(at url: URL) {
         try? FileManager.default.removeItem(at: url)
     }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        pollInterval: Duration = .milliseconds(20),
+        condition: @escaping @MainActor () -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await condition() {
+                return
+            }
+
+            try await Task.sleep(for: pollInterval)
+        }
+
+        XCTFail("Timed out waiting for condition.")
+    }
 }
 
 private actor RecordingDocumentManager: DocumentManager {
@@ -417,6 +498,12 @@ private actor RecordingDocumentManager: DocumentManager {
         savedDocument.saveState = .saved(Date(timeIntervalSince1970: 1_710_000_100))
         savedDocument.conflictState = .none
         return savedDocument
+    }
+
+    func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            continuation.finish()
+        }
     }
 }
 
@@ -498,6 +585,12 @@ private actor VersionTrackingDocumentManager: DocumentManager {
         )
     }
 
+    func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            continuation.finish()
+        }
+    }
+
     private func makeDocument(
         text: String,
         loadedVersion: DocumentVersion,
@@ -552,6 +645,10 @@ private actor DelayedLiveDocumentManager: DocumentManager {
         try? await Task.sleep(for: saveDelay)
         return try await base.saveDocument(document, overwriteConflict: overwriteConflict)
     }
+
+    func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void> {
+        try await base.observeDocumentChanges(for: document)
+    }
 }
 
 private struct TestDocumentSecurityAccessHandler: SecurityScopedAccessHandling {
@@ -564,6 +661,10 @@ private struct TestDocumentSecurityAccessHandler: SecurityScopedAccessHandling {
     }
 
     func validateAccess(to url: URL) throws {}
+
+    func beginAccess(to url: URL) throws -> SecurityScopedAccessLease {
+        SecurityScopedAccessLease(url: url, stopHandler: nil)
+    }
 
     func withAccess<Value>(to url: URL, operation: (URL) throws -> Value) throws -> Value {
         try operation(url)
