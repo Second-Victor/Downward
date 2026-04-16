@@ -17,7 +17,7 @@ final class WorkspaceNavigationModeTests: XCTestCase {
 
     @MainActor
     func testWorkspaceViewModelProgrammaticFileOpenUsesOnlyEditorRoute() {
-        let (session, viewModel) = makeWorkspaceViewModel()
+        let (session, coordinator, viewModel) = makeWorkspaceSystem()
 
         viewModel.openDocument(PreviewSampleData.cleanDocument.url)
 
@@ -25,10 +25,15 @@ final class WorkspaceNavigationModeTests: XCTestCase {
             session.path,
             [.editor(PreviewSampleData.cleanDocument.url)]
         )
+        XCTAssertEqual(session.regularDetailSelection, .placeholder)
+
+        coordinator.updateNavigationLayout(.regular)
+
         XCTAssertEqual(
             session.regularWorkspaceDetail,
             .editor(PreviewSampleData.cleanDocument.url)
         )
+        XCTAssertEqual(session.path, [])
     }
 
     @MainActor
@@ -95,34 +100,98 @@ final class WorkspaceNavigationModeTests: XCTestCase {
     }
 
     @MainActor
-    func testRegularWorkspaceDetailShowsSettingsWhenSettingsRouteIsTopmost() {
-        let (session, _) = makeWorkspaceViewModel()
-        session.path = [.settings]
+    func testRegularWorkspaceDetailShowsSettingsFromExplicitSelection() {
+        let (session, coordinator, _) = makeWorkspaceSystem()
+        coordinator.updateNavigationLayout(.regular)
+        session.regularDetailSelection = .settings
 
         XCTAssertEqual(session.regularWorkspaceDetail, .settings)
     }
 
     @MainActor
-    func testRegularWorkspaceDetailIgnoresLegacyFolderRouteWithoutEditor() {
-        let (session, _) = makeWorkspaceViewModel()
-        session.path = [.folder(PreviewSampleData.year2026URL)]
+    func testCompactToRegularWithOpenEditorPromotesEditorSelectionAndClearsCompactPath() {
+        let (session, coordinator, _) = makeWorkspaceSystem()
+        session.path = [.editor(PreviewSampleData.cleanDocument.url)]
 
-        XCTAssertEqual(session.regularWorkspaceDetail, .placeholder)
-    }
+        coordinator.updateNavigationLayout(.regular)
 
-    @MainActor
-    func testRegularWorkspaceDetailFallsBackToOpenDocumentWhenNoEditorRouteExists() {
-        let (session, _) = makeWorkspaceViewModel()
-        session.openDocument = PreviewSampleData.cleanDocument
-
+        XCTAssertEqual(
+            session.regularDetailSelection,
+            .editor(PreviewSampleData.cleanDocument.relativePath)
+        )
         XCTAssertEqual(
             session.regularWorkspaceDetail,
             .editor(PreviewSampleData.cleanDocument.url)
         )
+        XCTAssertEqual(session.path, [])
+    }
+
+    @MainActor
+    func testRegularToCompactKeepsOnlyVisibleEditorAfterSettingsThenEditor() {
+        let (session, coordinator, _) = makeWorkspaceSystem()
+        coordinator.updateNavigationLayout(.regular)
+
+        coordinator.presentSettings()
+        coordinator.presentEditor(for: PreviewSampleData.cleanDocument.url)
+
+        XCTAssertEqual(
+            session.regularDetailSelection,
+            .editor(PreviewSampleData.cleanDocument.relativePath)
+        )
+        XCTAssertEqual(session.path, [])
+
+        coordinator.updateNavigationLayout(.compact)
+
+        XCTAssertEqual(session.path, [.editor(PreviewSampleData.cleanDocument.url)])
+        XCTAssertEqual(session.regularDetailSelection, .placeholder)
+    }
+
+    @MainActor
+    func testRepeatedSettingsAndEditorTogglingDoesNotAccumulateHiddenCompactStateInRegularMode() {
+        let (session, coordinator, _) = makeWorkspaceSystem()
+        coordinator.updateNavigationLayout(.regular)
+
+        coordinator.presentSettings()
+        coordinator.presentEditor(for: PreviewSampleData.cleanDocument.url)
+        coordinator.presentSettings()
+        coordinator.presentEditor(for: PreviewSampleData.dirtyDocument.url)
+
+        XCTAssertEqual(
+            session.regularDetailSelection,
+            .editor(PreviewSampleData.dirtyDocument.relativePath)
+        )
+        XCTAssertEqual(session.path, [])
+
+        coordinator.updateNavigationLayout(.compact)
+
+        XCTAssertEqual(session.path, [.editor(PreviewSampleData.dirtyDocument.url)])
+    }
+
+    @MainActor
+    func testCompactToRegularDropsHiddenCompactHistoryInsteadOfResurrectingItOnReturn() {
+        let (session, coordinator, _) = makeWorkspaceSystem()
+        session.path = [.settings, .editor(PreviewSampleData.cleanDocument.url)]
+
+        coordinator.updateNavigationLayout(.regular)
+        XCTAssertEqual(
+            session.regularDetailSelection,
+            .editor(PreviewSampleData.cleanDocument.relativePath)
+        )
+        XCTAssertEqual(session.path, [])
+
+        coordinator.updateNavigationLayout(.compact)
+
+        XCTAssertEqual(session.path, [.editor(PreviewSampleData.cleanDocument.url)])
     }
 
     @MainActor
     private func makeWorkspaceViewModel() -> (AppSession, WorkspaceViewModel) {
+        let (session, _, viewModel) = makeWorkspaceSystem()
+        return (session, viewModel)
+    }
+
+    @MainActor
+    private func makeWorkspaceSystem() -> (AppSession, AppCoordinator, WorkspaceViewModel) {
         let session = AppSession()
         session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
         let recentFilesStore = RecentFilesStore(initialItems: [])
@@ -144,6 +213,6 @@ final class WorkspaceNavigationModeTests: XCTestCase {
             recentFilesStore: recentFilesStore
         )
 
-        return (session, viewModel)
+        return (session, coordinator, viewModel)
     }
 }

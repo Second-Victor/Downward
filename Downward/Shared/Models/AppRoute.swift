@@ -1,7 +1,6 @@
 import Foundation
 
 enum AppRoute: Hashable, Sendable {
-    case folder(URL)
     case editor(URL)
     case settings
 

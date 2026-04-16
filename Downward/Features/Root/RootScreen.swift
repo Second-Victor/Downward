@@ -60,6 +60,11 @@ struct RootScreen: View {
         .task {
             await viewModel.handleFirstAppear()
         }
+        .task(id: horizontalSizeClass == .regular) {
+            viewModel.updateNavigationLayout(
+                horizontalSizeClass == .regular ? .regular : .compact
+            )
+        }
         .fileImporter(
             isPresented: bindablePickerVisibility,
             allowedContentTypes: viewModel.allowedFolderContentTypes,
@@ -117,8 +122,6 @@ private struct RegularWorkspaceShell: View {
     let viewModel: RootViewModel
 
     var body: some View {
-        @Bindable var session = viewModel.session
-
         NavigationSplitView {
             WorkspaceScreen(
                 viewModel: viewModel.workspaceViewModel,
@@ -129,9 +132,6 @@ private struct RegularWorkspaceShell: View {
             RegularWorkspaceDetailView(viewModel: viewModel)
         }
         .navigationSplitViewStyle(.balanced)
-        .onChange(of: session.path) { _, newPath in
-            viewModel.didChange(path: newPath)
-        }
     }
 }
 
@@ -167,13 +167,6 @@ private struct WorkspaceRouteDestination: View {
 
     var body: some View {
         switch route {
-        case let .folder(folderURL):
-            WorkspaceFolderScreen(
-                viewModel: viewModel.workspaceViewModel,
-                showsSettingsButton: false,
-                navigationMode: .stackPath,
-                expandedFolderURL: folderURL
-            )
         case let .editor(documentURL):
             EditorScreen(
                 viewModel: viewModel.editorViewModel,

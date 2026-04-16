@@ -112,6 +112,73 @@ final class WorkspaceEnumeratorTests: XCTestCase {
         XCTAssertTrue(unsupportedFolder.children.isEmpty)
     }
 
+    func testEnumeratorSkipsUnreadableChildFolderAndKeepsReadableSiblings() throws {
+        let rootURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: rootURL) }
+
+        let readableFolderURL = try createDirectory(named: "Readable", in: rootURL)
+        try createFile(named: "Keep.md", in: readableFolderURL)
+
+        let unreadableFolderURL = try createDirectory(named: "Unreadable", in: rootURL)
+        try createFile(named: "Hidden.md", in: unreadableFolderURL)
+        defer { restoreReadablePermissions(at: unreadableFolderURL) }
+        try makeUnreadable(at: unreadableFolderURL)
+
+        let snapshot = try LiveWorkspaceEnumerator().makeSnapshot(
+            rootURL: rootURL,
+            displayName: "Workspace"
+        )
+
+        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Readable"])
+
+        guard case let .folder(readableFolder) = snapshot.rootNodes.first else {
+            return XCTFail("Expected Readable to remain in the partial snapshot.")
+        }
+
+        XCTAssertEqual(readableFolder.children.map(\.displayName), ["Keep.md"])
+    }
+
+    func testEnumeratorSkipsHiddenSubtrees() throws {
+        let rootURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: rootURL) }
+
+        let visibleFolderURL = try createDirectory(named: "Visible", in: rootURL)
+        try createFile(named: "Keep.md", in: visibleFolderURL)
+
+        let hiddenFolderURL = try createDirectory(named: ".ProviderMetadata", in: rootURL)
+        try createFile(named: "Ignored.md", in: hiddenFolderURL)
+        try createFile(named: ".Secrets.md", in: rootURL)
+
+        let snapshot = try LiveWorkspaceEnumerator().makeSnapshot(
+            rootURL: rootURL,
+            displayName: "Workspace"
+        )
+
+        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Visible"])
+
+        guard case let .folder(visibleFolder) = snapshot.rootNodes.first else {
+            return XCTFail("Expected Visible to remain in the snapshot.")
+        }
+
+        XCTAssertEqual(visibleFolder.children.map(\.displayName), ["Keep.md"])
+    }
+
+    func testEnumeratorFailsWhenWorkspaceRootIsUnreadable() throws {
+        let rootURL = try makeTemporaryWorkspace()
+        defer { restoreReadablePermissions(at: rootURL) }
+        defer { removeItemIfPresent(at: rootURL) }
+
+        try createFile(named: "Keep.md", in: rootURL)
+        try makeUnreadable(at: rootURL)
+
+        XCTAssertThrowsError(
+            try LiveWorkspaceEnumerator().makeSnapshot(
+                rootURL: rootURL,
+                displayName: "Workspace"
+            )
+        )
+    }
+
     private func makeTemporaryWorkspace() throws -> URL {
         let rootURL = FileManager.default.temporaryDirectory
             .appending(path: "WorkspaceEnumeratorTests")
@@ -145,5 +212,19 @@ final class WorkspaceEnumeratorTests: XCTestCase {
 
     private func removeItemIfPresent(at url: URL) {
         try? FileManager.default.removeItem(at: url)
+    }
+
+    private func makeUnreadable(at url: URL) throws {
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: url.path
+        )
+    }
+
+    private func restoreReadablePermissions(at url: URL) {
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: url.path
+        )
     }
 }

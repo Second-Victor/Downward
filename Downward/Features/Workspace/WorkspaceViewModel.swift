@@ -27,6 +27,7 @@ final class WorkspaceViewModel {
     private var loadTask: Task<Void, Never>?
     private var fileOperationTask: Task<Void, Never>?
     private var loadGeneration = 0
+    private var fileOperationGeneration = 0
     private var hasLoadedInitialSnapshot = false
     private var pendingCreateFolderURL: URL?
 
@@ -74,24 +75,6 @@ final class WorkspaceViewModel {
 
     var isBusy: Bool {
         isRefreshing || isPerformingFileOperation
-    }
-
-    var selectedDocumentRelativePath: String? {
-        if let openDocument = session.openDocument {
-            return openDocument.relativePath
-        }
-
-        guard
-            let selectedDocumentURL = session.path.last?.editorURL,
-            let workspaceRootURL = session.workspaceSnapshot?.rootURL
-        else {
-            return nil
-        }
-
-        return WorkspaceRelativePath.make(
-            for: selectedDocumentURL,
-            within: workspaceRootURL
-        )
     }
 
     var pendingRenameTitle: String {
@@ -278,28 +261,6 @@ final class WorkspaceViewModel {
         }
     }
 
-    func isSelected(_ node: WorkspaceNode) -> Bool {
-        guard
-            let selectedDocumentRelativePath,
-            let nodeRelativePath = WorkspaceRelativePath.make(
-                for: node.url,
-                within: currentWorkspaceRootURL
-            )
-        else {
-            return false
-        }
-
-        return nodeRelativePath == selectedDocumentRelativePath
-    }
-
-    func isSelectedDocument(relativePath: String) -> Bool {
-        selectedDocumentRelativePath == relativePath
-    }
-
-    func isSelectedRecentItem(_ item: RecentFileItem) -> Bool {
-        selectedDocumentRelativePath == item.relativePath
-    }
-
     func title(for folderURL: URL?) -> String {
         if isSearching {
             return "Search"
@@ -350,6 +311,10 @@ final class WorkspaceViewModel {
     }
 
     private func performSnapshotLoad(generation: Int, hadSnapshot: Bool) async {
+        defer {
+            finishSnapshotLoadIfCurrent(generation)
+        }
+
         let result = await coordinator.refreshWorkspace()
         guard Task.isCancelled == false else {
             return
@@ -358,9 +323,6 @@ final class WorkspaceViewModel {
         guard generation == loadGeneration else {
             return
         }
-
-        isLoading = false
-        isRefreshing = false
 
         guard let result else {
             return
@@ -385,16 +347,40 @@ final class WorkspaceViewModel {
         }
 
         fileOperationTask?.cancel()
+        fileOperationGeneration += 1
+        let generation = fileOperationGeneration
         isPerformingFileOperation = true
         fileOperationTask = Task {
+            defer {
+                finishFileOperationIfCurrent(generation)
+            }
+
             await operation()
             guard Task.isCancelled == false else {
                 return
             }
 
             syncExpandedFoldersToCurrentSnapshot()
-            isPerformingFileOperation = false
         }
+    }
+
+    private func finishSnapshotLoadIfCurrent(_ generation: Int) {
+        guard generation == loadGeneration else {
+            return
+        }
+
+        isLoading = false
+        isRefreshing = false
+        loadTask = nil
+    }
+
+    private func finishFileOperationIfCurrent(_ generation: Int) {
+        guard generation == fileOperationGeneration else {
+            return
+        }
+
+        isPerformingFileOperation = false
+        fileOperationTask = nil
     }
 
     private func suggestedCreateFileName(in folderURL: URL?) -> String {

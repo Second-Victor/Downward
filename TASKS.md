@@ -1,189 +1,301 @@
 # TASKS.md
 
-## Purpose
+## Priority order
 
-This file is the forward roadmap for the current Downward codebase **after a full code review**.
+### P0 — Must do before broad feature work
 
-The previous roadmap assumed stabilization was largely done. The review shows a narrower and more important truth: the app is close, but a few file-boundary and lifecycle issues still need to be closed before more feature work.
+1. Split navigation state ownership between compact and regular layouts
+2. Prevent stale refresh results from being applied after a newer refresh completes
+3. Harden the editor host boundary around text inset and scroll-indicator behavior
 
-Status legend:
+### P1 — Next hardening pass
 
-- `[x]` complete in the current codebase
-- `[~]` worth refining soon
-- `[ ]` planned backlog
-- `[!]` high-risk surface that must stay regression-covered
+4. Reduce observation fallback churn
+5. Make workspace enumeration tolerant of partial failure
+6. Explicitly choose and document the document write-durability policy
 
----
+### P2 — Cleanup and feature-readiness
 
-## Protected behavior already in place
-
-These are real strengths and should be preserved while fixing the remaining trust issues:
-
-- [x] calm autosave with save-ack merge semantics
-- [x] same-document revalidation that avoids self-conflict after the app’s own saves
-- [x] active-file rename/delete coherence in the browser/editor flow
-- [x] restore and reconnect flows with stale-session cleanup
-- [x] workspace-relative recent-files UI
-- [x] editor appearance preferences
-- [x] strong smoke-test coverage for async session and navigation behavior
+7. Remove legacy folder-route leftovers from live code and tests
+8. Remove dead browser-row state / styling inputs
+9. Audit task-owned busy/loading flags for guaranteed reset on cancellation
 
 ---
 
-## Immediate release blockers
+## 1. Split navigation state ownership
 
-No new feature wave should outrank these items.
+### Goal
 
-### Security-scoped workspace access
+Stop using one route array for both:
 
-- [ ] Use security-scoped bookmark options correctly for bookmark creation and bookmark resolution
-  - acceptance:
-    - bookmark creation is explicitly security-scoped
-    - bookmark resolution is explicitly security-scoped
-    - restore/reconnect are validated on real devices with iCloud Drive and one provider-backed folder
-- [!] Keep restore, reconnect, and invalid-bookmark recovery strongly regression-covered
+- compact stack history
+- regular-width detail selection
 
-### Canonical file identity
+### Files likely involved
 
-- [ ] Introduce one canonical workspace-relative identity for files and folders across:
-  - snapshot nodes
-  - recent files
-  - restore session
-  - rename/delete reconciliation
-  - search result metadata
-- [ ] Treat `displayName` as presentation-only data
-- [ ] Stop rebuilding persisted relative paths from display names
+- `Downward/App/AppSession.swift`
+- `Downward/App/AppCoordinator.swift`
+- `Downward/Features/Root/RootScreen.swift`
+- `Downward/Shared/Models/AppRoute.swift`
+- `Tests/WorkspaceNavigationModeTests.swift`
+- `Tests/MarkdownWorkspaceAppSmokeTests.swift`
 
-### Editor load / observation lifecycle
+### Work
 
-- [ ] Cancel delayed document loads when the editor route disappears
-- [ ] Prevent late document loads from reactivating a document the user already left
-- [ ] Only keep live observation active while the matching editor is actually visible
-- [ ] Ensure rename/disappear flows restart observation only for the current logical document
+- add explicit regular-detail state to `AppSession`
+- keep `session.path` as compact-stack state only
+- update `presentSettings()` and `presentEditor(for:)` so they mutate the correct state for the current navigation mode or through a normalized shared API
+- remove live dependence on `AppRoute.folder` if browsing no longer uses it
+- normalize transitions when layout changes between compact and regular
 
-### Coordinated workspace mutations
+### Acceptance criteria
 
-- [ ] Move create / rename / delete onto the same coordinated file-access model used by document reads/writes
-- [ ] Make rename/move semantics explicit for any live presenter / observer state
-- [ ] Keep open-document mutation flows coherent without depending on uncoordinated filesystem side effects
+- regular mode no longer needs stack history to decide what detail to show
+- compact mode still uses `NavigationStack(path:)`
+- repeated settings/editor switching does not grow hidden invalid state
+- rotation between compact and regular keeps a sane visible destination
 
----
+### Tests
 
-## Next hardening wave
-
-These should follow immediately after the blocker set.
-
-### Refresh and concurrency correctness
-
-- [ ] Add end-to-end generation protection for overlapping workspace refreshes
-- [ ] Ensure stale refresh results cannot overwrite newer session state from:
-  - manual refresh
-  - pull-to-refresh
-  - scene-activation refresh
-- [!] Keep browser/editor coherence strongly regression-covered during overlapping refresh work
-
-### Save durability and write semantics
-
-- [ ] Decide and document the document-write durability model
-  - direct coordinated write with explicit tradeoffs, or
-  - temp-write-and-replace where safe
-- [ ] Add failure-mode tests around save interruptions or mid-write failures where practical
-- [ ] Keep the “newer in-memory edits survive old acknowledgements” contract intact
-
-### Observation efficiency
-
-- [ ] Reduce no-change churn from fallback live observation
-  - gate revalidation when metadata is unchanged
-  - add backoff or degrade-to-poll only when presenter notifications appear unreliable
-- [ ] Keep same-document live refresh best-effort without turning it into constant provider churn
-
-### Workspace snapshot resilience
-
-- [ ] Make enumeration resilient to unreadable nested folders where possible
-- [ ] Define an explicit policy for hidden/package/metadata-like folders
-- [ ] Document practical workspace-scale expectations after profiling
-- [ ] Keep empty real folders visible even when they contain no supported files
-
-### Rename edge cases and cleanup
-
-- [ ] Fix case-only rename handling for case-insensitive providers
-- [ ] Remove or wire up dormant states and code paths:
-  - `WorkspaceAccessState.restorable`
-  - live `modifiedOnDisk` conflict policy or its removal
-  - unused coordinator helpers
+- regular -> compact after opening settings then editor
+- compact -> regular with open editor
+- repeated settings/editor toggling leaves normalized state
 
 ---
 
-## Regression test expansion
+## 2. Raise refresh generation protection to the application boundary
 
-These tests should be added before or alongside the hardening work above:
+### Goal
 
-- [ ] delayed editor load followed by immediate navigation away
-- [ ] overlapping workspace refreshes with delayed enumerator results
-- [ ] recent-file pruning when display names differ from canonical path components
-- [ ] case-only rename behavior
-- [ ] unreadable nested folder during workspace snapshot creation
-- [ ] observation fallback does not endlessly revalidate unchanged clean documents
-- [ ] coordinated create/rename/delete behavior for active files
-- [ ] real-device checklist for bookmark restore and provider-backed mutation flows
+Ensure only the newest workspace refresh can win.
 
----
+### Files likely involved
 
-## Quality and maintainability
+- `Downward/Domain/Workspace/WorkspaceManager.swift`
+- `Downward/App/AppCoordinator.swift`
+- `Downward/Features/Workspace/WorkspaceViewModel.swift`
+- `Tests/MarkdownWorkspaceAppSmokeTests.swift`
+- new focused refresh-race test if needed
 
-These are still worthwhile, but they now rank below the trust-hardening work.
+### Work
 
-### Tooling and diagnostics
+- either stop stale snapshots from returning out of `WorkspaceManager`, or
+- add coordinator-owned refresh generation and refuse to apply older results
+- make foreground refresh and manual refresh share the same winner policy
 
-- [~] Keep debug-only diagnostics around save / revalidate / restore / mutation transitions easy to inspect
-- [ ] Add one short contributor note for testing provider-backed changes before merging persistence-sensitive work
-- [ ] Add a lightweight release checklist for simulator plus real-device sanity passes
+### Acceptance criteria
 
-### Accessibility and UX polish
+- an older refresh result cannot overwrite a newer workspace snapshot in session state
+- recent-files pruning and open-document reconciliation only happen against the winning snapshot
 
-- [~] Continue small accessibility polish where it improves real use:
-  - VoiceOver wording on file/folder rows
-  - recovery-message clarity
-  - Dynamic Type checks on edge-state screens
-- [ ] Add a lightweight active-document info surface only after trust hardening lands
+### Tests
+
+- overlapping refreshes with delayed enumerator
+- foreground refresh racing with pull-to-refresh
 
 ---
 
-## Feature work that can wait
+## 3. Harden the editor host boundary
 
-These are valid ideas, but they should not outrank the file-boundary fixes above.
+### Goal
 
-### Browser and editor productivity
+Make text inset behavior deterministic and future-proof enough for more editor features.
 
-- [x] lightweight in-memory workspace search
-- [x] workspace-relative recent-files sheet
-- [ ] keyboard shortcuts for common iPad / hardware-keyboard actions
-- [ ] lightweight document info surface
-- [ ] minimal additional editor preferences
-- [ ] evaluate folder rename/move support only if it becomes a real requirement
+### Files likely involved
 
-### Later optional expansions
+- `Downward/Features/Editor/EditorScreen.swift`
+- possibly a new dedicated editor-host bridge file
+- related previews or smoke tests
 
-- [ ] markdown preview
-- [ ] syntax highlighting
-- [ ] tabs or multi-document editing
-- [ ] multi-window / multi-scene workflow improvements
-- [ ] Git integration
-- [ ] plugin architecture
-- [ ] formatting toolbar / rich-text features
-- [ ] broader import policy beyond UTF-8 plain text
-- [ ] custom text engine
-- [ ] app-owned mirrored storage model
+### Work
+
+- move the text inset bridge out of the screen if it stays
+- document why the bridge exists
+- reduce or remove unstructured `DispatchQueue.main.async` usage if possible
+- make the bridge lifecycle explicit for document switching and size changes
+- keep scroll indicator edge-near while text content remains inset
+
+### Acceptance criteria
+
+- text inset stays stable across document switching
+- text inset stays stable across iPad resize / rotation
+- scroll indicator stays near the edge
+- the implementation is isolated enough to support future editor polish
+
+### QA
+
+- iPhone portrait / landscape
+- iPad portrait / landscape / split view resize
+- rapid document switching
 
 ---
 
-## Working rule from here
+## 4. Reduce observation fallback churn
 
-Before implementing any new work, check:
+### Goal
 
-1. does it preserve calm autosave behavior?
-2. does it keep the workspace folder as source of truth?
-3. does it keep file identity canonical across restore, recents, and mutations?
-4. does it avoid resurrecting stale async state?
-5. is there targeted regression coverage for the risky part?
+Stop clean visible editors from revalidating forever on a fixed cadence when nothing changed.
 
-If any answer is no, fix that first.
+### Files likely involved
+
+- `Downward/Domain/Document/PlainTextDocumentSession.swift`
+- `Downward/Features/Editor/EditorViewModel.swift`
+- `Tests/EditorConflictTests.swift`
+- new observation-focused tests if needed
+
+### Work
+
+- add cheap metadata gating or backoff before yielding repeated synthetic changes
+- treat fallback as degraded mode
+- keep fallback alive only while it is actually needed
+
+### Acceptance criteria
+
+- no-change observation does not trigger repeated full revalidation forever at the current cadence
+- external-change detection still works when presenter callbacks are unavailable
+
+---
+
+## 5. Make workspace enumeration tolerant of partial failure
+
+### Goal
+
+Allow the app to keep showing as much of the workspace as possible.
+
+### Files likely involved
+
+- `Downward/Infrastructure/WorkspaceEnumerator.swift`
+- `Downward/Domain/Workspace/WorkspaceSnapshot.swift`
+- logging if you decide to surface skipped nodes
+- `Tests/WorkspaceEnumeratorTests.swift`
+
+### Work
+
+- define skip policy for unreadable descendants
+- define policy for hidden/package/provider metadata folders
+- continue building a partial snapshot unless the workspace root itself is unreadable
+
+### Acceptance criteria
+
+- one unreadable descendant does not fail the whole workspace refresh
+- skipped content policy is documented
+
+### Tests
+
+- unreadable child folder fixture
+- hidden subtree fixture
+- partial snapshot still loads remaining siblings
+
+---
+
+## 6. Make the document write strategy explicit
+
+### Goal
+
+Turn the current direct-write choice into a documented product/architecture decision.
+
+### Files likely involved
+
+- `Downward/Domain/Document/PlainTextDocumentSession.swift`
+- `ARCHITECTURE.md`
+- `QA_CHECKLIST.md`
+- tests only if strategy changes
+
+### Work
+
+- decide whether to keep direct writes or move to a safer replacement strategy
+- document why
+- if staying with direct writes, document recovery expectations and provider rationale
+
+### Acceptance criteria
+
+- one clear section in docs explains the chosen save strategy
+- future contributors do not have to infer the trust model from one code comment
+
+---
+
+## 7. Remove legacy folder-route leftovers
+
+### Goal
+
+Bring code, tests, and docs into alignment with the inline tree-browser model.
+
+### Files likely involved
+
+- `Downward/Shared/Models/AppRoute.swift`
+- `Downward/Features/Root/RootScreen.swift`
+- smoke tests
+- previews relying on folder-route assumptions
+
+### Work
+
+- remove live uses of folder routes if no longer needed
+- keep only what is still required for compatibility or explicit restore flows
+- update docs/tests to the current product model
+
+### Acceptance criteria
+
+- there is one current answer to “how do folders behave in the browser?”
+- live code no longer keeps obsolete navigation branches around without reason
+
+---
+
+## 8. Remove dead browser-row state
+
+### Goal
+
+Simplify workspace row APIs after the “currently open file” indicator removal.
+
+### Files likely involved
+
+- `Downward/Features/Workspace/WorkspaceRowView.swift`
+- row call sites
+- previews
+
+### Work
+
+- remove `isSelected` if it is now purely dead
+- or restore a meaningful use if future selection styling is intentionally coming back
+
+### Acceptance criteria
+
+- row APIs match actual rendered behavior
+- no dead styling inputs remain just to satisfy old call sites
+
+---
+
+## 9. Audit cancellation-safe UI state cleanup
+
+### Goal
+
+Make async UI state unwind correctly even when tasks are cancelled.
+
+### Files likely involved
+
+- `Downward/Features/Workspace/WorkspaceViewModel.swift`
+- `Downward/Features/Editor/EditorViewModel.swift`
+- any other task-owned busy/loading flows
+
+### Work
+
+- use `defer` where flags must always reset
+- audit cancellation branches for stuck state risks
+
+### Acceptance criteria
+
+- busy/loading state cannot remain stuck after task cancellation
+- repeated operations remain possible after a cancelled task
+
+---
+
+## Recommended next prompt order
+
+1. navigation-state split
+2. refresh-generation hardening
+3. editor-host hardening
+4. observation fallback reduction
+5. enumeration policy
+6. write-strategy decision
+7. cleanup tasks
+
+That order gives the biggest future-feature payoff first.

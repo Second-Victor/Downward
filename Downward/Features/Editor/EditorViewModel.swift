@@ -251,8 +251,11 @@ final class EditorViewModel {
         autosaveTask?.cancel()
         isResolvingConflict = true
         Task {
+            defer {
+                isResolvingConflict = false
+            }
+
             let result = await coordinator.reloadDocumentFromDisk(currentRouteDocument)
-            isResolvingConflict = false
 
             switch result {
             case let .success(reloadedDocument):
@@ -278,11 +281,14 @@ final class EditorViewModel {
         session.openDocument = pendingDocument
 
         Task {
+            defer {
+                isResolvingConflict = false
+            }
+
             let result = await coordinator.saveDocument(
                 pendingDocument,
                 overwriteConflict: true
             )
-            isResolvingConflict = false
             applySaveResult(
                 result,
                 for: pendingDocument,
@@ -490,7 +496,7 @@ final class EditorViewModel {
     }
 
     private var activeEditorURL: URL? {
-        session.path.last?.editorURL ?? currentRouteURL
+        session.visibleEditorURL ?? currentRouteURL
     }
 
     private func startObservingDocumentChanges(for document: OpenDocument) {

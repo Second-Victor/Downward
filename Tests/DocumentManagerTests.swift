@@ -336,6 +336,101 @@ final class DocumentManagerTests: XCTestCase {
         withExtendedLifetime(observation) {}
     }
 
+    @MainActor
+    func testFallbackObservationBacksOffWithoutSyntheticChangesWhenFileIsUnchanged() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        _ = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Observed.md",
+            contents: "# Entry\n\nStable text."
+        )
+        let recorder = FallbackObservationRecorder()
+        let session = PlainTextDocumentSession(
+            relativePath: "Observed.md",
+            workspaceRootURL: workspaceURL,
+            securityScopedAccess: FakeDocumentSecurityAccessHandler(),
+            filePresenterEnabled: false,
+            observationFallbackSchedule: .init(
+                intervals: [.milliseconds(20), .milliseconds(40), .milliseconds(80)]
+            ),
+            onFallbackPoll: {
+                Task {
+                    await recorder.recordPoll()
+                }
+            }
+        )
+
+        let stream = try await session.observeChanges()
+        let observationTask = Task {
+            for await _ in stream {
+                await recorder.recordEvent()
+            }
+        }
+
+        try await waitUntil(timeout: .milliseconds(120)) {
+            await recorder.pollCount > 0
+        }
+        try await Task.sleep(for: .milliseconds(150))
+
+        let eventCount = await recorder.eventCount
+        let pollCount = await recorder.pollCount
+        XCTAssertEqual(eventCount, 0)
+        XCTAssertLessThanOrEqual(pollCount, 3)
+
+        observationTask.cancel()
+    }
+
+    @MainActor
+    func testFallbackObservationDetectsExternalChangeWithoutPresenterCallbacks() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let fileURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Observed.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+        let recorder = FallbackObservationRecorder()
+        let session = PlainTextDocumentSession(
+            relativePath: "Observed.md",
+            workspaceRootURL: workspaceURL,
+            securityScopedAccess: FakeDocumentSecurityAccessHandler(),
+            filePresenterEnabled: false,
+            observationFallbackSchedule: .init(
+                intervals: [.milliseconds(20), .milliseconds(20), .milliseconds(20)]
+            ),
+            onFallbackPoll: {
+                Task {
+                    await recorder.recordPoll()
+                }
+            }
+        )
+
+        let stream = try await session.observeChanges()
+        let observationTask = Task {
+            for await _ in stream {
+                await recorder.recordEvent()
+            }
+        }
+
+        try await waitUntil(timeout: .milliseconds(120)) {
+            await recorder.pollCount > 0
+        }
+        try """
+        # Entry
+
+        Changed elsewhere with clearly different size.
+        """.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        try await waitUntil(timeout: .milliseconds(400)) {
+            await recorder.eventCount > 0
+        }
+
+        observationTask.cancel()
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let directoryURL = FileManager.default.temporaryDirectory
             .appending(path: "DocumentManagerTests")
@@ -353,6 +448,38 @@ final class DocumentManagerTests: XCTestCase {
 
     private func removeItemIfPresent(at url: URL) {
         try? FileManager.default.removeItem(at: url)
+    }
+
+    @MainActor
+    private func waitUntil(
+        timeout: Duration,
+        pollInterval: Duration = .milliseconds(10),
+        condition: @escaping @MainActor () async -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+
+        while ContinuousClock.now < deadline {
+            if await condition() {
+                return
+            }
+
+            try await Task.sleep(for: pollInterval)
+        }
+
+        XCTFail("Timed out waiting for condition.")
+    }
+}
+
+private actor FallbackObservationRecorder {
+    private(set) var pollCount = 0
+    private(set) var eventCount = 0
+
+    func recordPoll() {
+        pollCount += 1
+    }
+
+    func recordEvent() {
+        eventCount += 1
     }
 }
 

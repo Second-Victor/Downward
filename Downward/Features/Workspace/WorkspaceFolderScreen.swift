@@ -243,7 +243,6 @@ private struct WorkspaceTreeRow: View {
             } label: {
                 WorkspaceRowView(
                     node: node,
-                    isSelected: false,
                     hierarchyDepth: depth,
                     folderDisclosureState: viewModel.isFolderExpanded(at: folder.url) ? .expanded : .collapsed
                 )
@@ -269,7 +268,6 @@ private struct WorkspaceTreeRow: View {
             } label: {
                 WorkspaceRowView(
                     node: node,
-                    isSelected: viewModel.isSelected(node),
                     hierarchyDepth: depth
                 )
             }
@@ -284,7 +282,6 @@ private struct WorkspaceTreeRow: View {
             NavigationLink(value: AppRoute.editor(node.url)) {
                 WorkspaceRowView(
                     node: node,
-                    isSelected: viewModel.isSelected(node),
                     hierarchyDepth: depth
                 )
             }

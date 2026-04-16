@@ -25,16 +25,14 @@ struct WorkspaceSearchResultsView: View {
                         viewModel.openDocument(result.url)
                     } label: {
                         WorkspaceRowView(
-                            node: result.node,
-                            isSelected: viewModel.isSelectedDocument(relativePath: result.relativePath)
+                            node: result.node
                         )
                     }
                     .buttonStyle(.plain)
                 } else {
                     NavigationLink(value: AppRoute.editor(result.url)) {
                         WorkspaceRowView(
-                            node: result.node,
-                            isSelected: viewModel.isSelectedDocument(relativePath: result.relativePath)
+                            node: result.node
                         )
                     }
                 }

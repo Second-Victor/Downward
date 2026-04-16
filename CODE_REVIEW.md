@@ -2,334 +2,413 @@
 
 ## Scope
 
-This review covered the full repository layout, the core app/session/coordinator flow, workspace and document persistence boundaries, editor and workspace view models, and the existing unit/smoke tests.
+This review covered the current Downward repository after the recent iPhone/iPad tree-browser and editor inset work.
 
-I **did not execute the Xcode test suite** because this environment does not include `xcodebuild`. The conclusions below come from static code review plus test-suite inspection.
+Reviewed areas:
+
+- app/session/coordinator flow
+- compact vs regular navigation shells
+- workspace browser and search UI
+- workspace restore, refresh, recent files, and mutations
+- document open/save/revalidate/observe pipeline
+- settings and editor appearance persistence
+- existing unit and smoke tests
+
+This was a **static review**. I did **not** run `xcodebuild` in this environment, so anything that depends on device-only Files provider behavior, iPad size-class transitions, or runtime TextEditor internals still needs QA on device.
+
+---
 
 ## Overall assessment
 
-Downward has a strong base:
+The repo is in a much better place than a typical SwiftUI file editor MVP.
 
-- the architecture is easy to follow
-- the save-ack merge logic is thoughtful
-- the test suite is much better than average for a SwiftUI app in this size range
-- the product docs are clear about the “calm editor” goal
+What is already strong:
 
-That said, I would not treat the current build as fully hardened yet. The biggest remaining issues are not cosmetic; they sit on the trust boundary around file access, file identity, and long-lived observation.
+- the app has a clear split between `AppCoordinator`, `WorkspaceManager`, `DocumentManager`, and feature view models
+- canonical relative-path identity is used much more consistently than before
+- coordinated workspace mutations are now in place
+- the editor save acknowledgement merge model is still the strongest part of the codebase
+- the test suite is broad enough that you can harden the app without guessing blindly
 
-## What is working well
+The app is **good enough to keep building on**, but I would still treat it as **pre-hardening**, not “future-feature ready.”
 
-### 1. The core split is sensible
+The main risks are no longer basic MVP issues. They are now:
 
-`AppCoordinator`, `WorkspaceManager`, `DocumentManager`, and the view models each own a coherent slice of behavior. That separation makes the code reviewable and gives future changes real seams.
+1. navigation state complexity after the move from folder routes to an inline tree
+2. fragile editor inset customization sitting on top of `TextEditor`
+3. overlapping refresh / observation behavior that is still slightly too loose at the coordinator boundary
+4. file-system policy decisions that are present in code but not fully owned as product/architecture decisions yet
 
-### 2. The autosave merge model is better than most MVP editors
+---
 
-`EditorViewModel` preserves newer in-memory edits when older save acknowledgements come back. That is exactly the right instinct for editor trust.
+## What improved since the earlier review
 
-### 3. The tests are aimed at the right risks
+These are meaningful improvements and should be kept:
 
-The suite covers restore, revalidation, rename/delete coherence, and async race cases. That is where many file-based apps fall apart.
+### 1. Canonical identity is in much better shape
 
-### 4. The project already resists some stale-result races
+`RecentFilesStore` now prunes using `WorkspaceRelativePath.make(...)` from real URLs rather than rebuilding file identity from display names. Search results also use canonical relative paths.
 
-There are generation guards around document loading and workspace transitions. The remaining race problems are fixable because the code already uses the right pattern in several places.
+### 2. Workspace mutations are now coordinated
+
+`LiveWorkspaceManager` now routes create / rename / delete through `WorkspaceFileCoordinating` and `NSFileCoordinator`, which is a real step up from the earlier direct `FileManager` / `Data.write` browser mutations.
+
+### 3. Inline tree browsing is the right product direction
+
+The browser now behaves more like a real file browser. Expansion state is keyed by canonical folder-relative paths, which is the correct identity model for future polish.
+
+### 4. The editor lifecycle is better guarded than before
+
+`EditorViewModel.handleDisappear(for:)` now invalidates pending loads and stops observation. That closes the most obvious “late load resurrects a closed editor” hole.
 
 ---
 
 ## Findings
 
-## P0 — Security-scoped bookmark creation and resolution are almost certainly wrong
+## P1 — Navigation state is now doing double duty across compact and regular layouts
 
 ### Evidence
 
-`LiveSecurityScopedAccessHandler.makeBookmark(for:)` creates bookmark data with `options: []`.
-
-`LiveSecurityScopedAccessHandler.resolveBookmark(_:)` resolves bookmark data with `options: []`.
+- `AppSession.path` is still the single shared route stack.
+- `CompactWorkspaceShell` binds `NavigationStack(path: $session.path)` directly.
+- `RegularWorkspaceShell` does **not** bind detail UI to that same stack, but `AppSession.regularWorkspaceDetail` still derives detail selection partly from `path.last`.
+- `AppCoordinator.presentSettings()` appends `.settings` to `session.path`.
+- `AppCoordinator.presentEditor(for:)` also mutates `session.path` in both size classes.
+- `AppRoute.folder` still exists even though normal browsing no longer uses folder-route navigation.
 
 ### Why it matters
 
-This is the app’s most important persistence boundary. If the bookmark is not created and resolved as a **security-scoped** bookmark, workspace restore can become flaky across relaunches or across providers even if same-session access appears to work.
+The app now has two navigation models:
 
-### Why I ranked it P0
+- compact: real path-driven stack navigation
+- regular: effectively selection/detail rendering with path history piggybacked on top
 
-The whole product promise starts with “choose a folder once, restore it later.” If that boundary is shaky, everything above it is shaky.
+That means `session.path` is carrying both:
+
+- user-visible stack history in compact mode
+- implementation-detail state for regular-width detail rendering
+
+This is workable today, but it is a fragile base for future features like:
+
+- better iPad detail behavior
+- rotation between compact and regular size classes
+- search-to-editor transitions
+- settings/editor switching
+- future multi-document or tab work
+
+It is also easy for stale regular-mode routes to accumulate and then reappear when the app later collapses into a compact stack.
 
 ### Recommendation
 
-- Create the bookmark with security-scope options.
-- Resolve it with security-scope options.
-- Keep start/stop access explicit and centralized.
-- Add a small test seam so bookmark creation and resolution options can be asserted without needing a real device.
+Split navigation concerns explicitly:
+
+- keep `session.path` for compact `NavigationStack` history only
+- add a separate regular-width detail selection model, for example:
+  - `.placeholder`
+  - `.settings`
+  - `.editor(relativePath or URL)`
+- remove `AppRoute.folder` from live navigation if it is no longer part of the product model
+- make rotation / size-class transitions normalize path/detail state intentionally instead of implicitly
 
 ### Suggested tests
 
-- unit test around the bookmark adapter that verifies the expected creation and resolution options
-- real-device QA pass for iCloud Drive and at least one provider-backed folder
+- open settings in regular mode, then open a file, then rotate to compact and assert the stack is sane
+- open an editor in compact mode, rotate to regular, then back again
+- verify repeated settings/editor switching does not grow an invalid hidden route history
 
 ---
 
-## P1 — Path identity is inconsistent: some code uses real relative paths, some uses display names
+## P1 — Workspace refresh generation protection still stops only the cache overwrite, not the caller overwrite
 
 ### Evidence
 
-- `OpenDocument.relativePath` comes from actual URL path components.
-- `RecentFilesStore.pruneInvalidItems(using:)` rebuilds valid relative paths from `WorkspaceNode.displayName`.
-- `WorkspaceSearchEngine` also builds user-visible relative paths from `displayName`.
+- `LiveWorkspaceManager.loadSnapshot(...)` increments `refreshGeneration` and only writes `currentSnapshot` when the generation still matches.
+- the same method still **returns** its snapshot even if it is stale relative to a newer in-flight refresh.
+- `AppCoordinator.refreshWorkspace()` and `handleSceneDidBecomeActive()` still apply the returned snapshot directly.
 
 ### Why it matters
 
-`displayName` is presentation data. It is not guaranteed to be a stable canonical identity. Once the code mixes “real path” and “display path,” persistence features can go wrong in subtle ways.
+You have generation protection in the manager, but not yet at the full call chain boundary.
 
-The clearest risk is recent-file pruning: a valid recent item can be dropped because the rebuilt path uses display names while the stored item uses the actual relative path.
+So two overlapping refreshes can still race like this:
+
+1. refresh A starts
+2. refresh B starts
+3. B finishes first and becomes the newest snapshot
+4. A finishes later and is still returned to the coordinator
+5. the coordinator applies A back into session state
+
+That risk is more important now because the browser tree, recent-files pruning, and open-document reconciliation all depend on the current snapshot being authoritative.
 
 ### Recommendation
 
-- Add a canonical `relativePath` to the snapshot tree or an equivalent identity type.
-- Treat `displayName` as UI-only.
-- Make recent files, restore, mutation reconciliation, and search all share the same canonical path identity.
+Choose one of these and make it explicit:
+
+1. stale manager refreshes should throw/cancel and never return a stale snapshot, or
+2. the coordinator should own a refresh generation and refuse to apply an older result
+
+Right now the generation boundary is not high enough.
 
 ### Suggested tests
 
-- recent-file prune should survive when display names differ from the filesystem name
-- rename/reconnect should preserve recent items using canonical relative paths only
+- delayed enumerator with two overlapping refreshes
+- one refresh triggered by pull-to-refresh and another by foreground activation
+- assert the older result cannot overwrite the newer session snapshot
 
 ---
 
-## P1 — Editor load cancellation and observation lifecycle have a hole
+## P1 — The new editor inset solution is functional, but still fragile and under-tested
 
 ### Evidence
 
-`EditorViewModel.handleDisappear(for:)` does **not** cancel `loadTask` and does not invalidate `loadGeneration`.
+`EditorScreen` now uses a `TextEditorInsetConfigurator` that:
 
-`EditorViewModel.handleAppear(for:)` starts a document load and, on success, always calls `activateLoadedDocument` and `startObservingDocumentChanges(for:)`.
-
-`startObservingDocumentChanges(for:)` does not require a visible editor before starting observation.
+- embeds a blank `UIViewRepresentable` in the `TextEditor` background
+- crawls the UIKit view tree looking for the nearest `UITextView`
+- mutates `textContainerInset` and `lineFragmentPadding`
+- does so inside `DispatchQueue.main.async` during `updateUIView`
 
 ### Why it matters
 
-If the user opens a document and backs out before the async load completes:
+This is a valid tactical workaround, but it is still a brittle bridge around `TextEditor` internals.
 
-- the late load can still become the active `openDocument`
-- the last-open session can still be updated
-- document observation can start even though no editor is visible
+Risks:
 
-That creates a “resurrected editor” problem and can also leave file presenters / fallback polling alive longer than intended.
+- future SwiftUI / TextEditor hierarchy changes can break the subview search
+- inset application is not owned by a stable dedicated text-view wrapper
+- the deferred `DispatchQueue.main.async` write can race with view teardown, document switching, focus changes, or repeated updates
+- there is no test or smoke coverage around this behavior
+
+This area is important because editor polish and future features like syntax themes, selection helpers, find-in-file, or toolbar changes will probably touch the same boundary.
 
 ### Recommendation
 
-- cancel `loadTask` in `handleDisappear`
-- bump or invalidate the generation when the route goes away
-- only activate/start observing if the same document is still visible and still current
+Treat the current inset configurator as a short-term compatibility layer.
+
+Hardening options:
+
+- keep `TextEditor`, but isolate the bridge into a dedicated editor-host file with explicit lifecycle rules and no ad hoc view-tree crawling spread through the screen
+- or move to a thin `UITextView` wrapper **only if** you explicitly decide the app is leaving the “pure TextEditor” phase
+
+Even if you keep `TextEditor`, the current code should be hardened with:
+
+- one owned bridge type
+- no unstructured GCD if it can be avoided
+- explicit comments about why the bridge exists
+- preview / smoke coverage focused on focus changes, document switching, and iPad resizing
+
+### Suggested tests / QA
+
+- open document A, then quickly open B, and verify inset stays correct
+- rotate iPad and resize split view while typing
+- verify the scroll indicator remains edge-near while text inset stays stable
+- add a small smoke test or bridge-focused preview fixture if practical
+
+---
+
+## P2 — Observation fallback still emits synthetic change signals forever
+
+### Evidence
+
+- `PlainTextDocumentSession.startObservationFallbackIfNeeded()` starts a task that yields a change every 3 seconds
+- `EditorViewModel.startObservingDocumentChanges(for:)` revalidates on each event whenever the visible editor is clean and not currently saving
+
+### Why it matters
+
+This means a clean, visible editor can keep performing coordinated reads forever even when nothing changed.
+
+That may still be acceptable as a temporary degraded mode, but it is not a good steady-state architecture for:
+
+- battery
+- provider-backed folders
+- perceived responsiveness on large or cloud-backed workspaces
+- future features layered onto the editor lifecycle
+
+### Recommendation
+
+Turn the fallback into a real degraded-mode policy rather than a constant timer:
+
+- gate on last known file metadata before revalidating
+- back off when repeated checks show no changes
+- only keep the fallback alive while presenter delivery appears unreliable
+- consider making the fallback interval adaptive instead of fixed
 
 ### Suggested tests
 
-- open a file, navigate back immediately, then let the delayed load complete
-- assert no active document is installed and no observation starts
+- no-change observation should not cause repeated full revalidation on a tight cadence
+- presenter-available path should avoid fallback churn
 
 ---
 
-## P1 — Workspace mutations use a different consistency model than document I/O
+## P2 — Workspace enumeration is still too fail-fast for real-world folders
 
 ### Evidence
 
-`LiveWorkspaceManager.createFile`, `renameFile`, and `deleteFile` use direct `Data.write`, `FileManager.moveItem`, and `FileManager.removeItem`.
+`LiveWorkspaceEnumerator.makeNodes(in:)`:
 
-The live document pipeline, by contrast, uses `NSFileCoordinator` for open/reload/revalidate/save.
+- recursively walks everything
+- throws on nested read failures
+- does not define an explicit policy for hidden folders, packages, or provider metadata directories
 
 ### Why it matters
 
-The app’s highest-risk operations should not have two different coordination models.
+One bad descendant can still fail the whole workspace refresh.
 
-Right now:
+That is a poor match for real user folders, which often contain:
 
-- document I/O is coordinated
-- browser mutations are not
+- hidden metadata
+- package-like folders
+- provider-owned entries
+- permission edges at arbitrary depths
 
-That mismatch is risky for provider-backed folders and makes rename/move semantics less predictable for the live editor and file presenters.
+The tree-browser UI is now good enough that users will notice refresh failures more sharply than before.
 
 ### Recommendation
 
-Create a single coordinated mutation boundary for create/rename/delete so browser mutations and editor I/O follow the same rules.
+Define a real enumeration policy:
+
+- skip unreadable descendants and log them
+- continue building a partial snapshot unless the root itself is unreadable
+- decide whether hidden/package/metadata-like folders should be shown, skipped, or opt-in
+- add metrics/logging so you know what is being skipped on device
 
 ### Suggested tests
 
-- rename/delete of an active open file through the browser while observation is live
-- provider-backed mutation QA on device
+- unreadable nested folder should not fail the whole workspace
+- hidden/provider subtree fixture
+- package-like directory fixture if you plan to support mixed content workspaces
 
 ---
 
-## P1 — Refresh generation protection does not fully propagate to callers
+## P2 — Direct non-atomic document writes are still a trust tradeoff that needs to be explicitly owned
 
 ### Evidence
 
-`LiveWorkspaceManager.loadSnapshot` uses `refreshGeneration` only to decide whether to update `currentSnapshot`. It still returns the snapshot to the caller even if the result is stale.
+`PlainTextDocumentSession.writeUTF8Text(...)` still uses:
 
-`AppCoordinator.refreshWorkspace()` and `handleSceneDidBecomeActive()` apply whatever snapshot they receive.
+- direct UTF-8 encoding
+- `data.write(to: url, options: [])`
+
+and the comment explicitly says the app is intentionally avoiding an extra atomic replace step.
 
 ### Why it matters
 
-Two overlapping refreshes can still race at the coordinator/session layer even if the manager protects only its own private cache.
+This may indeed be the right provider-friendly choice, but it is still a trust boundary.
+
+For a file editor, the write strategy is not an implementation detail. It is a product decision about:
+
+- durability
+- provider compatibility
+- corruption risk
+- recovery expectations after interrupted writes
 
 ### Recommendation
 
-Move generation ownership higher:
+Promote this from “comment in one function” to an explicit architecture decision.
 
-- either the manager should not return stale results
-- or the coordinator should refuse to apply them
+Document and choose one path:
+
+- keep direct writes and add corruption-detection / retry / recovery policy, or
+- adopt safer atomic replacement where provider behavior allows it
+
+Either choice can be reasonable. The important thing is to make it deliberate.
+
+### Suggested tests / QA
+
+- save under device/background pressure
+- provider-backed save QA on iCloud Drive and at least one third-party Files provider
+- interrupted save / rapid repeated save scenarios
+
+---
+
+## P2 — File-operation UI state can get stuck if task cancellation happens at the wrong time
+
+### Evidence
+
+`WorkspaceViewModel.startFileOperation(_:)` sets `isPerformingFileOperation = true`, launches a task, and only clears the flag at the end if the task is not cancelled.
+
+There is no `defer` to guarantee the busy state resets.
+
+### Why it matters
+
+This is not the highest-risk bug today, but it is the kind of lifecycle leak that becomes painful once you add:
+
+- more workspace actions
+- richer dialogs
+- drag/drop or share actions
+- retry flows
+
+A stuck “busy” flag can silently block the browser UX in ways that are hard to reproduce.
+
+### Recommendation
+
+Use `defer` around task-owned state mutations for both:
+
+- busy flags
+- temporary prompt state that must always unwind
+
+Also audit `loadTask` / `fileOperationTask` patterns for the same shape elsewhere.
 
 ### Suggested tests
 
-- delayed enumerator with two overlapping refresh requests
-- assert the oldest result cannot overwrite the newest session state
+- cancel an in-flight mutation task and assert the UI leaves busy state
+- queue back-to-back operations and assert the second is not permanently blocked
 
 ---
 
-## P2 — Document writes are intentionally non-atomic, which is a trust tradeoff that is not yet explicitly owned
+## P3 — The codebase still contains some legacy navigation and styling leftovers from before the tree-browser change
 
 ### Evidence
 
-`PlainTextDocumentSession.writeDocumentState(...)` writes directly to the coordinated URL with `Data.write(..., options: [])`.
-
-The comment explicitly avoids another atomic replacement step.
+- `AppRoute.folder` still exists in the live route model
+- `WorkspaceRouteDestination` still supports `.folder(...)`
+- several smoke tests still seed folder routes into `session.path`
+- `WorkspaceRowView.isSelected` is still passed around but no longer affects the row appearance
 
 ### Why it matters
 
-This may reduce provider churn, but it also lowers write durability. For a file editor, “the save path cannot corrupt the file” is one of the hardest trust requirements.
+This is not breaking the app today, but it increases review noise and makes future navigation refactors harder because the codebase no longer has one clean source of truth for “what browsing means now.”
 
 ### Recommendation
 
-Do not leave this as an implicit tradeoff.
+Do a small cleanup pass:
 
-Pick and document one of these strategies:
-
-1. provider-friendly direct writes plus extra corruption detection / retry logic, or
-2. safer temp-write-and-replace where the provider behavior is acceptable
-
-Either choice is defensible; the current issue is that the durability decision is present in code but not yet treated as an explicit product/architecture decision.
+- remove unused folder-route behavior from live code if it is no longer part of the product
+- update smoke tests to reflect the inline-tree model instead of old folder navigation assumptions
+- remove unused row selection styling inputs if they are truly dead
 
 ---
 
-## P2 — The fallback observation loop causes ongoing revalidation churn
+## Strengths worth preserving
 
-### Evidence
+These are the things I would actively protect during future work:
 
-`PlainTextDocumentSession.startObservationFallbackIfNeeded()` emits a change every 3 seconds even when nothing changed.
-
-`EditorViewModel.startObservingDocumentChanges(for:)` revalidates on every emitted event whenever the document is clean and visible.
-
-### Why it matters
-
-That means a clean visible editor can perform coordinated reads forever with no actual change signal. This is exactly the kind of quiet provider churn that becomes visible on real devices as battery use, sluggishness, or noisy logs.
-
-### Recommendation
-
-- treat the fallback as a degraded mode, not the default steady state
-- add metadata gating, backoff, or a “presenter appears inactive” heuristic
-- keep the fallback cheap when the file is stable
-
-### Suggested tests
-
-- no-change observation should not repeatedly revalidate forever in a tight cadence
+1. `EditorViewModel` save acknowledgement merge logic
+2. canonical relative-path identity for persistence and reconciliation
+3. coordinated workspace mutation boundary in `LiveWorkspaceManager`
+4. the current amount of test coverage around restore, rename/delete, autosave, and conflicts
+5. keeping file-system semantics out of SwiftUI views
 
 ---
 
-## P2 — Workspace enumeration is fail-fast and may be too eager for real folders
+## Recommended priority order
 
-### Evidence
-
-`LiveWorkspaceEnumerator.makeNodes(in:)` recursively walks every child and throws on any nested failure.
-
-### Why it matters
-
-One unreadable child folder can fail the whole workspace refresh. Also, deeply nested metadata or provider-generated folders can make refresh slower than necessary.
-
-### Recommendation
-
-- decide an explicit policy for hidden / package / metadata-like folders
-- continue past unreadable children where possible
-- log skipped nodes instead of failing the whole snapshot unless the root itself is unreadable
-
-### Suggested tests
-
-- unreadable nested folder fixture
-- large hidden subtree fixture
-- partial snapshot should still load the rest of the workspace
+1. split compact path history from regular detail selection
+2. raise refresh-generation protection to the coordinator/application boundary
+3. harden the editor inset bridge and add targeted QA / smoke coverage
+4. reduce observation fallback churn
+5. define partial-snapshot enumeration policy
+6. make the document write-durability decision explicit in architecture/docs/tests
+7. clean up legacy folder-route and unused row-state leftovers
 
 ---
 
-## P3 — Case-only rename is fragile on case-insensitive providers
+## Release readiness call
 
-### Evidence
+I would call the current codebase:
 
-`renameFile(at:to:)` checks `fileExists(atPath:)` before moving. On a case-insensitive provider, `foo.md -> Foo.md` can look like a duplicate even though it is meant to be the same file renamed by case only.
+- **good foundation**
+- **safe to keep iterating on**
+- **not fully hardened for bigger future feature work yet**
 
-### Recommendation
-
-Handle the “same item, different case” path explicitly.
-
-### Suggested tests
-
-- case-only rename fixture in a case-insensitive test harness or provider-aware integration test
-
----
-
-## P3 — There is some dormant or mismatched state in the model layer
-
-### Evidence
-
-- `WorkspaceAccessState.restorable` appears unused by the live app flow.
-- `DocumentConflict.Kind.modifiedOnDisk` is not produced by the live document pipeline.
-- `AppCoordinator.present(_ error:context:)` appears unused.
-
-### Why it matters
-
-This is not a release blocker, but dead states make it harder to understand what the shipping behavior actually is.
-
-### Recommendation
-
-Remove or wire up these cases and align docs with the behavior you actually intend to ship.
-
----
-
-## Test-suite assessment
-
-The existing suite is a real asset. I would keep it and expand it before any more feature work.
-
-### Strong coverage already present
-
-- save-ack merge behavior
-- foreground revalidation behavior
-- restore/reconnect flows
-- rename/delete coherence
-- search and recent-files basics
-
-### Most important missing tests
-
-1. delayed editor load followed by route disappearance
-2. overlapping workspace refreshes
-3. display-name vs canonical-path divergence
-4. case-only rename
-5. unreadable nested folder during snapshot build
-6. observation fallback does not churn indefinitely when nothing changed
-7. workspace mutation coordination behavior on provider-backed folders
-
----
-
-## Recommended execution order
-
-1. Fix the security-scoped bookmark boundary.
-2. Unify canonical relative-path identity across snapshot, recents, restore, and search.
-3. Fix editor-load cancellation and observation start/stop rules.
-4. Move create/rename/delete onto a coordinated mutation path.
-5. Add end-to-end refresh generation protection.
-6. Decide and document the write-durability strategy.
-7. Reduce fallback polling churn.
-8. Make enumeration resilient and define skip policy.
-9. Clean out dormant states and doc drift.
-
-## Bottom line
-
-This repo is in good shape structurally. The remaining work is mostly **trust hardening**, not a rewrite.
-
-That is good news: the app does not need a new architecture. It needs a tighter contract around the file boundary and a few carefully targeted state-management fixes.
+The next step should not be a flashy feature. It should be one focused hardening release that cleans up navigation state ownership, editor bridge ownership, refresh/observation policy, and file-boundary decisions.

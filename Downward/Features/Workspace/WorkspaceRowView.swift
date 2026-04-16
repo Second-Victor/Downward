@@ -7,7 +7,6 @@ struct WorkspaceRowView: View {
     }
 
     let node: WorkspaceNode
-    let isSelected: Bool
     var hierarchyDepth: Int = 0
     var folderDisclosureState: FolderDisclosureState? = nil
     private let indentUnit: CGFloat = 12
@@ -146,7 +145,6 @@ struct WorkspaceRowView: View {
     List {
         WorkspaceRowView(
             node: PreviewSampleData.nestedWorkspace.rootNodes[0],
-            isSelected: false,
             hierarchyDepth: 0,
             folderDisclosureState: .collapsed
         )
@@ -157,7 +155,6 @@ struct WorkspaceRowView: View {
     List {
         WorkspaceRowView(
             node: PreviewSampleData.nestedWorkspace.rootNodes[0],
-            isSelected: false,
             hierarchyDepth: 1,
             folderDisclosureState: .expanded
         )
@@ -175,7 +172,6 @@ struct WorkspaceRowView: View {
                     modifiedAt: PreviewSampleData.previewDate
                 )
             ),
-            isSelected: false,
             hierarchyDepth: 0
         )
     }
@@ -192,7 +188,6 @@ struct WorkspaceRowView: View {
                     modifiedAt: PreviewSampleData.previewDate.addingTimeInterval(-1_800)
                 )
             ),
-            isSelected: false,
             hierarchyDepth: 1
         )
     }
@@ -209,7 +204,6 @@ struct WorkspaceRowView: View {
                     modifiedAt: PreviewSampleData.previewDate.addingTimeInterval(-5_400)
                 )
             ),
-            isSelected: false,
             hierarchyDepth: 0
         )
     }

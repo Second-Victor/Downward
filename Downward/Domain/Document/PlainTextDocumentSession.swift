@@ -6,27 +6,54 @@ import Foundation
 /// interrupts when the path disappears or a coordinated read/write fails unrecoverably.
 actor PlainTextDocumentSession {
     /// Some provider-backed locations do not emit reliable `NSFilePresenter` callbacks.
-    /// Keep a low-frequency fallback so external changes can still surface on device, but avoid
-    /// polling often enough to make clean editing feel noisy or to add unnecessary provider churn.
-    nonisolated private static let observationFallbackInterval: Duration = .seconds(3)
+    /// Treat fallback polling as degraded detection, not steady-state observation: only emit a
+    /// synthetic change when cheap file metadata actually moves, and back off when repeated polls
+    /// stay unchanged.
+    struct ObservationFallbackSchedule: Sendable {
+        let intervals: [Duration]
+
+        init(intervals: [Duration]) {
+            precondition(intervals.isEmpty == false, "Fallback schedule must contain at least one interval.")
+            self.intervals = intervals
+        }
+
+        func interval(forUnchangedPollCount count: Int) -> Duration {
+            intervals[min(max(count, 0), intervals.count - 1)]
+        }
+
+        static let live = ObservationFallbackSchedule(
+            intervals: [.seconds(3), .seconds(6), .seconds(12), .seconds(24), .seconds(30)]
+        )
+    }
 
     private let workspaceRootURL: URL
     private var relativePath: String
     private let securityScopedAccess: any SecurityScopedAccessHandling
+    private let filePresenterEnabled: Bool
+    private let observationFallbackSchedule: ObservationFallbackSchedule
+    private let onFallbackPoll: (@Sendable () -> Void)?
     private var observationLease: SecurityScopedAccessLease?
     private var observationURL: URL?
     private var filePresenter: PlainTextDocumentFilePresenter?
     private var observationFallbackTask: Task<Void, Never>?
     private var changeContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
+    private var lastFallbackSnapshot: ObservationFallbackSnapshot?
+    private var unchangedFallbackPollCount = 0
 
     init(
         relativePath: String,
         workspaceRootURL: URL,
-        securityScopedAccess: any SecurityScopedAccessHandling
+        securityScopedAccess: any SecurityScopedAccessHandling,
+        filePresenterEnabled: Bool = true,
+        observationFallbackSchedule: ObservationFallbackSchedule = .live,
+        onFallbackPoll: (@Sendable () -> Void)? = nil
     ) {
         self.relativePath = relativePath
         self.workspaceRootURL = workspaceRootURL
         self.securityScopedAccess = securityScopedAccess
+        self.filePresenterEnabled = filePresenterEnabled
+        self.observationFallbackSchedule = observationFallbackSchedule
+        self.onFallbackPoll = onFallbackPoll
     }
 
     func openDocument(fallbackName: String) async throws -> OpenDocument {
@@ -149,8 +176,21 @@ actor PlainTextDocumentSession {
         }.value
     }
 
-    /// Performs a coordinated last-writer-wins save for the active editor buffer. The active buffer remains
-    /// authoritative during ordinary typing; only missing paths or unrecoverable write failures interrupt it.
+    /// Performs a coordinated last-writer-wins save for the active editor buffer.
+    ///
+    /// Write strategy:
+    /// - coordinate the live workspace URL with `NSFileCoordinator`
+    /// - write the UTF-8 buffer directly to that coordinated URL
+    /// - do not add a second temp-file replacement step on top
+    ///
+    /// This is intentional for provider-backed folders. The app edits the user-selected workspace in place,
+    /// and adding another replacement hop can trigger exactly the extra provider churn and file-identity noise
+    /// that this live document session is meant to avoid. The tradeoff is that durability still depends on the
+    /// underlying provider honoring the coordinated direct write, so real-device QA on iCloud/Files providers
+    /// remains part of the product contract.
+    ///
+    /// The active buffer remains authoritative during ordinary typing; only missing paths or unrecoverable
+    /// write failures interrupt it.
     func saveDocument(
         _ document: OpenDocument,
         overwriteConflict: Bool
@@ -210,15 +250,23 @@ actor PlainTextDocumentSession {
         self.relativePath = relativePath
         observationURL = url
         filePresenter?.updatePresentedItemURL(to: url)
+        resetObservationFallbackState()
     }
 
     private func ensureObservationStarted() throws {
-        guard filePresenter == nil else {
+        guard observationLease == nil else {
             return
         }
 
         let lease = try securityScopedAccess.beginAccess(to: workspaceRootURL)
         let observedURL = Self.resolveDescendantURL(relativePath, within: lease.url)
+        observationLease = lease
+        observationURL = observedURL
+
+        guard filePresenterEnabled else {
+            return
+        }
+
         let presenter = PlainTextDocumentFilePresenter(
             url: observedURL,
             onChange: { [weak self] in
@@ -229,8 +277,6 @@ actor PlainTextDocumentSession {
         )
 
         NSFileCoordinator.addFilePresenter(presenter)
-        observationLease = lease
-        observationURL = observedURL
         filePresenter = presenter
     }
 
@@ -261,6 +307,7 @@ actor PlainTextDocumentSession {
         observationURL = nil
         observationLease?.endAccess()
         observationLease = nil
+        resetObservationFallbackState()
     }
 
     private func startObservationFallbackIfNeeded() {
@@ -268,15 +315,72 @@ actor PlainTextDocumentSession {
             return
         }
 
+        let fallbackSchedule = observationFallbackSchedule
         observationFallbackTask = Task { [weak self] in
+            await self?.primeObservationFallbackState()
+
             while Task.isCancelled == false {
-                try? await Task.sleep(for: Self.observationFallbackInterval)
+                let interval = await self?.currentObservationFallbackInterval()
+                    ?? fallbackSchedule.interval(forUnchangedPollCount: 0)
+                try? await Task.sleep(for: interval)
                 guard Task.isCancelled == false else {
                     break
                 }
 
-                await self?.emitObservedChange()
+                await self?.performObservationFallbackPoll()
             }
+        }
+    }
+
+    private func primeObservationFallbackState() {
+        lastFallbackSnapshot = loadObservationFallbackSnapshot()
+        unchangedFallbackPollCount = 0
+    }
+
+    private func currentObservationFallbackInterval() -> Duration {
+        observationFallbackSchedule.interval(forUnchangedPollCount: unchangedFallbackPollCount)
+    }
+
+    private func performObservationFallbackPoll() {
+        onFallbackPoll?()
+
+        let snapshot = loadObservationFallbackSnapshot()
+        guard snapshot != lastFallbackSnapshot else {
+            unchangedFallbackPollCount += 1
+            return
+        }
+
+        lastFallbackSnapshot = snapshot
+        unchangedFallbackPollCount = 0
+        emitObservedChange()
+    }
+
+    private func resetObservationFallbackState() {
+        lastFallbackSnapshot = nil
+        unchangedFallbackPollCount = 0
+    }
+
+    private func loadObservationFallbackSnapshot() -> ObservationFallbackSnapshot? {
+        guard let observationURL else {
+            return nil
+        }
+
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: observationURL.path)
+            guard (attributes[.type] as? FileAttributeType) != .typeDirectory else {
+                return .missing
+            }
+
+            return .existing(
+                contentModificationDate: attributes[.modificationDate] as? Date,
+                fileSize: (attributes[.size] as? NSNumber)?.intValue ?? 0
+            )
+        } catch {
+            if Self.isMissingFileError(error) {
+                return .missing
+            }
+
+            return .unreadable
         }
     }
 
@@ -395,9 +499,9 @@ actor PlainTextDocumentSession {
                     return
                 }
 
-                // Write directly to the coordinated URL. An additional atomic replace here would create
-                // another filesystem-level replacement step on provider-backed files, which is exactly the
-                // noisy path this live document session is replacing.
+                // Intentionally write straight through the coordinated URL. We avoid layering another
+                // temp-file replace on top because provider-backed folders are calmer when the app keeps
+                // one coordinated in-place write boundary instead of manufacturing an extra replacement step.
                 try writeUTF8Text(text, to: coordinatedURL, fallbackName: fallbackName)
 
                 let resourceValues = try coordinatedURL.resourceValues(forKeys: documentResourceKeys)
@@ -614,6 +718,12 @@ actor PlainTextDocumentSession {
                 partialURL.appending(path: String(component))
             }
     }
+}
+
+private enum ObservationFallbackSnapshot: Equatable {
+    case existing(contentModificationDate: Date?, fileSize: Int)
+    case missing
+    case unreadable
 }
 
 private struct CoordinatedDocumentState: Sendable {

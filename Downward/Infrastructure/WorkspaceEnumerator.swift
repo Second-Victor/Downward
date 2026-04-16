@@ -7,7 +7,7 @@ protocol WorkspaceEnumerating: Sendable {
 /// Walks the workspace recursively, keeping all real folders while filtering files down to supported types.
 struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
     nonisolated func makeSnapshot(rootURL: URL, displayName: String) throws -> WorkspaceSnapshot {
-        let rootNodes = try makeNodes(in: rootURL)
+        let rootNodes = try makeNodes(in: rootURL, allowsPartialFailure: false) ?? []
 
         return WorkspaceSnapshot(
             rootURL: rootURL,
@@ -17,22 +17,44 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
         )
     }
 
-    nonisolated private func makeNodes(in directoryURL: URL) throws -> [WorkspaceNode] {
+    /// Enumeration policy:
+    /// - unreadable workspace root: fail the refresh because there is no trustworthy workspace view
+    /// - unreadable descendant: skip that node/subtree and keep remaining siblings
+    /// - hidden/package descendants: skip intentionally because they are not part of the user-facing tree
+    nonisolated private func makeNodes(
+        in directoryURL: URL,
+        allowsPartialFailure: Bool
+    ) throws -> [WorkspaceNode]? {
         try Task.checkCancellation()
 
         let resourceKeys: Set<URLResourceKey> = [
             .isDirectoryKey,
             .isRegularFileKey,
+            .isHiddenKey,
+            .isPackageKey,
             .localizedNameKey,
             .nameKey,
             .contentModificationDateKey,
         ]
 
-        let childURLs = try FileManager.default.contentsOfDirectory(
-            at: directoryURL,
-            includingPropertiesForKeys: Array(resourceKeys),
-            options: []
-        )
+        let childURLs: [URL]
+        do {
+            childURLs = try FileManager.default.contentsOfDirectory(
+                at: directoryURL,
+                includingPropertiesForKeys: Array(resourceKeys),
+                options: []
+            )
+        } catch {
+            guard allowsPartialFailure else {
+                throw error
+            }
+
+            guard Self.shouldSkipDescendantFailure(error) else {
+                throw error
+            }
+
+            return nil
+        }
 
         var nodes: [WorkspaceNode] = []
         nodes.reserveCapacity(childURLs.count)
@@ -40,11 +62,30 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
         for childURL in childURLs {
             try Task.checkCancellation()
 
-            let resourceValues = try childURL.resourceValues(forKeys: resourceKeys)
+            let resourceValues: URLResourceValues
+            do {
+                resourceValues = try childURL.resourceValues(forKeys: resourceKeys)
+            } catch {
+                guard Self.shouldSkipDescendantFailure(error) else {
+                    throw error
+                }
+
+                continue
+            }
             let displayName = resourceValues.localizedName ?? resourceValues.name ?? childURL.lastPathComponent
 
+            guard Self.shouldSkipNode(
+                at: childURL,
+                displayName: displayName,
+                resourceValues: resourceValues
+            ) == false else {
+                continue
+            }
+
             if resourceValues.isDirectory == true {
-                let children = try makeNodes(in: childURL)
+                guard let children = try makeNodes(in: childURL, allowsPartialFailure: true) else {
+                    continue
+                }
                 nodes.append(
                     .folder(
                         .init(
@@ -78,6 +119,26 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
         }
 
         return nodes.sorted(by: workspaceNodeSortPredicate)
+    }
+
+    nonisolated private static func shouldSkipNode(
+        at url: URL,
+        displayName: String,
+        resourceValues: URLResourceValues
+    ) -> Bool {
+        if resourceValues.isHidden == true || displayName.hasPrefix(".") {
+            return true
+        }
+
+        if resourceValues.isPackage == true {
+            return true
+        }
+
+        return false
+    }
+
+    nonisolated private static func shouldSkipDescendantFailure(_ error: Error) -> Bool {
+        (error is CancellationError) == false
     }
 }
 

@@ -76,6 +76,10 @@ final class RootViewModel {
         }
     }
 
+    func updateNavigationLayout(_ layout: WorkspaceNavigationLayout) {
+        coordinator.updateNavigationLayout(layout)
+    }
+
     func didChange(path: [AppRoute]) {
         coordinator.didChangeNavigationPath(path)
     }
