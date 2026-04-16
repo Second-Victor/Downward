@@ -14,6 +14,19 @@ enum WorkspaceNode: Hashable, Identifiable, Sendable {
         nonisolated let url: URL
         nonisolated let displayName: String
         nonisolated let subtitle: String?
+        nonisolated let modifiedAt: Date?
+
+        nonisolated init(
+            url: URL,
+            displayName: String,
+            subtitle: String?,
+            modifiedAt: Date? = nil
+        ) {
+            self.url = url
+            self.displayName = displayName
+            self.subtitle = subtitle
+            self.modifiedAt = modifiedAt
+        }
     }
 
     nonisolated var id: URL {
@@ -54,6 +67,14 @@ enum WorkspaceNode: Hashable, Identifiable, Sendable {
         return nil
     }
 
+    nonisolated var itemCount: Int? {
+        if case let .folder(folder) = self {
+            return folder.children.count
+        }
+
+        return nil
+    }
+
     nonisolated var isFolder: Bool {
         if case .folder = self {
             return true
@@ -68,5 +89,13 @@ enum WorkspaceNode: Hashable, Identifiable, Sendable {
         }
 
         return false
+    }
+
+    nonisolated var modifiedAt: Date? {
+        if case let .file(file) = self {
+            return file.modifiedAt
+        }
+
+        return nil
     }
 }

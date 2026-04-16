@@ -52,7 +52,8 @@ enum WorkspaceSearchEngine {
                     WorkspaceSearchResult(
                         url: file.url,
                         displayName: file.displayName,
-                        relativePath: relativePath
+                        relativePath: relativePath,
+                        modifiedAt: file.modifiedAt
                     )
                 )
             }

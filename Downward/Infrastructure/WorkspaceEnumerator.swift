@@ -25,6 +25,7 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
             .isRegularFileKey,
             .localizedNameKey,
             .nameKey,
+            .contentModificationDateKey,
         ]
 
         let childURLs = try FileManager.default.contentsOfDirectory(
@@ -69,7 +70,8 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
                     .init(
                         url: childURL,
                         displayName: displayName,
-                        subtitle: nil
+                        subtitle: nil,
+                        modifiedAt: resourceValues.contentModificationDate
                     )
                 )
             )

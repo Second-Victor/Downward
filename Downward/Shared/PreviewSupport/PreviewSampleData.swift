@@ -76,14 +76,16 @@ enum PreviewSampleData {
                                         .init(
                                             url: todayDocumentURL,
                                             displayName: "2026-04-13.md",
-                                            subtitle: "Daily note"
+                                            subtitle: "Daily note",
+                                            modifiedAt: previewDate.addingTimeInterval(-600)
                                         )
                                     ),
                                     .file(
                                         .init(
                                             url: ideasDocumentURL,
                                             displayName: "Ideas.markdown",
-                                            subtitle: "Scratchpad"
+                                            subtitle: "Scratchpad",
+                                            modifiedAt: previewDate.addingTimeInterval(-3_600)
                                         )
                                     ),
                                 ]
@@ -101,7 +103,8 @@ enum PreviewSampleData {
                             .init(
                                 url: readmeDocumentURL,
                                 displayName: "README.md",
-                                subtitle: "Project overview"
+                                subtitle: "Project overview",
+                                modifiedAt: previewDate.addingTimeInterval(-7_200)
                             )
                         ),
                     ]
@@ -118,7 +121,8 @@ enum PreviewSampleData {
                 .init(
                     url: inboxDocumentURL,
                     displayName: "Inbox.md",
-                    subtitle: "Root document"
+                    subtitle: "Root document",
+                    modifiedAt: previewDate
                 )
             ),
         ],
@@ -153,7 +157,8 @@ enum PreviewSampleData {
                                                                 .init(
                                                                     url: deepWorkspaceRootFolderURL.appending(path: "iOS/Downward/Notes/Roadmap.md"),
                                                                     displayName: "Roadmap.md",
-                                                                    subtitle: "Sprint notes"
+                                                                    subtitle: "Sprint notes",
+                                                                    modifiedAt: previewDate.addingTimeInterval(-10_800)
                                                                 )
                                                             ),
                                                         ]
@@ -337,7 +342,8 @@ enum PreviewSampleData {
                     .init(
                         url: folderURL.appending(path: "Note \(item).md"),
                         displayName: "Note \(item).md",
-                        subtitle: "Section \(section)"
+                        subtitle: "Section \(section)",
+                        modifiedAt: previewDate.addingTimeInterval(TimeInterval(-(section * item * 300)))
                     )
                 )
             }
@@ -356,7 +362,8 @@ enum PreviewSampleData {
                 .init(
                     url: largeWorkspaceURL.appending(path: "Inbox \(item).md"),
                     displayName: "Inbox \(item).md",
-                    subtitle: "Root"
+                    subtitle: "Root",
+                    modifiedAt: previewDate.addingTimeInterval(TimeInterval(-(item * 900)))
                 )
             )
         }

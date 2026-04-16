@@ -1,8 +1,10 @@
 import SwiftUI
+import UIKit
 
 struct EditorScreen: View {
     let viewModel: EditorViewModel
     let documentURL: URL
+    private let editorHorizontalInset: CGFloat = 12
 
     var body: some View {
         editorContent
@@ -34,7 +36,6 @@ struct EditorScreen: View {
                 ConflictResolutionView(viewModel: viewModel)
             }
     }
-
     @ViewBuilder
     private var editorContent: some View {
         if viewModel.currentRouteDocument != nil {
@@ -42,6 +43,9 @@ struct EditorScreen: View {
                 TextEditor(text: viewModel.textBinding)
                     .font(viewModel.editorFont)
                     .scrollContentBackground(.hidden)
+                    .background(
+                        TextEditorInsetConfigurator(horizontalInset: editorHorizontalInset)
+                    )
                     .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
                     .accessibilityLabel("Document Text")
                     .accessibilityHint("Edits the current text document.")
@@ -51,7 +55,7 @@ struct EditorScreen: View {
                         .font(viewModel.editorFont)
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
-                        .padding(.leading, 5)
+                        .padding(.leading, editorHorizontalInset)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
@@ -79,6 +83,36 @@ struct EditorScreen: View {
     }
 }
 
+/// Applies horizontal inset to the underlying UITextView text container without moving
+/// the scroll indicator away from the screen edge.
+private struct TextEditorInsetConfigurator: UIViewRepresentable {
+    let horizontalInset: CGFloat
+
+    func makeUIView(context: Context) -> UIView {
+        UIView(frame: .zero)
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            guard let textView = uiView.nearestTextView() else {
+                return
+            }
+
+            var updatedInset = textView.textContainerInset
+            updatedInset.left = horizontalInset
+            updatedInset.right = horizontalInset
+
+            if textView.textContainerInset != updatedInset {
+                textView.textContainerInset = updatedInset
+            }
+
+            if textView.textContainer.lineFragmentPadding != 0 {
+                textView.textContainer.lineFragmentPadding = 0
+            }
+        }
+    }
+}
+
 private extension View {
     @ViewBuilder
     func editorNavigationSubtitle(_ subtitle: String?) -> some View {
@@ -87,6 +121,36 @@ private extension View {
         } else {
             self
         }
+    }
+}
+
+private extension UIView {
+    func nearestTextView() -> UITextView? {
+        var currentView: UIView? = self
+
+        while let view = currentView {
+            if let textView = view.findSubview(of: UITextView.self) {
+                return textView
+            }
+
+            currentView = view.superview
+        }
+
+        return nil
+    }
+
+    func findSubview<T: UIView>(of type: T.Type) -> T? {
+        for subview in subviews {
+            if let matchingView = subview as? T {
+                return matchingView
+            }
+
+            if let matchingDescendant = subview.findSubview(of: type) {
+                return matchingDescendant
+            }
+        }
+
+        return nil
     }
 }
 

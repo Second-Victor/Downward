@@ -12,47 +12,62 @@ struct WorkspaceRowView: View {
     var folderDisclosureState: FolderDisclosureState? = nil
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Color.clear
-                .frame(width: CGFloat(hierarchyDepth) * 18)
+                .frame(width: CGFloat(hierarchyDepth) * 12)
 
-            if let folderDisclosureState {
-                Image(systemName: folderDisclosureState == .expanded ? "chevron.down" : "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 12)
-            } else if hierarchyDepth > 0 {
-                Color.clear
-                    .frame(width: 12)
-            }
-
-            Image(systemName: node.isFolder ? "folder.fill" : "doc.text")
+            Image(systemName: node.isFolder ? "folder" : "doc.text")
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(node.isFolder ? Color.accentColor : .secondary)
+                .frame(width: 20)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: node.subtitle == nil ? 0 : 3) {
                 Text(node.displayName)
                     .font(.body)
-
-                if let subtitle = node.subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                    .lineLimit(1)
             }
 
-            Spacer()
+            Spacer(minLength: 12)
 
-            if isSelected {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
-            }
+            trailingContent
         }
-        .padding(.vertical, 4)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(accessibilityValue)
         .accessibilityHint(accessibilityHint)
+    }
+
+    @ViewBuilder
+    private var trailingContent: some View {
+        if let folderDisclosureState {
+            HStack(spacing: 10) {
+                if let itemCountText {
+                    Text(itemCountText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Image(systemName: folderDisclosureState == .expanded ? "chevron.down" : "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 12)
+                    .accessibilityHidden(true)
+            }
+        } else if fileTrailingMetadataVisible {
+            HStack(alignment: .center, spacing: 10) {
+                if let modifiedAt = node.modifiedAt {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(Self.fileDateFormatter.string(from: modifiedAt))
+                        Text(Self.fileTimeFormatter.string(from: modifiedAt))
+                    }
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+                }
+            }
+        }
     }
 
     private var accessibilityLabel: String {
@@ -65,11 +80,14 @@ struct WorkspaceRowView: View {
 
     private var accessibilityValue: String {
         var values: [String] = [node.isFolder ? "Folder" : "File"]
+        if let itemCountText {
+            values.append(itemCountText)
+        }
         if let folderDisclosureState {
             values.append(folderDisclosureState == .expanded ? "Expanded" : "Collapsed")
         }
-        if isSelected {
-            values.append("Open")
+        if let modifiedAt = node.modifiedAt {
+            values.append("Last edited \(Self.accessibilityDateTimeFormatter.string(from: modifiedAt))")
         }
         return values.joined(separator: ", ")
     }
@@ -81,9 +99,51 @@ struct WorkspaceRowView: View {
 
         return node.isFolder ? "Opens this folder." : "Opens this document."
     }
+
+    private var itemCountText: String? {
+        guard let itemCount = node.itemCount else {
+            return nil
+        }
+
+        return String(itemCount)
+    }
+
+    private var fileTrailingMetadataVisible: Bool {
+        node.modifiedAt != nil
+    }
+
+    private static let fileDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("MMM d")
+        return formatter
+    }()
+
+    private static let fileTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    private static let accessibilityDateTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }
 
-#Preview {
+#Preview("Folder Row") {
+    List {
+        WorkspaceRowView(
+            node: PreviewSampleData.nestedWorkspace.rootNodes[0],
+            isSelected: false,
+            hierarchyDepth: 0,
+            folderDisclosureState: .collapsed
+        )
+    }
+}
+
+#Preview("Folder Row Expanded") {
     List {
         WorkspaceRowView(
             node: PreviewSampleData.nestedWorkspace.rootNodes[0],
@@ -91,15 +151,38 @@ struct WorkspaceRowView: View {
             hierarchyDepth: 0,
             folderDisclosureState: .expanded
         )
+    }
+}
+
+#Preview("File Row") {
+    List {
         WorkspaceRowView(
             node: .file(
                 .init(
                     url: PreviewSampleData.cleanDocument.url,
                     displayName: PreviewSampleData.cleanDocument.displayName,
-                    subtitle: PreviewSampleData.cleanDocument.relativePath
+                    subtitle: PreviewSampleData.cleanDocument.relativePath,
+                    modifiedAt: PreviewSampleData.previewDate
                 )
             ),
-            isSelected: true,
+            isSelected: false,
+            hierarchyDepth: 1
+        )
+    }
+}
+
+#Preview("Indented File Row") {
+    List {
+        WorkspaceRowView(
+            node: .file(
+                .init(
+                    url: PreviewSampleData.dirtyDocument.url,
+                    displayName: PreviewSampleData.dirtyDocument.displayName,
+                    subtitle: PreviewSampleData.dirtyDocument.relativePath,
+                    modifiedAt: PreviewSampleData.previewDate.addingTimeInterval(-1_800)
+                )
+            ),
+            isSelected: false,
             hierarchyDepth: 2
         )
     }
