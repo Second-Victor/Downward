@@ -163,6 +163,53 @@ final class WorkspaceEnumeratorTests: XCTestCase {
         XCTAssertEqual(visibleFolder.children.map(\.displayName), ["Keep.md"])
     }
 
+    func testEnumeratorSkipsSymbolicLinkFilePointingOutsideWorkspace() throws {
+        let rootURL = try makeTemporaryWorkspace()
+        let externalURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: rootURL) }
+        defer { removeItemIfPresent(at: externalURL) }
+
+        try createFile(named: "Keep.md", in: rootURL)
+        let externalFileURL = try createFile(named: "Escaped.md", in: externalURL)
+        try createSymbolicLink(
+            named: "Escaped.md",
+            in: rootURL,
+            destinationURL: externalFileURL
+        )
+
+        let snapshot = try LiveWorkspaceEnumerator().makeSnapshot(
+            rootURL: rootURL,
+            displayName: "Workspace"
+        )
+
+        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Keep.md"])
+    }
+
+    func testEnumeratorSkipsSymbolicLinkFolderPointingOutsideWorkspace() throws {
+        let rootURL = try makeTemporaryWorkspace()
+        let externalURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: rootURL) }
+        defer { removeItemIfPresent(at: externalURL) }
+
+        let readableFolderURL = try createDirectory(named: "Readable", in: rootURL)
+        try createFile(named: "Keep.md", in: readableFolderURL)
+
+        let externalFolderURL = try createDirectory(named: "EscapedFolder", in: externalURL)
+        try createFile(named: "Outside.md", in: externalFolderURL)
+        try createSymbolicLink(
+            named: "EscapedFolder",
+            in: rootURL,
+            destinationURL: externalFolderURL
+        )
+
+        let snapshot = try LiveWorkspaceEnumerator().makeSnapshot(
+            rootURL: rootURL,
+            displayName: "Workspace"
+        )
+
+        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Readable"])
+    }
+
     func testEnumeratorFailsWhenWorkspaceRootIsUnreadable() throws {
         let rootURL = try makeTemporaryWorkspace()
         defer { restoreReadablePermissions(at: rootURL) }
@@ -212,6 +259,17 @@ final class WorkspaceEnumeratorTests: XCTestCase {
 
     private func removeItemIfPresent(at url: URL) {
         try? FileManager.default.removeItem(at: url)
+    }
+
+    private func createSymbolicLink(
+        named name: String,
+        in parentURL: URL,
+        destinationURL: URL
+    ) throws {
+        try FileManager.default.createSymbolicLink(
+            at: parentURL.appending(path: name),
+            withDestinationURL: destinationURL
+        )
     }
 
     private func makeUnreadable(at url: URL) throws {

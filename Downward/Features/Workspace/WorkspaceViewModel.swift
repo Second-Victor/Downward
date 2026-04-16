@@ -135,7 +135,12 @@ final class WorkspaceViewModel {
 
     func openRecentFile(_ item: RecentFileItem) {
         isShowingRecentFiles = false
-        coordinator.presentEditor(for: item.url(in: currentWorkspaceRootURL))
+
+        guard let url = item.url(in: currentWorkspaceRootURL) else {
+            return
+        }
+
+        coordinator.presentEditor(for: url)
     }
 
     func toggleFolderExpansion(at url: URL) {

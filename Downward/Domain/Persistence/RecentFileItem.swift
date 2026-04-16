@@ -10,14 +10,18 @@ struct RecentFileItem: Codable, Equatable, Hashable, Identifiable, Sendable {
         "\(workspaceRootPath)::\(relativePath)"
     }
 
-    nonisolated func url(in workspaceRootURL: URL) -> URL {
-        WorkspaceRelativePath.resolve(relativePath, within: workspaceRootURL)
+    nonisolated func url(in workspaceRootURL: URL) -> URL? {
+        WorkspaceRelativePath.resolveExisting(relativePath, within: workspaceRootURL)
     }
 
-    nonisolated func node(in workspaceRootURL: URL) -> WorkspaceNode {
-        .file(
+    nonisolated func node(in workspaceRootURL: URL) -> WorkspaceNode? {
+        guard let url = url(in: workspaceRootURL) else {
+            return nil
+        }
+
+        return .file(
             .init(
-                url: url(in: workspaceRootURL),
+                url: url,
                 displayName: displayName,
                 subtitle: relativePath == displayName ? nil : relativePath
             )

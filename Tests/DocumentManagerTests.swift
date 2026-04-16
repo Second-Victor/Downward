@@ -104,6 +104,38 @@ final class DocumentManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testOpenDocumentRejectsSymbolicLinkPointingOutsideWorkspace() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        let externalURL = try makeTemporaryDirectory(named: "External")
+        defer { removeItemIfPresent(at: workspaceURL) }
+        defer { removeItemIfPresent(at: externalURL) }
+
+        let externalFileURL = try makeTemporaryFile(
+            in: externalURL,
+            named: "Escaped.md",
+            contents: "# Escaped\n\nOutside the workspace."
+        )
+        let symbolicLinkURL = workspaceURL.appending(path: "Escaped.md")
+        try FileManager.default.createSymbolicLink(
+            at: symbolicLinkURL,
+            withDestinationURL: externalFileURL
+        )
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+
+        do {
+            _ = try await manager.openDocument(at: symbolicLinkURL, in: workspaceURL)
+            XCTFail("Expected escaped symbolic link open to throw.")
+        } catch let error as AppError {
+            guard case let .documentUnavailable(name) = error else {
+                return XCTFail("Expected documentUnavailable for escaped symbolic link.")
+            }
+
+            XCTAssertEqual(name, "Escaped.md")
+        }
+    }
+
+    @MainActor
     func testSaveOverwritesOutsideWriteForActiveBufferWithoutConflict() async throws {
         let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
         defer { removeItemIfPresent(at: workspaceURL) }
@@ -337,6 +369,58 @@ final class DocumentManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testSaveRejectsSymbolicLinkPointingOutsideWorkspace() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        let externalURL = try makeTemporaryDirectory(named: "External")
+        defer { removeItemIfPresent(at: workspaceURL) }
+        defer { removeItemIfPresent(at: externalURL) }
+
+        let externalFileURL = try makeTemporaryFile(
+            in: externalURL,
+            named: "Escaped.md",
+            contents: "# Entry\n\nOutside the workspace."
+        )
+        let symbolicLinkURL = workspaceURL.appending(path: "Escaped.md")
+        try FileManager.default.createSymbolicLink(
+            at: symbolicLinkURL,
+            withDestinationURL: externalFileURL
+        )
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+        let document = OpenDocument(
+            url: symbolicLinkURL,
+            workspaceRootURL: workspaceURL,
+            relativePath: "Escaped.md",
+            displayName: "Escaped.md",
+            text: "# Entry\n\nUnsafe save attempt.",
+            loadedVersion: DocumentVersion(
+                contentModificationDate: nil,
+                fileSize: 0,
+                contentDigest: "stale"
+            ),
+            isDirty: true,
+            saveState: .unsaved,
+            conflictState: .none
+        )
+
+        do {
+            _ = try await manager.saveDocument(document, overwriteConflict: false)
+            XCTFail("Expected escaped symbolic link save to throw.")
+        } catch let error as AppError {
+            guard case let .documentUnavailable(name) = error else {
+                return XCTFail("Expected documentUnavailable for escaped symbolic link save.")
+            }
+
+            XCTAssertEqual(name, "Escaped.md")
+        }
+
+        XCTAssertEqual(
+            try String(contentsOf: externalFileURL, encoding: .utf8),
+            "# Entry\n\nOutside the workspace."
+        )
+    }
+
+    @MainActor
     func testFallbackObservationBacksOffWithoutSyntheticChangesWhenFileIsUnchanged() async throws {
         let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
         defer { removeItemIfPresent(at: workspaceURL) }
@@ -507,13 +591,16 @@ private struct FakeDocumentSecurityAccessHandler: SecurityScopedAccessHandling {
         within workspaceRootURL: URL,
         operation: (URL) throws -> Value
     ) throws -> Value {
-        try operation(
-            relativePath
-                .split(separator: "/", omittingEmptySubsequences: true)
-                .reduce(workspaceRootURL) { partialURL, component in
-                    partialURL.appending(path: String(component))
-                }
-        )
+        guard let descendantURL = WorkspaceRelativePath.resolveCandidate(
+            relativePath,
+            within: workspaceRootURL
+        ) else {
+            throw AppError.documentUnavailable(
+                name: relativePath.split(separator: "/").last.map(String.init) ?? "Document"
+            )
+        }
+
+        return try operation(descendantURL)
     }
 }
 
@@ -557,11 +644,15 @@ private final class RecordingDocumentSecurityAccessHandler: @unchecked Sendable,
             roots.append(workspaceRootURL)
             descendants.append(relativePath)
         }
-        let descendantURL = relativePath
-            .split(separator: "/", omittingEmptySubsequences: true)
-            .reduce(workspaceRootURL) { partialURL, component in
-                partialURL.appending(path: String(component))
-            }
+        guard let descendantURL = WorkspaceRelativePath.resolveCandidate(
+            relativePath,
+            within: workspaceRootURL
+        ) else {
+            throw AppError.documentUnavailable(
+                name: relativePath.split(separator: "/").last.map(String.init) ?? "Document"
+            )
+        }
+
         return try operation(descendantURL)
     }
 }

@@ -259,7 +259,16 @@ actor PlainTextDocumentSession {
         }
 
         let lease = try securityScopedAccess.beginAccess(to: workspaceRootURL)
-        let observedURL = Self.resolveDescendantURL(relativePath, within: lease.url)
+        guard let observedURL = WorkspaceRelativePath.resolveExisting(
+            relativePath,
+            within: lease.url
+        ) else {
+            lease.endAccess()
+            throw AppError.documentUnavailable(
+                name: Self.descendantDisplayName(for: relativePath)
+            )
+        }
+
         observationLease = lease
         observationURL = observedURL
 
@@ -708,15 +717,11 @@ actor PlainTextDocumentSession {
         ]
     }
 
-    nonisolated private static func resolveDescendantURL(
-        _ relativePath: String,
-        within rootURL: URL
-    ) -> URL {
+    nonisolated private static func descendantDisplayName(for relativePath: String) -> String {
         relativePath
             .split(separator: "/", omittingEmptySubsequences: true)
-            .reduce(rootURL) { partialURL, component in
-                partialURL.appending(path: String(component))
-            }
+            .last
+            .map(String.init) ?? "Document"
     }
 }
 

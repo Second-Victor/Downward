@@ -7,7 +7,11 @@ protocol WorkspaceEnumerating: Sendable {
 /// Walks the workspace recursively, keeping all real folders while filtering files down to supported types.
 struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
     nonisolated func makeSnapshot(rootURL: URL, displayName: String) throws -> WorkspaceSnapshot {
-        let rootNodes = try makeNodes(in: rootURL, allowsPartialFailure: false) ?? []
+        let rootNodes = try makeNodes(
+            in: rootURL,
+            within: rootURL,
+            allowsPartialFailure: false
+        ) ?? []
 
         return WorkspaceSnapshot(
             rootURL: rootURL,
@@ -21,8 +25,10 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
     /// - unreadable workspace root: fail the refresh because there is no trustworthy workspace view
     /// - unreadable descendant: skip that node/subtree and keep remaining siblings
     /// - hidden/package descendants: skip intentionally because they are not part of the user-facing tree
+    /// - symlinked or redirected descendants: skip entirely so the browser only surfaces real in-workspace nodes
     nonisolated private func makeNodes(
         in directoryURL: URL,
+        within workspaceRootURL: URL,
         allowsPartialFailure: Bool
     ) throws -> [WorkspaceNode]? {
         try Task.checkCancellation()
@@ -32,6 +38,7 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
             .isRegularFileKey,
             .isHiddenKey,
             .isPackageKey,
+            .isSymbolicLinkKey,
             .localizedNameKey,
             .nameKey,
             .contentModificationDateKey,
@@ -76,6 +83,7 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
 
             guard Self.shouldSkipNode(
                 at: childURL,
+                within: workspaceRootURL,
                 displayName: displayName,
                 resourceValues: resourceValues
             ) == false else {
@@ -83,7 +91,11 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
             }
 
             if resourceValues.isDirectory == true {
-                guard let children = try makeNodes(in: childURL, allowsPartialFailure: true) else {
+                guard let children = try makeNodes(
+                    in: childURL,
+                    within: workspaceRootURL,
+                    allowsPartialFailure: true
+                ) else {
                     continue
                 }
                 nodes.append(
@@ -123,6 +135,7 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
 
     nonisolated private static func shouldSkipNode(
         at url: URL,
+        within workspaceRootURL: URL,
         displayName: String,
         resourceValues: URLResourceValues
     ) -> Bool {
@@ -131,6 +144,10 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
         }
 
         if resourceValues.isPackage == true {
+            return true
+        }
+
+        if WorkspaceRelativePath.containsExistingItem(at: url, within: workspaceRootURL) == false {
             return true
         }
 

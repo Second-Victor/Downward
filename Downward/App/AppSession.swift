@@ -108,7 +108,14 @@ enum RegularWorkspaceDetailSelection: Equatable {
                 return .placeholder
             }
 
-            return .editor(WorkspaceRelativePath.resolve(relativePath, within: rootURL))
+            guard let documentURL = WorkspaceRelativePath.resolveExisting(
+                relativePath,
+                within: rootURL
+            ) else {
+                return .placeholder
+            }
+
+            return .editor(documentURL)
         }
     }
 }

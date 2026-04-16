@@ -199,10 +199,28 @@ actor LiveWorkspaceManager: WorkspaceManager {
             }
 
             let normalizedName = try Self.normalizedCreatedFileName(from: proposedName)
-            let destinationURL = Self.uniqueAvailableFileURL(
+            let requestedDestinationURL = Self.uniqueAvailableFileURL(
                 for: normalizedName,
                 in: parentURL
             )
+            let destinationRelativePath = try Self.createOrRenameTargetRelativePath(
+                for: requestedDestinationURL,
+                within: securedRootURL
+            )
+
+            // Creation targets use the same workspace-boundary policy as existing descendants:
+            // the validated parent container must remain real and in-root, and the candidate file
+            // path must still reconstruct under that container without crossing a redirecting ancestor.
+            guard let destinationURL = WorkspaceRelativePath.resolveCandidate(
+                destinationRelativePath,
+                within: securedRootURL
+            ) else {
+                throw AppError.fileOperationFailed(
+                    action: "Create File",
+                    name: normalizedName,
+                    details: "The selected folder is no longer available."
+                )
+            }
 
             do {
                 try fileCoordinator.coordinateCreation(at: destinationURL) { coordinatedURL in
@@ -253,18 +271,28 @@ actor LiveWorkspaceManager: WorkspaceManager {
                 from: proposedName,
                 originalURL: sourceURL
             )
-            let destinationURL = sourceURL.deletingLastPathComponent().appending(path: normalizedName)
+            let sourceRelativePath = try Self.relativePath(for: sourceURL, within: securedRootURL)
+            let destinationRelativePath = Self.renamedRelativePath(
+                from: sourceRelativePath,
+                toLeafName: normalizedName
+            )
+            guard let destinationURL = WorkspaceRelativePath.resolveCandidate(
+                destinationRelativePath,
+                within: securedRootURL
+            ) else {
+                throw AppError.fileOperationFailed(
+                    action: "Rename File",
+                    name: sourceURL.lastPathComponent,
+                    details: "The file is outside the current workspace."
+                )
+            }
 
             guard destinationURL != sourceURL else {
-                let relativePath = try Self.relativePath(
-                    for: destinationURL,
-                    within: securedRootURL
-                )
                 return .renamedFile(
                     oldURL: sourceURL,
                     newURL: destinationURL,
                     displayName: destinationURL.lastPathComponent,
-                    relativePath: relativePath
+                    relativePath: destinationRelativePath
                 )
             }
 
@@ -295,15 +323,11 @@ actor LiveWorkspaceManager: WorkspaceManager {
                 )
             }
 
-            let relativePath = try Self.relativePath(
-                for: destinationURL,
-                within: securedRootURL
-            )
             return .renamedFile(
                 oldURL: sourceURL,
                 newURL: destinationURL,
                 displayName: destinationURL.lastPathComponent,
-                relativePath: relativePath
+                relativePath: destinationRelativePath
             )
         }
 
@@ -501,11 +525,18 @@ actor LiveWorkspaceManager: WorkspaceManager {
         }
 
         let relativePath = try relativePath(for: url, within: rootURL)
-        return relativePath
-            .split(separator: "/", omittingEmptySubsequences: true)
-            .reduce(securedRootURL) { partialURL, component in
-                partialURL.appending(path: String(component))
-            }
+        guard let securedItemURL = WorkspaceRelativePath.resolveExisting(
+            relativePath,
+            within: securedRootURL
+        ) else {
+            throw AppError.fileOperationFailed(
+                action: "Workspace File Operation",
+                name: url.lastPathComponent,
+                details: "The file is outside the current workspace."
+            )
+        }
+
+        return securedItemURL
     }
 
     nonisolated private static func relativePath(for url: URL, within rootURL: URL) throws -> String {
@@ -518,6 +549,43 @@ actor LiveWorkspaceManager: WorkspaceManager {
         }
 
         return relativePath
+    }
+
+    nonisolated private static func createOrRenameTargetRelativePath(
+        for url: URL,
+        within rootURL: URL
+    ) throws -> String {
+        let urlComponents = url.standardizedFileURL.pathComponents
+        let rootComponents = rootURL.standardizedFileURL.pathComponents
+
+        guard
+            urlComponents.count > rootComponents.count,
+            urlComponents.starts(with: rootComponents)
+        else {
+            throw AppError.fileOperationFailed(
+                action: "Workspace File Operation",
+                name: url.lastPathComponent,
+                details: "The file is outside the current workspace."
+            )
+        }
+
+        return urlComponents
+            .dropFirst(rootComponents.count)
+            .joined(separator: "/")
+    }
+
+    nonisolated private static func renamedRelativePath(
+        from sourceRelativePath: String,
+        toLeafName leafName: String
+    ) -> String {
+        let sourceComponents = sourceRelativePath.split(separator: "/", omittingEmptySubsequences: true)
+        let parentPath = sourceComponents.dropLast().joined(separator: "/")
+
+        if parentPath.isEmpty {
+            return leafName
+        }
+
+        return "\(parentPath)/\(leafName)"
     }
 
     nonisolated private static func normalizedCreatedFileName(from proposedName: String) throws -> String {

@@ -1017,10 +1017,17 @@ final class AppCoordinator {
             return
         }
 
-        let documentURL = Self.resolveDocumentURL(
+        guard let documentURL = Self.resolveDocumentURL(
             for: restorableSession.relativePath,
             within: snapshot.rootURL
-        )
+        ) else {
+            logger.log(
+                category: "Restore",
+                "Clearing stale last-open session for invalid document path \(restorableSession.relativePath)."
+            )
+            await clearRestorableDocumentSession()
+            return
+        }
 
         do {
             let document = try await documentManager.openDocument(
@@ -1090,8 +1097,8 @@ final class AppCoordinator {
     private static func resolveDocumentURL(
         for relativePath: String,
         within rootURL: URL
-    ) -> URL {
-        WorkspaceRelativePath.resolve(relativePath, within: rootURL)
+    ) -> URL? {
+        WorkspaceRelativePath.resolveExisting(relativePath, within: rootURL)
     }
 
     private func relativePath(

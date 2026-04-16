@@ -135,7 +135,16 @@ struct LiveSecurityScopedAccessHandler: SecurityScopedAccessHandling {
         operation: (URL) throws -> Value
     ) throws -> Value {
         try withSecurityScopedAccess(to: workspaceRootURL) { securedRootURL in
-            try operation(resolveDescendantURL(relativePath, within: securedRootURL))
+            guard let securedDescendantURL = WorkspaceRelativePath.resolveCandidate(
+                relativePath,
+                within: securedRootURL
+            ) else {
+                throw AppError.documentUnavailable(
+                    name: Self.descendantDisplayName(for: relativePath)
+                )
+            }
+
+            return try operation(securedDescendantURL)
         }
     }
 
@@ -155,15 +164,11 @@ struct LiveSecurityScopedAccessHandler: SecurityScopedAccessHandling {
         return try operation(url)
     }
 
-    nonisolated private func resolveDescendantURL(
-        _ relativePath: String,
-        within rootURL: URL
-    ) -> URL {
+    nonisolated private static func descendantDisplayName(for relativePath: String) -> String {
         relativePath
             .split(separator: "/", omittingEmptySubsequences: true)
-            .reduce(rootURL) { partialURL, component in
-                partialURL.appending(path: String(component))
-            }
+            .last
+            .map(String.init) ?? "Document"
     }
 
     nonisolated private static func bookmarkCreationOptions() -> URL.BookmarkCreationOptions {

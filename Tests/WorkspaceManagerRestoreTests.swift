@@ -265,6 +265,86 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRenameFileRejectsSymbolicLinkPointingOutsideWorkspace() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        let externalURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+        defer { removeItemIfPresent(at: externalURL) }
+
+        let externalFileURL = externalURL.appending(path: "Escaped.md")
+        try Data("# Escaped".utf8).write(to: externalFileURL)
+        let symbolicLinkURL = workspaceURL.appending(path: "Escaped.md")
+        try FileManager.default.createSymbolicLink(
+            at: symbolicLinkURL,
+            withDestinationURL: externalFileURL
+        )
+        let fileCoordinator = RecordingWorkspaceFileCoordinator()
+
+        let manager = makeLiveWorkspaceManager(
+            for: workspaceURL,
+            fileCoordinator: fileCoordinator
+        )
+        _ = await manager.selectWorkspace(at: workspaceURL)
+
+        do {
+            _ = try await manager.renameFile(at: symbolicLinkURL, to: "Published")
+            XCTFail("Expected escaped symbolic link rename to throw.")
+        } catch let error as AppError {
+            guard case let .fileOperationFailed(action, name, details) = error else {
+                return XCTFail("Expected fileOperationFailed for escaped symbolic link rename.")
+            }
+
+            XCTAssertEqual(action, "Workspace File Operation")
+            XCTAssertEqual(name, "Escaped.md")
+            XCTAssertEqual(details, "The file is outside the current workspace.")
+        }
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: symbolicLinkURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: externalFileURL.path))
+        XCTAssertTrue(fileCoordinator.movedURLs.isEmpty)
+    }
+
+    @MainActor
+    func testDeleteFileRejectsSymbolicLinkPointingOutsideWorkspace() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        let externalURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+        defer { removeItemIfPresent(at: externalURL) }
+
+        let externalFileURL = externalURL.appending(path: "Escaped.md")
+        try Data("# Escaped".utf8).write(to: externalFileURL)
+        let symbolicLinkURL = workspaceURL.appending(path: "Escaped.md")
+        try FileManager.default.createSymbolicLink(
+            at: symbolicLinkURL,
+            withDestinationURL: externalFileURL
+        )
+        let fileCoordinator = RecordingWorkspaceFileCoordinator()
+
+        let manager = makeLiveWorkspaceManager(
+            for: workspaceURL,
+            fileCoordinator: fileCoordinator
+        )
+        _ = await manager.selectWorkspace(at: workspaceURL)
+
+        do {
+            _ = try await manager.deleteFile(at: symbolicLinkURL)
+            XCTFail("Expected escaped symbolic link delete to throw.")
+        } catch let error as AppError {
+            guard case let .fileOperationFailed(action, name, details) = error else {
+                return XCTFail("Expected fileOperationFailed for escaped symbolic link delete.")
+            }
+
+            XCTAssertEqual(action, "Workspace File Operation")
+            XCTAssertEqual(name, "Escaped.md")
+            XCTAssertEqual(details, "The file is outside the current workspace.")
+        }
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: symbolicLinkURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: externalFileURL.path))
+        XCTAssertTrue(fileCoordinator.deletedURLs.isEmpty)
+    }
+
+    @MainActor
     private func makeLiveWorkspaceManager(
         for workspaceURL: URL,
         fileCoordinator: any WorkspaceFileCoordinating
@@ -389,13 +469,16 @@ private struct FakeSecurityScopedAccessHandler: SecurityScopedAccessHandling {
         operation: (URL) throws -> Value
     ) throws -> Value {
         try withAccess(to: workspaceRootURL) { rootURL in
-            try operation(
-                relativePath
-                    .split(separator: "/", omittingEmptySubsequences: true)
-                    .reduce(rootURL) { partialURL, component in
-                        partialURL.appending(path: String(component))
-                    }
-            )
+            guard let descendantURL = WorkspaceRelativePath.resolveCandidate(
+                relativePath,
+                within: rootURL
+            ) else {
+                throw AppError.documentUnavailable(
+                    name: relativePath.split(separator: "/").last.map(String.init) ?? "Document"
+                )
+            }
+
+            return try operation(descendantURL)
         }
     }
 }
@@ -492,13 +575,16 @@ private final class RecordingSecurityScopedAccessHandler: @unchecked Sendable, S
         operation: (URL) throws -> Value
     ) throws -> Value {
         try withAccess(to: workspaceRootURL) { rootURL in
-            try operation(
-                relativePath
-                    .split(separator: "/", omittingEmptySubsequences: true)
-                    .reduce(rootURL) { partialURL, component in
-                        partialURL.appending(path: String(component))
-                    }
-            )
+            guard let descendantURL = WorkspaceRelativePath.resolveCandidate(
+                relativePath,
+                within: rootURL
+            ) else {
+                throw AppError.documentUnavailable(
+                    name: relativePath.split(separator: "/").last.map(String.init) ?? "Document"
+                )
+            }
+
+            return try operation(descendantURL)
         }
     }
 }
