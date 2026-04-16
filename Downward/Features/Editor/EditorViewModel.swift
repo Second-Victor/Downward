@@ -162,8 +162,8 @@ final class EditorViewModel {
             return
         }
 
-        loadTask?.cancel()
-        loadGeneration += 1
+        stopObservingDocumentChanges()
+        invalidatePendingLoad()
         let generation = loadGeneration
         session.editorLoadError = nil
 
@@ -173,7 +173,7 @@ final class EditorViewModel {
                 return
             }
 
-            guard generation == loadGeneration else {
+            guard shouldApplyLoadResult(for: documentURL, generation: generation) else {
                 return
             }
 
@@ -189,7 +189,13 @@ final class EditorViewModel {
 
     func handleDisappear(for documentURL: URL) {
         visibleEditorURLs.remove(documentURL)
-        if hasVisibleEditor == false {
+
+        if currentRouteURL == documentURL {
+            currentRouteURL = nil
+            session.editorLoadError = nil
+            invalidatePendingLoad()
+            stopObservingDocumentChanges()
+        } else if hasVisibleEditor == false {
             stopObservingDocumentChanges()
         }
 
@@ -561,6 +567,27 @@ final class EditorViewModel {
         documentObservationTask?.cancel()
         documentObservationTask = nil
         observedDocumentIdentity = nil
+    }
+
+    private func invalidatePendingLoad() {
+        loadTask?.cancel()
+        loadTask = nil
+        loadGeneration += 1
+    }
+
+    private func shouldApplyLoadResult(
+        for documentURL: URL,
+        generation: Int
+    ) -> Bool {
+        guard generation == loadGeneration else {
+            return false
+        }
+
+        guard currentRouteURL == documentURL else {
+            return false
+        }
+
+        return visibleEditorURLs.contains(documentURL)
     }
 
     private func documentObservationIdentity(for document: OpenDocument) -> String {

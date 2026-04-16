@@ -5,6 +5,7 @@ final class AppContainer {
     let logger: DebugLogger
     let bookmarkStore: any BookmarkStore
     let sessionStore: any SessionStore
+    let recentFilesStore: RecentFilesStore
     let editorAppearanceStore: EditorAppearanceStore
     let workspaceManager: any WorkspaceManager
     let documentManager: any DocumentManager
@@ -21,6 +22,7 @@ final class AppContainer {
         logger: DebugLogger,
         bookmarkStore: any BookmarkStore,
         sessionStore: any SessionStore = StubSessionStore(),
+        recentFilesStore: RecentFilesStore,
         editorAppearanceStore: EditorAppearanceStore,
         workspaceManager: any WorkspaceManager,
         documentManager: any DocumentManager,
@@ -31,6 +33,7 @@ final class AppContainer {
         self.logger = logger
         self.bookmarkStore = bookmarkStore
         self.sessionStore = sessionStore
+        self.recentFilesStore = recentFilesStore
         self.editorAppearanceStore = editorAppearanceStore
         self.workspaceManager = workspaceManager
         self.documentManager = documentManager
@@ -46,13 +49,18 @@ final class AppContainer {
             workspaceManager: workspaceManager,
             documentManager: documentManager,
             sessionStore: sessionStore,
+            recentFilesStore: recentFilesStore,
             errorReporter: errorReporter,
             folderPickerBridge: folderPickerBridge,
             logger: logger
         )
         self.coordinator = coordinator
 
-        let workspaceViewModel = WorkspaceViewModel(session: session, coordinator: coordinator)
+        let workspaceViewModel = WorkspaceViewModel(
+            session: session,
+            coordinator: coordinator,
+            recentFilesStore: recentFilesStore
+        )
         self.workspaceViewModel = workspaceViewModel
 
         let editorViewModel = EditorViewModel(
@@ -76,6 +84,7 @@ final class AppContainer {
         let securityScopedAccess = LiveSecurityScopedAccessHandler()
         let bookmarkStore = UserDefaultsBookmarkStore()
         let sessionStore = UserDefaultsSessionStore()
+        let recentFilesStore = RecentFilesStore()
         let editorAppearanceStore = EditorAppearanceStore()
         let workspaceManager = LiveWorkspaceManager(
             bookmarkStore: bookmarkStore,
@@ -89,6 +98,7 @@ final class AppContainer {
             logger: logger,
             bookmarkStore: bookmarkStore,
             sessionStore: sessionStore,
+            recentFilesStore: recentFilesStore,
             editorAppearanceStore: editorAppearanceStore,
             workspaceManager: workspaceManager,
             documentManager: documentManager,
@@ -104,11 +114,13 @@ final class AppContainer {
         snapshot: WorkspaceSnapshot? = nil,
         document: OpenDocument? = nil,
         path: [AppRoute] = [],
+        recentFiles: [RecentFileItem] = [],
         editorAppearancePreferences: EditorAppearancePreferences = .default
     ) -> AppContainer {
         let logger = DebugLogger()
         let bookmarkStore = StubBookmarkStore()
         let sessionStore = StubSessionStore()
+        let recentFilesStore = RecentFilesStore(initialItems: recentFiles)
         let editorAppearanceStore = EditorAppearanceStore(initialPreferences: editorAppearancePreferences)
         let forcedRestoreResult: WorkspaceRestoreResult? = switch launchState {
         case .noWorkspaceSelected:
@@ -140,6 +152,7 @@ final class AppContainer {
             logger: logger,
             bookmarkStore: bookmarkStore,
             sessionStore: sessionStore,
+            recentFilesStore: recentFilesStore,
             editorAppearanceStore: editorAppearanceStore,
             workspaceManager: workspaceManager,
             documentManager: documentManager,

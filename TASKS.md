@@ -2,145 +2,177 @@
 
 ## Purpose
 
-This file is the forward roadmap for the current Downward codebase. The stabilization and release-readiness phases are complete; what remains should be future-facing, realistic, and aligned with the app's existing file-based editor model.
+This file is the forward roadmap for the current Downward codebase **after a full code review**.
+
+The previous roadmap assumed stabilization was largely done. The review shows a narrower and more important truth: the app is close, but a few file-boundary and lifecycle issues still need to be closed before more feature work.
 
 Status legend:
 
 - `[x]` complete in the current codebase
 - `[~]` worth refining soon
 - `[ ]` planned backlog
-- `[!]` high-risk surface that should keep strong regression coverage
+- `[!]` high-risk surface that must stay regression-covered
 
 ---
 
-## Completed foundation
+## Protected behavior already in place
 
-These are already in place and should be treated as protected behavior, not as open feature work:
+These are real strengths and should be preserved while fixing the remaining trust issues:
 
 - [x] calm autosave with save-ack merge semantics
-- [x] same-document live refresh with calm revalidation policy
-- [x] open-file rename/delete coherence while the editor is visible
-- [x] workspace restore, reconnect, and stale-session cleanup
-- [x] browser/editor coherence under async races and refreshes
-- [x] empty-folder support in the workspace browser
-- [x] release-readiness polish for disclosure UI, supported-file copy, and real-device QA guidance
-- [x] persisted editor font family and size preferences
+- [x] same-document revalidation that avoids self-conflict after the app’s own saves
+- [x] active-file rename/delete coherence in the browser/editor flow
+- [x] restore and reconnect flows with stale-session cleanup
+- [x] workspace-relative recent-files UI
+- [x] editor appearance preferences
+- [x] strong smoke-test coverage for async session and navigation behavior
 
 ---
 
-## Protected surfaces
+## Immediate release blockers
 
-Future changes should keep these areas strongly regression-covered:
+No new feature wave should outrank these items.
 
-- [!] bookmark persistence and invalid-bookmark recovery
-- [!] session-store restore for the last open document
-- [!] workspace enumeration, filtering, sorting, and empty-folder visibility
-- [!] create / rename / delete behavior inside the workspace
-- [!] active-document open / save / reload / revalidate behavior
-- [!] autosave ordering and save-ack merge semantics
-- [!] same-document external refresh while editing
-- [!] missing-file and conflict recovery flows
-- [!] restore / reconnect behavior and stale-session cleanup
-- [!] browser / editor coherence during refresh, switching, and async races
+### Security-scoped workspace access
+
+- [ ] Use security-scoped bookmark options correctly for bookmark creation and bookmark resolution
+  - acceptance:
+    - bookmark creation is explicitly security-scoped
+    - bookmark resolution is explicitly security-scoped
+    - restore/reconnect are validated on real devices with iCloud Drive and one provider-backed folder
+- [!] Keep restore, reconnect, and invalid-bookmark recovery strongly regression-covered
+
+### Canonical file identity
+
+- [ ] Introduce one canonical workspace-relative identity for files and folders across:
+  - snapshot nodes
+  - recent files
+  - restore session
+  - rename/delete reconciliation
+  - search result metadata
+- [ ] Treat `displayName` as presentation-only data
+- [ ] Stop rebuilding persisted relative paths from display names
+
+### Editor load / observation lifecycle
+
+- [ ] Cancel delayed document loads when the editor route disappears
+- [ ] Prevent late document loads from reactivating a document the user already left
+- [ ] Only keep live observation active while the matching editor is actually visible
+- [ ] Ensure rename/disappear flows restart observation only for the current logical document
+
+### Coordinated workspace mutations
+
+- [ ] Move create / rename / delete onto the same coordinated file-access model used by document reads/writes
+- [ ] Make rename/move semantics explicit for any live presenter / observer state
+- [ ] Keep open-document mutation flows coherent without depending on uncoordinated filesystem side effects
 
 ---
 
-## Future feature themes
+## Next hardening wave
 
-The roadmap from here should stay grouped into three layers:
+These should follow immediately after the blocker set.
 
-1. **Near-term polish**
-   Small, high-confidence improvements that make the app feel tighter, safer, and easier to validate.
-2. **Next feature wave**
-   Features that materially improve everyday use without changing the app's core philosophy.
-3. **Later optional expansions**
-   Valid ideas, but not required for the current minimal file-based editor direction.
+### Refresh and concurrency correctness
+
+- [ ] Add end-to-end generation protection for overlapping workspace refreshes
+- [ ] Ensure stale refresh results cannot overwrite newer session state from:
+  - manual refresh
+  - pull-to-refresh
+  - scene-activation refresh
+- [!] Keep browser/editor coherence strongly regression-covered during overlapping refresh work
+
+### Save durability and write semantics
+
+- [ ] Decide and document the document-write durability model
+  - direct coordinated write with explicit tradeoffs, or
+  - temp-write-and-replace where safe
+- [ ] Add failure-mode tests around save interruptions or mid-write failures where practical
+- [ ] Keep the “newer in-memory edits survive old acknowledgements” contract intact
+
+### Observation efficiency
+
+- [ ] Reduce no-change churn from fallback live observation
+  - gate revalidation when metadata is unchanged
+  - add backoff or degrade-to-poll only when presenter notifications appear unreliable
+- [ ] Keep same-document live refresh best-effort without turning it into constant provider churn
+
+### Workspace snapshot resilience
+
+- [ ] Make enumeration resilient to unreadable nested folders where possible
+- [ ] Define an explicit policy for hidden/package/metadata-like folders
+- [ ] Document practical workspace-scale expectations after profiling
+- [ ] Keep empty real folders visible even when they contain no supported files
+
+### Rename edge cases and cleanup
+
+- [ ] Fix case-only rename handling for case-insensitive providers
+- [ ] Remove or wire up dormant states and code paths:
+  - `WorkspaceAccessState.restorable`
+  - live `modifiedOnDisk` conflict policy or its removal
+  - unused coordinator helpers
 
 ---
 
-## Near-term polish
+## Regression test expansion
 
-### Validation and QA
+These tests should be added before or alongside the hardening work above:
 
-- [ ] Add targeted UI tests for the highest-risk end-to-end flows:
-  - first-launch workspace pick
-  - open document and autosave
-  - open-file rename/delete from the browser
-  - reconnect after invalid workspace restore
-- [ ] Keep expanding regression tests before any future save/conflict refactor
-- [ ] Add one lightweight release checklist for pre-ship simulator + real-device sanity passes
+- [ ] delayed editor load followed by immediate navigation away
+- [ ] overlapping workspace refreshes with delayed enumerator results
+- [ ] recent-file pruning when display names differ from canonical path components
+- [ ] case-only rename behavior
+- [ ] unreadable nested folder during workspace snapshot creation
+- [ ] observation fallback does not endlessly revalidate unchanged clean documents
+- [ ] coordinated create/rename/delete behavior for active files
+- [ ] real-device checklist for bookmark restore and provider-backed mutation flows
 
-### Workspace and editor quality
+---
 
-- [ ] Profile larger workspace refreshes and document-load paths, then document any practical size limits if needed
-- [ ] Continue small accessibility polish where it improves real use:
-  - VoiceOver wording on file/folder rows
-  - recovery messaging clarity
-  - Dynamic Type checks on edge-state screens
-- [ ] Refine recovery messaging only where it reduces ambiguity during reconnect, missing-file, or failed-save flows
+## Quality and maintainability
 
-### Tooling and maintainability
+These are still worthwhile, but they now rank below the trust-hardening work.
 
-- [ ] Keep debug-only diagnostics around save/revalidate/restore transitions easy to inspect during real-device investigation
+### Tooling and diagnostics
+
+- [~] Keep debug-only diagnostics around save / revalidate / restore / mutation transitions easy to inspect
 - [ ] Add one short contributor note for testing provider-backed changes before merging persistence-sensitive work
+- [ ] Add a lightweight release checklist for simulator plus real-device sanity passes
+
+### Accessibility and UX polish
+
+- [~] Continue small accessibility polish where it improves real use:
+  - VoiceOver wording on file/folder rows
+  - recovery-message clarity
+  - Dynamic Type checks on edge-state screens
+- [ ] Add a lightweight active-document info surface only after trust hardening lands
 
 ---
 
-## Next feature wave
+## Feature work that can wait
 
-### Browser productivity
+These are valid ideas, but they should not outrank the file-boundary fixes above.
 
-- [x] Add lightweight file search/filter within the current workspace snapshot
-- [ ] Add a recent-files or quick-reopen surface that stays workspace-relative and minimal
-- [ ] Evaluate folder rename/move support if it becomes a real product requirement
+### Browser and editor productivity
 
-### Editor productivity
+- [x] lightweight in-memory workspace search
+- [x] workspace-relative recent-files sheet
+- [ ] keyboard shortcuts for common iPad / hardware-keyboard actions
+- [ ] lightweight document info surface
+- [ ] minimal additional editor preferences
+- [ ] evaluate folder rename/move support only if it becomes a real requirement
 
-- [ ] Add keyboard shortcuts for common actions on iPad and hardware-keyboard use:
-  - refresh workspace
-  - create file
-  - open settings
-  - reload conflicted file where applicable
-- [ ] Add a lightweight document info surface for the active file:
-  - relative path
-  - last saved time
-  - file size if already available cheaply
-- [ ] Consider a small set of editor preferences only if they stay minimal and do not create a new storage model
-
-### Recovery and workflow polish
-
-- [ ] Improve recovery UX for missing-file and reconnect states if real-device QA shows recurring confusion
-- [ ] Consider a small “recently opened” restore aid only if it remains relative-path based and workspace-scoped
-
----
-
-## Later optional expansions
-
-These are reasonable ideas, but they are not part of the current stable-release direction:
+### Later optional expansions
 
 - [ ] markdown preview
 - [ ] syntax highlighting
-- [ ] custom text engine
 - [ ] tabs or multi-document editing
 - [ ] multi-window / multi-scene workflow improvements
 - [ ] Git integration
 - [ ] plugin architecture
-- [ ] app-owned mirrored storage model
-- [ ] formatting toolbar / rich text features
+- [ ] formatting toolbar / rich-text features
 - [ ] broader import policy beyond UTF-8 plain text
-
----
-
-## Current known limitations
-
-- [x] one workspace is active at a time
-- [x] one live document session is active at a time
-- [x] documents are treated as UTF-8 plain text
-- [x] in-app mutations cover files, not folder rename/move
-- [x] external same-document refresh is focused on the active editor session rather than general background sync
-- [x] real-device file-provider timing can vary, so live same-document refresh is best-effort rather than a hard realtime guarantee
-
-These are explicit limits, not accidental gaps.
+- [ ] custom text engine
+- [ ] app-owned mirrored storage model
 
 ---
 
@@ -150,7 +182,8 @@ Before implementing any new work, check:
 
 1. does it preserve calm autosave behavior?
 2. does it keep the workspace folder as source of truth?
-3. does it keep browser, editor, and restore state coherent?
-4. is there targeted regression coverage for the risky part?
+3. does it keep file identity canonical across restore, recents, and mutations?
+4. does it avoid resurrecting stale async state?
+5. is there targeted regression coverage for the risky part?
 
 If any answer is no, fix that first.

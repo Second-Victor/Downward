@@ -99,7 +99,10 @@ private struct CompactWorkspaceShell: View {
         @Bindable var session = viewModel.session
 
         NavigationStack(path: $session.path) {
-            WorkspaceScreen(viewModel: viewModel.workspaceViewModel)
+            WorkspaceScreen(
+                viewModel: viewModel.workspaceViewModel,
+                navigationMode: .stackPath
+            )
                 .navigationDestination(for: AppRoute.self) { route in
                     WorkspaceRouteDestination(route: route, viewModel: viewModel)
                 }
@@ -117,7 +120,10 @@ private struct RegularWorkspaceShell: View {
         @Bindable var session = viewModel.session
 
         NavigationSplitView {
-            WorkspaceScreen(viewModel: viewModel.workspaceViewModel)
+            WorkspaceScreen(
+                viewModel: viewModel.workspaceViewModel,
+                navigationMode: .splitSidebar
+            )
                 .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 360)
         } detail: {
             NavigationStack(path: $session.path) {
@@ -144,7 +150,8 @@ private struct WorkspaceRouteDestination: View {
             WorkspaceFolderScreen(
                 viewModel: viewModel.workspaceViewModel,
                 folderURL: folderURL,
-                showsSettingsButton: false
+                showsSettingsButton: false,
+                navigationMode: .stackPath
             )
         case let .editor(documentURL):
             EditorScreen(

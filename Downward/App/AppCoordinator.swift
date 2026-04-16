@@ -8,6 +8,7 @@ final class AppCoordinator {
     private let workspaceManager: any WorkspaceManager
     private let documentManager: any DocumentManager
     private let sessionStore: any SessionStore
+    private let recentFilesStore: RecentFilesStore
     private let errorReporter: any ErrorReporter
     private let folderPickerBridge: any FolderPickerBridge
     private let logger: DebugLogger
@@ -18,6 +19,7 @@ final class AppCoordinator {
         workspaceManager: any WorkspaceManager,
         documentManager: any DocumentManager,
         sessionStore: any SessionStore = StubSessionStore(),
+        recentFilesStore: RecentFilesStore = RecentFilesStore(initialItems: []),
         errorReporter: any ErrorReporter,
         folderPickerBridge: any FolderPickerBridge,
         logger: DebugLogger
@@ -26,6 +28,7 @@ final class AppCoordinator {
         self.workspaceManager = workspaceManager
         self.documentManager = documentManager
         self.sessionStore = sessionStore
+        self.recentFilesStore = recentFilesStore
         self.errorReporter = errorReporter
         self.folderPickerBridge = folderPickerBridge
         self.logger = logger
@@ -278,6 +281,7 @@ final class AppCoordinator {
         session.editorLoadError = nil
         session.lastError = nil
         await saveRestorableDocumentSession(for: document)
+        recentFilesStore.record(document: document)
     }
 
     func updateDocumentText(_ text: String) {
@@ -313,6 +317,15 @@ final class AppCoordinator {
             )
             return .success(savedDocument)
         } catch let error as AppError {
+            if case .documentUnavailable = error,
+               let workspaceRootURL = session.workspaceSnapshot?.rootURL,
+               let relativePath = relativePath(for: document.url, within: workspaceRootURL) {
+                recentFilesStore.removeItem(
+                    workspaceRootURL: workspaceRootURL,
+                    relativePath: relativePath
+                )
+            }
+
             if case let .workspaceAccessInvalid(displayName) = error {
                 let reconnectError = transitionToWorkspaceReconnectState(
                     displayName: session.currentWorkspaceName ?? displayName,
@@ -488,6 +501,20 @@ final class AppCoordinator {
         session.path.append(.settings)
     }
 
+    func presentFolder(_ url: URL) {
+        session.path.append(.folder(url))
+    }
+
+    func presentEditor(for url: URL) {
+        session.editorLoadError = nil
+
+        if let editorIndex = session.path.lastIndex(where: \.isEditor) {
+            session.path = Array(session.path.prefix(upTo: editorIndex))
+        }
+
+        session.path.append(.editor(url))
+    }
+
     func clearWorkspace() async {
         _ = nextWorkspaceTransitionGeneration()
 
@@ -633,6 +660,7 @@ final class AppCoordinator {
         let previousPath = session.path
         session.workspaceSnapshot = snapshot
         session.workspaceAccessState = .ready(displayName: snapshot.displayName)
+        recentFilesStore.pruneInvalidItems(using: snapshot)
 
         if shouldPreserveCurrentEditorDespiteMissingSnapshotEntry == false {
             let reconciledPath = reconciledNavigationPath(from: session.path, within: snapshot)
@@ -648,7 +676,7 @@ final class AppCoordinator {
             return
         }
 
-        guard snapshotContainsFile(at: openDocument.url, in: snapshot) == false else {
+        guard snapshotContainsFile(relativePath: openDocument.relativePath, in: snapshot) == false else {
             return
         }
 
@@ -682,12 +710,24 @@ final class AppCoordinator {
             case .settings:
                 reconciledPath.append(route)
             case let .folder(folderURL):
-                guard snapshotContainsFolder(at: folderURL, in: snapshot) else {
+                guard
+                    let relativePath = WorkspaceRelativePath.make(
+                        for: folderURL,
+                        within: snapshot.rootURL
+                    ),
+                    snapshotContainsFolder(relativePath: relativePath, in: snapshot)
+                else {
                     return reconciledPath
                 }
                 reconciledPath.append(route)
             case let .editor(documentURL):
-                guard snapshotContainsFile(at: documentURL, in: snapshot) else {
+                guard
+                    let relativePath = WorkspaceRelativePath.make(
+                        for: documentURL,
+                        within: snapshot.rootURL
+                    ),
+                    snapshotContainsFile(relativePath: relativePath, in: snapshot)
+                else {
                     return reconciledPath
                 }
                 reconciledPath.append(route)
@@ -698,31 +738,54 @@ final class AppCoordinator {
     }
 
     private func snapshotContainsFolder(
-        at url: URL,
+        relativePath: String,
         in snapshot: WorkspaceSnapshot
     ) -> Bool {
-        snapshotContainsNode(at: url, matchingFolder: true, nodes: snapshot.rootNodes)
+        snapshotContainsNode(
+            relativePath: relativePath,
+            matchingFolder: true,
+            within: snapshot.rootURL,
+            nodes: snapshot.rootNodes
+        )
     }
 
     private func snapshotContainsFile(
-        at url: URL,
+        relativePath: String,
         in snapshot: WorkspaceSnapshot
     ) -> Bool {
-        snapshotContainsNode(at: url, matchingFolder: false, nodes: snapshot.rootNodes)
+        snapshotContainsNode(
+            relativePath: relativePath,
+            matchingFolder: false,
+            within: snapshot.rootURL,
+            nodes: snapshot.rootNodes
+        )
     }
 
     private func snapshotContainsNode(
-        at url: URL,
+        relativePath: String,
         matchingFolder: Bool,
+        within workspaceRootURL: URL,
         nodes: [WorkspaceNode]
     ) -> Bool {
         for node in nodes {
-            if node.url == url, node.isFolder == matchingFolder {
+            if
+                let nodeRelativePath = WorkspaceRelativePath.make(
+                    for: node.url,
+                    within: workspaceRootURL
+                ),
+                nodeRelativePath == relativePath,
+                node.isFolder == matchingFolder
+            {
                 return true
             }
 
             if let children = node.children,
-               snapshotContainsNode(at: url, matchingFolder: matchingFolder, nodes: children) {
+               snapshotContainsNode(
+                   relativePath: relativePath,
+                   matchingFolder: matchingFolder,
+                   within: workspaceRootURL,
+                   nodes: children
+               ) {
                 return true
             }
         }
@@ -750,6 +813,7 @@ final class AppCoordinator {
             session.workspaceAccessState = .ready(displayName: snapshot.displayName)
             session.launchState = .workspaceReady
             session.lastError = nil
+            recentFilesStore.pruneInvalidItems(using: snapshot)
         case let .accessInvalid(accessState):
             session.workspaceSnapshot = nil
             session.workspaceAccessState = accessState
@@ -791,19 +855,42 @@ final class AppCoordinator {
         switch mutationResult.outcome {
         case .createdFile:
             break
-        case let .renamedFile(oldURL, newURL, displayName, relativePath):
+        case let .renamedFile(oldURL, newURL, displayName, newRelativePath):
+            if let workspaceRootURL = session.workspaceSnapshot?.rootURL,
+               let oldRelativePath = WorkspaceRelativePath.make(for: oldURL, within: workspaceRootURL) {
+                recentFilesStore.renameItem(
+                    workspaceRootURL: workspaceRootURL,
+                    oldRelativePath: oldRelativePath,
+                    newRelativePath: newRelativePath,
+                    displayName: displayName
+                )
+            }
+
             session.path = session.path.map { route in
                 route.replacingEditorURL(oldURL: oldURL, newURL: newURL)
             }
 
             if var openDocument = session.openDocument, openDocument.url == oldURL {
+                await documentManager.relocateDocumentSession(
+                    for: openDocument,
+                    to: newURL,
+                    relativePath: newRelativePath
+                )
                 openDocument.url = newURL
-                openDocument.relativePath = relativePath
+                openDocument.relativePath = newRelativePath
                 openDocument.displayName = displayName
                 session.openDocument = openDocument
                 await saveRestorableDocumentSession(for: openDocument)
             }
         case let .deletedFile(url, displayName):
+            if let workspaceRootURL = session.workspaceSnapshot?.rootURL,
+               let relativePath = WorkspaceRelativePath.make(for: url, within: workspaceRootURL) {
+                recentFilesStore.removeItem(
+                    workspaceRootURL: workspaceRootURL,
+                    relativePath: relativePath
+                )
+            }
+
             if session.openDocument?.url == url {
                 session.openDocument = nil
                 session.editorLoadError = nil
@@ -816,6 +903,8 @@ final class AppCoordinator {
                 )
             }
         }
+
+        recentFilesStore.pruneInvalidItems(using: mutationResult.snapshot)
     }
 
     private func transitionToWorkspaceReconnectState(
@@ -880,6 +969,7 @@ final class AppCoordinator {
             session.openDocument = document
             session.editorLoadError = nil
             session.path = [.editor(document.url)]
+            recentFilesStore.record(document: document)
         } catch let error as AppError {
             switch error {
             case .documentUnavailable:
@@ -935,10 +1025,13 @@ final class AppCoordinator {
         for relativePath: String,
         within rootURL: URL
     ) -> URL {
-        relativePath
-            .split(separator: "/", omittingEmptySubsequences: true)
-            .reduce(rootURL) { partialURL, component in
-                partialURL.appending(path: String(component))
-            }
+        WorkspaceRelativePath.resolve(relativePath, within: rootURL)
+    }
+
+    private func relativePath(
+        for url: URL,
+        within rootURL: URL
+    ) -> String? {
+        WorkspaceRelativePath.make(for: url, within: rootURL)
     }
 }

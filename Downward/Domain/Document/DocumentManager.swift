@@ -13,6 +13,12 @@ protocol DocumentManager: Sendable {
     /// Emits change signals for the currently open file so the caller can rerun `revalidateDocument(_:)`
     /// instead of duplicating separate live-refresh conflict rules.
     func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void>
+    /// Keeps the active live session attached to the renamed file path after a coordinated in-app move.
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async
 }
 
 actor LiveDocumentManager: DocumentManager {
@@ -55,6 +61,27 @@ actor LiveDocumentManager: DocumentManager {
         return try await session.observeChanges()
     }
 
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {
+        let oldKey = DocumentSessionKey(
+            workspaceRootURL: document.workspaceRootURL,
+            relativePath: document.relativePath
+        )
+
+        guard activeSessionKey == oldKey, let activeSession else {
+            return
+        }
+
+        await activeSession.relocate(to: url, relativePath: relativePath)
+        activeSessionKey = DocumentSessionKey(
+            workspaceRootURL: document.workspaceRootURL,
+            relativePath: relativePath
+        )
+    }
+
     nonisolated static func makeConflictDocument(
         from document: OpenDocument,
         kind: DocumentConflict.Kind
@@ -90,19 +117,14 @@ actor LiveDocumentManager: DocumentManager {
         for documentURL: URL,
         within workspaceRootURL: URL
     ) throws -> String {
-        let documentComponents = documentURL.standardizedFileURL.pathComponents
-        let workspaceComponents = workspaceRootURL.standardizedFileURL.pathComponents
-
-        guard
-            documentComponents.count > workspaceComponents.count,
-            documentComponents.starts(with: workspaceComponents)
-        else {
+        guard let relativePath = WorkspaceRelativePath.make(
+            for: documentURL,
+            within: workspaceRootURL
+        ) else {
             throw AppError.documentUnavailable(name: documentURL.lastPathComponent)
         }
 
-        return documentComponents
-            .dropFirst(workspaceComponents.count)
-            .joined(separator: "/")
+        return relativePath
     }
 }
 
@@ -155,4 +177,10 @@ actor StubDocumentManager: DocumentManager {
             continuation.finish()
         }
     }
+
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {}
 }

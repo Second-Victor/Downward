@@ -15,20 +15,27 @@ final class WorkspaceViewModel {
     var isShowingRenamePrompt = false
     var renameFileName = ""
     var isShowingDeleteConfirmation = false
+    var isShowingRecentFiles = false
 
     private(set) var pendingRenameFile: WorkspaceNode.File?
     private(set) var pendingDeleteFile: WorkspaceNode.File?
 
     private let coordinator: AppCoordinator
+    private let recentFilesStore: RecentFilesStore
     private var loadTask: Task<Void, Never>?
     private var fileOperationTask: Task<Void, Never>?
     private var loadGeneration = 0
     private var hasLoadedInitialSnapshot = false
     private var pendingCreateFolderURL: URL?
 
-    init(session: AppSession, coordinator: AppCoordinator) {
+    init(
+        session: AppSession,
+        coordinator: AppCoordinator,
+        recentFilesStore: RecentFilesStore
+    ) {
         self.session = session
         self.coordinator = coordinator
+        self.recentFilesStore = recentFilesStore
     }
 
     var workspaceTitle: String {
@@ -47,6 +54,10 @@ final class WorkspaceViewModel {
         return WorkspaceSearchEngine.results(in: snapshot, matching: searchQuery)
     }
 
+    var recentFiles: [RecentFileItem] {
+        recentFilesStore.recentItems(for: session.workspaceSnapshot)
+    }
+
     var isEmpty: Bool {
         isLoading == false && loadError == nil && nodes.isEmpty
     }
@@ -63,8 +74,22 @@ final class WorkspaceViewModel {
         isRefreshing || isPerformingFileOperation
     }
 
-    var selectedDocumentURL: URL? {
-        session.path.last?.editorURL
+    var selectedDocumentRelativePath: String? {
+        if let openDocument = session.openDocument {
+            return openDocument.relativePath
+        }
+
+        guard
+            let selectedDocumentURL = session.path.last?.editorURL,
+            let workspaceRootURL = session.workspaceSnapshot?.rootURL
+        else {
+            return nil
+        }
+
+        return WorkspaceRelativePath.make(
+            for: selectedDocumentURL,
+            within: workspaceRootURL
+        )
     }
 
     var pendingRenameTitle: String {
@@ -73,6 +98,10 @@ final class WorkspaceViewModel {
 
     var pendingDeleteTitle: String {
         pendingDeleteFile?.displayName ?? "Delete File"
+    }
+
+    var currentWorkspaceRootURL: URL {
+        session.workspaceSnapshot?.rootURL ?? URL(filePath: "/")
     }
 
     var searchQueryDescription: String {
@@ -97,8 +126,37 @@ final class WorkspaceViewModel {
         startSnapshotLoad()
     }
 
+    func refreshFromPullToRefresh() async {
+        guard let context = beginSnapshotLoad() else {
+            return
+        }
+
+        await performSnapshotLoad(generation: context.generation, hadSnapshot: context.hadSnapshot)
+    }
+
     func showSettings() {
         coordinator.presentSettings()
+    }
+
+    func presentRecentFiles() {
+        isShowingRecentFiles = true
+    }
+
+    func dismissRecentFiles() {
+        isShowingRecentFiles = false
+    }
+
+    func openRecentFile(_ item: RecentFileItem) {
+        isShowingRecentFiles = false
+        coordinator.presentEditor(for: item.url(in: currentWorkspaceRootURL))
+    }
+
+    func openFolder(_ url: URL) {
+        coordinator.presentFolder(url)
+    }
+
+    func openDocument(_ url: URL) {
+        coordinator.presentEditor(for: url)
     }
 
     func presentCreateFile(in folderURL: URL?) {
@@ -177,11 +235,25 @@ final class WorkspaceViewModel {
     }
 
     func isSelected(_ node: WorkspaceNode) -> Bool {
-        node.url == selectedDocumentURL
+        guard
+            let selectedDocumentRelativePath,
+            let nodeRelativePath = WorkspaceRelativePath.make(
+                for: node.url,
+                within: currentWorkspaceRootURL
+            )
+        else {
+            return false
+        }
+
+        return nodeRelativePath == selectedDocumentRelativePath
     }
 
-    func isSelectedDocumentURL(_ url: URL) -> Bool {
-        url == selectedDocumentURL
+    func isSelectedDocument(relativePath: String) -> Bool {
+        selectedDocumentRelativePath == relativePath
+    }
+
+    func isSelectedRecentItem(_ item: RecentFileItem) -> Bool {
+        selectedDocumentRelativePath == item.relativePath
     }
 
     func title(for folderURL: URL?) -> String {
@@ -209,8 +281,18 @@ final class WorkspaceViewModel {
     }
 
     private func startSnapshotLoad() {
-        guard session.launchState == .workspaceReady else {
+        guard let context = beginSnapshotLoad() else {
             return
+        }
+
+        loadTask = Task { [self] in
+            await performSnapshotLoad(generation: context.generation, hadSnapshot: context.hadSnapshot)
+        }
+    }
+
+    private func beginSnapshotLoad() -> (generation: Int, hadSnapshot: Bool)? {
+        guard session.launchState == .workspaceReady else {
+            return nil
         }
 
         loadTask?.cancel()
@@ -224,32 +306,34 @@ final class WorkspaceViewModel {
             loadError = nil
         }
 
-        loadTask = Task {
-            let result = await coordinator.refreshWorkspace()
-            guard Task.isCancelled == false else {
-                return
-            }
+        return (generation, hadSnapshot)
+    }
 
-            guard generation == loadGeneration else {
-                return
-            }
+    private func performSnapshotLoad(generation: Int, hadSnapshot: Bool) async {
+        let result = await coordinator.refreshWorkspace()
+        guard Task.isCancelled == false else {
+            return
+        }
 
-            isLoading = false
-            isRefreshing = false
+        guard generation == loadGeneration else {
+            return
+        }
 
-            guard let result else {
-                return
-            }
+        isLoading = false
+        isRefreshing = false
 
-            switch result {
-            case .success:
-                loadError = nil
-            case let .failure(error):
-                if hadSnapshot {
-                    session.lastError = error
-                } else {
-                    loadError = error
-                }
+        guard let result else {
+            return
+        }
+
+        switch result {
+        case .success:
+            loadError = nil
+        case let .failure(error):
+            if hadSnapshot {
+                session.lastError = error
+            } else {
+                loadError = error
             }
         }
     }

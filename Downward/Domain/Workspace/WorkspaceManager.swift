@@ -34,21 +34,40 @@ protocol WorkspaceManager: Sendable {
     func clearWorkspaceSelection() async throws
 }
 
+protocol WorkspaceFileCoordinating: Sendable {
+    nonisolated func coordinateCreation(
+        at url: URL,
+        accessor: (URL) throws -> Void
+    ) throws
+    nonisolated func coordinateMove(
+        from sourceURL: URL,
+        to destinationURL: URL,
+        accessor: (URL, URL) throws -> Void
+    ) throws
+    nonisolated func coordinateDeletion(
+        at url: URL,
+        accessor: (URL) throws -> Void
+    ) throws
+}
+
 actor LiveWorkspaceManager: WorkspaceManager {
     private let bookmarkStore: any BookmarkStore
     private let securityScopedAccess: any SecurityScopedAccessHandling
     private let workspaceEnumerator: any WorkspaceEnumerating
+    private let fileCoordinator: any WorkspaceFileCoordinating
     private var currentSnapshot: WorkspaceSnapshot?
     private var refreshGeneration = 0
 
     init(
         bookmarkStore: any BookmarkStore,
         securityScopedAccess: any SecurityScopedAccessHandling,
-        workspaceEnumerator: any WorkspaceEnumerating
+        workspaceEnumerator: any WorkspaceEnumerating,
+        fileCoordinator: any WorkspaceFileCoordinating = LiveWorkspaceFileCoordinator()
     ) {
         self.bookmarkStore = bookmarkStore
         self.securityScopedAccess = securityScopedAccess
         self.workspaceEnumerator = workspaceEnumerator
+        self.fileCoordinator = fileCoordinator
     }
 
     func restoreWorkspace() async -> WorkspaceRestoreResult {
@@ -58,31 +77,32 @@ actor LiveWorkspaceManager: WorkspaceManager {
                 return .noWorkspaceSelected
             }
 
-            let resolvedBookmark = try securityScopedAccess.resolveBookmark(bookmark.bookmarkData)
-
-            guard resolvedBookmark.isStale == false else {
+            let resolvedWorkspace = try await resolvedWorkspaceReference(from: bookmark)
+            guard resolvedWorkspace.isAccessible else {
                 currentSnapshot = nil
                 return invalidRestoreResult(
-                    displayName: bookmark.workspaceName,
-                    message: "The previous folder reference is stale."
-                )
-            }
-
-            do {
-                try securityScopedAccess.validateAccess(to: resolvedBookmark.url)
-            } catch {
-                currentSnapshot = nil
-                return invalidRestoreResult(
-                    displayName: bookmark.workspaceName,
+                    displayName: resolvedWorkspace.displayName,
                     message: "The previous folder can no longer be opened."
                 )
             }
 
             let snapshot = try await loadSnapshot(
-                rootURL: resolvedBookmark.url,
-                displayName: bookmark.workspaceName
+                rootURL: resolvedWorkspace.url,
+                displayName: resolvedWorkspace.displayName
             )
             return .ready(snapshot)
+        } catch let error as AppError {
+            currentSnapshot = nil
+            if case let .workspaceAccessInvalid(displayName) = error {
+                return invalidRestoreResult(
+                    displayName: displayName,
+                    message: "The previous folder can no longer be opened."
+                )
+            }
+
+            return failedRestoreResult(
+                message: "The saved workspace could not be restored."
+            )
         } catch {
             currentSnapshot = nil
             return failedRestoreResult(
@@ -142,16 +162,14 @@ actor LiveWorkspaceManager: WorkspaceManager {
         }
 
         if let bookmark = try await bookmarkStore.loadBookmark() {
-            let resolvedBookmark = try securityScopedAccess.resolveBookmark(bookmark.bookmarkData)
-
-            guard resolvedBookmark.isStale == false else {
-                throw AppError.workspaceAccessInvalid(displayName: bookmark.workspaceName)
+            let resolvedWorkspace = try await resolvedWorkspaceReference(from: bookmark)
+            guard resolvedWorkspace.isAccessible else {
+                throw AppError.workspaceAccessInvalid(displayName: resolvedWorkspace.displayName)
             }
 
-            try securityScopedAccess.validateAccess(to: resolvedBookmark.url)
             return try await loadSnapshot(
-                rootURL: resolvedBookmark.url,
-                displayName: bookmark.workspaceName
+                rootURL: resolvedWorkspace.url,
+                displayName: resolvedWorkspace.displayName
             )
         }
 
@@ -160,6 +178,7 @@ actor LiveWorkspaceManager: WorkspaceManager {
 
     func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
         let workspaceContext = try await currentWorkspaceContext()
+        let fileCoordinator = self.fileCoordinator
 
         let outcome = try await performMutation(in: workspaceContext.rootURL) { securedRootURL in
             let parentURL = try folderURL.map {
@@ -186,7 +205,9 @@ actor LiveWorkspaceManager: WorkspaceManager {
             )
 
             do {
-                try Data().write(to: destinationURL, options: .withoutOverwriting)
+                try fileCoordinator.coordinateCreation(at: destinationURL) { coordinatedURL in
+                    try Data().write(to: coordinatedURL, options: .withoutOverwriting)
+                }
             } catch {
                 throw AppError.fileOperationFailed(
                     action: "Create File",
@@ -210,6 +231,7 @@ actor LiveWorkspaceManager: WorkspaceManager {
 
     func renameFile(at url: URL, to proposedName: String) async throws -> WorkspaceMutationResult {
         let workspaceContext = try await currentWorkspaceContext()
+        let fileCoordinator = self.fileCoordinator
 
         let outcome = try await performMutation(in: workspaceContext.rootURL) { securedRootURL in
             let sourceURL = try Self.resolveWorkspaceItemURL(
@@ -246,16 +268,25 @@ actor LiveWorkspaceManager: WorkspaceManager {
                 )
             }
 
-            guard FileManager.default.fileExists(atPath: destinationURL.path) == false else {
-                throw AppError.fileOperationFailed(
-                    action: "Rename File",
-                    name: sourceURL.lastPathComponent,
-                    details: "\(destinationURL.lastPathComponent) already exists in this folder."
-                )
-            }
-
             do {
-                try FileManager.default.moveItem(at: sourceURL, to: destinationURL)
+                try fileCoordinator.coordinateMove(from: sourceURL, to: destinationURL) {
+                    coordinatedSourceURL,
+                    coordinatedDestinationURL in
+                    guard FileManager.default.fileExists(atPath: coordinatedDestinationURL.path) == false else {
+                        throw AppError.fileOperationFailed(
+                            action: "Rename File",
+                            name: coordinatedSourceURL.lastPathComponent,
+                            details: "\(coordinatedDestinationURL.lastPathComponent) already exists in this folder."
+                        )
+                    }
+
+                    try FileManager.default.moveItem(
+                        at: coordinatedSourceURL,
+                        to: coordinatedDestinationURL
+                    )
+                }
+            } catch let error as AppError {
+                throw error
             } catch {
                 throw AppError.fileOperationFailed(
                     action: "Rename File",
@@ -285,6 +316,7 @@ actor LiveWorkspaceManager: WorkspaceManager {
 
     func deleteFile(at url: URL) async throws -> WorkspaceMutationResult {
         let workspaceContext = try await currentWorkspaceContext()
+        let fileCoordinator = self.fileCoordinator
 
         let outcome = try await performMutation(in: workspaceContext.rootURL) { securedRootURL in
             let sourceURL = try Self.resolveWorkspaceItemURL(
@@ -303,7 +335,9 @@ actor LiveWorkspaceManager: WorkspaceManager {
             }
 
             do {
-                try FileManager.default.removeItem(at: sourceURL)
+                try fileCoordinator.coordinateDeletion(at: sourceURL) { coordinatedURL in
+                    try FileManager.default.removeItem(at: coordinatedURL)
+                }
             } catch {
                 throw AppError.fileOperationFailed(
                     action: "Delete File",
@@ -396,13 +430,12 @@ actor LiveWorkspaceManager: WorkspaceManager {
             throw AppError.missingWorkspaceSelection
         }
 
-        let resolvedBookmark = try securityScopedAccess.resolveBookmark(bookmark.bookmarkData)
-        guard resolvedBookmark.isStale == false else {
-            throw AppError.workspaceAccessInvalid(displayName: bookmark.workspaceName)
+        let resolvedWorkspace = try await resolvedWorkspaceReference(from: bookmark)
+        guard resolvedWorkspace.isAccessible else {
+            throw AppError.workspaceAccessInvalid(displayName: resolvedWorkspace.displayName)
         }
 
-        try securityScopedAccess.validateAccess(to: resolvedBookmark.url)
-        return (resolvedBookmark.url, bookmark.workspaceName)
+        return (resolvedWorkspace.url, resolvedWorkspace.displayName)
     }
 
     private func performMutation(
@@ -416,6 +449,46 @@ actor LiveWorkspaceManager: WorkspaceManager {
                 try mutation(securedRootURL)
             }
         }.value
+    }
+
+    /// Resolves the persisted workspace bookmark and refreshes stale bookmark data before the caller
+    /// uses the URL for restore, refresh, or mutation flows.
+    private func resolvedWorkspaceReference(
+        from bookmark: StoredWorkspaceBookmark
+    ) async throws -> ResolvedWorkspaceReference {
+        let resolvedBookmark = try securityScopedAccess.resolveBookmark(bookmark.bookmarkData)
+
+        do {
+            try securityScopedAccess.validateAccess(to: resolvedBookmark.url)
+        } catch {
+            return ResolvedWorkspaceReference(
+                url: resolvedBookmark.url,
+                displayName: bookmark.workspaceName,
+                isAccessible: false
+            )
+        }
+
+        if resolvedBookmark.isStale {
+            let refreshedBookmarkData = try securityScopedAccess.makeBookmark(for: resolvedBookmark.url)
+            let refreshedBookmark = StoredWorkspaceBookmark(
+                workspaceName: resolvedBookmark.displayName,
+                lastKnownPath: resolvedBookmark.url.path,
+                bookmarkData: refreshedBookmarkData
+            )
+            try await bookmarkStore.saveBookmark(refreshedBookmark)
+
+            return ResolvedWorkspaceReference(
+                url: resolvedBookmark.url,
+                displayName: refreshedBookmark.workspaceName,
+                isAccessible: true
+            )
+        }
+
+        return ResolvedWorkspaceReference(
+            url: resolvedBookmark.url,
+            displayName: bookmark.workspaceName,
+            isAccessible: true
+        )
     }
 
     nonisolated private static func resolveWorkspaceItemURL(
@@ -436,13 +509,7 @@ actor LiveWorkspaceManager: WorkspaceManager {
     }
 
     nonisolated private static func relativePath(for url: URL, within rootURL: URL) throws -> String {
-        let urlComponents = url.standardizedFileURL.pathComponents
-        let rootComponents = rootURL.standardizedFileURL.pathComponents
-
-        guard
-            urlComponents.count > rootComponents.count,
-            urlComponents.starts(with: rootComponents)
-        else {
+        guard let relativePath = WorkspaceRelativePath.make(for: url, within: rootURL) else {
             throw AppError.fileOperationFailed(
                 action: "Workspace File Operation",
                 name: url.lastPathComponent,
@@ -450,9 +517,7 @@ actor LiveWorkspaceManager: WorkspaceManager {
             )
         }
 
-        return urlComponents
-            .dropFirst(rootComponents.count)
-            .joined(separator: "/")
+        return relativePath
     }
 
     nonisolated private static func normalizedCreatedFileName(from proposedName: String) throws -> String {
@@ -546,6 +611,100 @@ actor LiveWorkspaceManager: WorkspaceManager {
 
         return candidateURL
     }
+}
+
+private struct LiveWorkspaceFileCoordinator: WorkspaceFileCoordinating {
+    nonisolated func coordinateCreation(
+        at url: URL,
+        accessor: (URL) throws -> Void
+    ) throws {
+        var coordinationError: NSError?
+        var accessorError: Error?
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+
+        coordinator.coordinate(writingItemAt: url, options: [], error: &coordinationError) { coordinatedURL in
+            do {
+                try accessor(coordinatedURL)
+            } catch {
+                accessorError = error
+            }
+        }
+
+        if let accessorError {
+            throw accessorError
+        }
+
+        if let coordinationError {
+            throw coordinationError
+        }
+    }
+
+    nonisolated func coordinateMove(
+        from sourceURL: URL,
+        to destinationURL: URL,
+        accessor: (URL, URL) throws -> Void
+    ) throws {
+        var coordinationError: NSError?
+        var accessorError: Error?
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+
+        coordinator.coordinate(
+            writingItemAt: sourceURL,
+            options: .forMoving,
+            writingItemAt: destinationURL,
+            options: [],
+            error: &coordinationError
+        ) { coordinatedSourceURL, coordinatedDestinationURL in
+            do {
+                try accessor(coordinatedSourceURL, coordinatedDestinationURL)
+            } catch {
+                accessorError = error
+            }
+        }
+
+        if let accessorError {
+            throw accessorError
+        }
+
+        if let coordinationError {
+            throw coordinationError
+        }
+    }
+
+    nonisolated func coordinateDeletion(
+        at url: URL,
+        accessor: (URL) throws -> Void
+    ) throws {
+        var coordinationError: NSError?
+        var accessorError: Error?
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+
+        coordinator.coordinate(
+            writingItemAt: url,
+            options: .forDeleting,
+            error: &coordinationError
+        ) { coordinatedURL in
+            do {
+                try accessor(coordinatedURL)
+            } catch {
+                accessorError = error
+            }
+        }
+
+        if let accessorError {
+            throw accessorError
+        }
+
+        if let coordinationError {
+            throw coordinationError
+        }
+    }
+}
+
+private struct ResolvedWorkspaceReference: Sendable {
+    let url: URL
+    let displayName: String
+    let isAccessible: Bool
 }
 
 actor StubWorkspaceManager: WorkspaceManager {

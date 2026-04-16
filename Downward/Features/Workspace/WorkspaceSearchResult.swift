@@ -5,8 +5,8 @@ struct WorkspaceSearchResult: Hashable, Identifiable, Sendable {
     nonisolated let displayName: String
     nonisolated let relativePath: String
 
-    nonisolated var id: URL {
-        url
+    nonisolated var id: String {
+        relativePath
     }
 
     nonisolated var node: WorkspaceNode {

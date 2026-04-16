@@ -59,30 +59,47 @@ protocol SecurityScopedAccessHandling: Sendable {
     ) throws -> Value
 }
 
+protocol SecurityScopedBookmarking: Sendable {
+    nonisolated func makeBookmark(
+        for url: URL,
+        options: URL.BookmarkCreationOptions
+    ) throws -> Data
+    nonisolated func resolveBookmark(
+        _ data: Data,
+        options: URL.BookmarkResolutionOptions
+    ) throws -> ResolvedSecurityScopedURL
+}
+
+protocol SecurityScopedResourceAccessing: Sendable {
+    nonisolated func startAccessing(_ url: URL) -> Bool
+    nonisolated func stopAccessing(_ url: URL)
+}
+
 struct LiveSecurityScopedAccessHandler: SecurityScopedAccessHandling {
+    private let bookmarking: any SecurityScopedBookmarking
+    private let resourceAccess: any SecurityScopedResourceAccessing
+
+    nonisolated init(
+        bookmarking: any SecurityScopedBookmarking = URLSecurityScopedBookmarking(),
+        resourceAccess: any SecurityScopedResourceAccessing = URLSecurityScopedResourceAccess()
+    ) {
+        self.bookmarking = bookmarking
+        self.resourceAccess = resourceAccess
+    }
+
     nonisolated func makeBookmark(for url: URL) throws -> Data {
         try withSecurityScopedAccess(to: url) { securedURL in
-            try securedURL.bookmarkData(
-                options: [],
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
+            try bookmarking.makeBookmark(
+                for: securedURL,
+                options: Self.bookmarkCreationOptions()
             )
         }
     }
 
     nonisolated func resolveBookmark(_ data: Data) throws -> ResolvedSecurityScopedURL {
-        var isStale = false
-        let url = try URL(
-            resolvingBookmarkData: data,
-            options: [],
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        )
-
-        return ResolvedSecurityScopedURL(
-            url: url,
-            displayName: url.lastPathComponent,
-            isStale: isStale
+        try bookmarking.resolveBookmark(
+            data,
+            options: Self.bookmarkResolutionOptions()
         )
     }
 
@@ -91,15 +108,16 @@ struct LiveSecurityScopedAccessHandler: SecurityScopedAccessHandling {
     }
 
     nonisolated func beginAccess(to url: URL) throws -> SecurityScopedAccessLease {
-        let didStartAccess = url.startAccessingSecurityScopedResource()
+        let didStartAccess = resourceAccess.startAccessing(url)
         guard didStartAccess else {
             throw AppError.workspaceAccessInvalid(displayName: url.lastPathComponent)
         }
 
+        let resourceAccess = self.resourceAccess
         return SecurityScopedAccessLease(
             url: url,
             stopHandler: {
-                url.stopAccessingSecurityScopedResource()
+                resourceAccess.stopAccessing(url)
             }
         )
     }
@@ -125,13 +143,13 @@ struct LiveSecurityScopedAccessHandler: SecurityScopedAccessHandling {
         to url: URL,
         _ operation: (URL) throws -> Value
     ) throws -> Value {
-        let didStartAccess = url.startAccessingSecurityScopedResource()
+        let didStartAccess = resourceAccess.startAccessing(url)
         guard didStartAccess else {
             throw AppError.workspaceAccessInvalid(displayName: url.lastPathComponent)
         }
 
         defer {
-            url.stopAccessingSecurityScopedResource()
+            resourceAccess.stopAccessing(url)
         }
 
         return try operation(url)
@@ -146,6 +164,64 @@ struct LiveSecurityScopedAccessHandler: SecurityScopedAccessHandling {
             .reduce(rootURL) { partialURL, component in
                 partialURL.appending(path: String(component))
             }
+    }
+
+    nonisolated private static func bookmarkCreationOptions() -> URL.BookmarkCreationOptions {
+        #if os(macOS)
+        [.withSecurityScope]
+        #else
+        []
+        #endif
+    }
+
+    nonisolated private static func bookmarkResolutionOptions() -> URL.BookmarkResolutionOptions {
+        #if os(macOS)
+        [.withSecurityScope]
+        #else
+        [.withoutImplicitStartAccessing]
+        #endif
+    }
+}
+
+private struct URLSecurityScopedBookmarking: SecurityScopedBookmarking {
+    nonisolated func makeBookmark(
+        for url: URL,
+        options: URL.BookmarkCreationOptions
+    ) throws -> Data {
+        try url.bookmarkData(
+            options: options,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
+    }
+
+    nonisolated func resolveBookmark(
+        _ data: Data,
+        options: URL.BookmarkResolutionOptions
+    ) throws -> ResolvedSecurityScopedURL {
+        var isStale = false
+        let url = try URL(
+            resolvingBookmarkData: data,
+            options: options,
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        )
+
+        return ResolvedSecurityScopedURL(
+            url: url,
+            displayName: url.lastPathComponent,
+            isStale: isStale
+        )
+    }
+}
+
+private struct URLSecurityScopedResourceAccess: SecurityScopedResourceAccessing {
+    nonisolated func startAccessing(_ url: URL) -> Bool {
+        url.startAccessingSecurityScopedResource()
+    }
+
+    nonisolated func stopAccessing(_ url: URL) {
+        url.stopAccessingSecurityScopedResource()
     }
 }
 

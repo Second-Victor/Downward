@@ -15,7 +15,7 @@ enum WorkspaceSearchEngine {
         appendMatches(
             from: snapshot.rootNodes,
             query: query,
-            pathComponents: [],
+            within: snapshot.rootURL,
             results: &results
         )
         return results
@@ -24,7 +24,7 @@ enum WorkspaceSearchEngine {
     nonisolated private static func appendMatches(
         from nodes: [WorkspaceNode],
         query: String,
-        pathComponents: [String],
+        within workspaceRootURL: URL,
         results: inout [WorkspaceSearchResult]
     ) {
         for node in nodes {
@@ -33,11 +33,17 @@ enum WorkspaceSearchEngine {
                 appendMatches(
                     from: folder.children,
                     query: query,
-                    pathComponents: pathComponents + [folder.displayName],
+                    within: workspaceRootURL,
                     results: &results
                 )
             case let .file(file):
-                let relativePath = (pathComponents + [file.displayName]).joined(separator: "/")
+                guard let relativePath = WorkspaceRelativePath.make(
+                    for: file.url,
+                    within: workspaceRootURL
+                ) else {
+                    continue
+                }
+
                 guard matches(fileName: file.displayName, relativePath: relativePath, query: query) else {
                     continue
                 }

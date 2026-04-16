@@ -11,7 +11,7 @@ actor PlainTextDocumentSession {
     nonisolated private static let observationFallbackInterval: Duration = .seconds(3)
 
     private let workspaceRootURL: URL
-    private let relativePath: String
+    private var relativePath: String
     private let securityScopedAccess: any SecurityScopedAccessHandling
     private var observationLease: SecurityScopedAccessLease?
     private var observationURL: URL?
@@ -202,6 +202,14 @@ actor PlainTextDocumentSession {
                 }
             }
         }.value
+    }
+
+    /// Retargets the active document session after an in-app coordinated rename so subsequent saves,
+    /// reloads, and presenter callbacks continue following the moved file.
+    func relocate(to url: URL, relativePath: String) {
+        self.relativePath = relativePath
+        observationURL = url
+        filePresenter?.updatePresentedItemURL(to: url)
     }
 
     private func ensureObservationStarted() throws {
@@ -624,16 +632,22 @@ private enum AppErrorOrMissing: Error, Sendable {
 }
 
 private final class PlainTextDocumentFilePresenter: NSObject, NSFilePresenter {
-    nonisolated let presentedItemURL: URL?
+    nonisolated var presentedItemURL: URL? {
+        urlLock.lock()
+        defer { urlLock.unlock() }
+        return currentPresentedItemURL
+    }
     nonisolated let presentedItemOperationQueue: OperationQueue
 
     nonisolated private let onChange: @Sendable () -> Void
+    private let urlLock = NSLock()
+    nonisolated(unsafe) private var currentPresentedItemURL: URL?
 
     nonisolated init(
         url: URL,
         onChange: @escaping @Sendable () -> Void
     ) {
-        presentedItemURL = url
+        currentPresentedItemURL = url
         presentedItemOperationQueue = OperationQueue()
         presentedItemOperationQueue.qualityOfService = .utility
         presentedItemOperationQueue.maxConcurrentOperationCount = 1
@@ -645,11 +659,18 @@ private final class PlainTextDocumentFilePresenter: NSObject, NSFilePresenter {
     }
 
     nonisolated func presentedItemDidMove(to newURL: URL) {
+        updatePresentedItemURL(to: newURL)
         onChange()
     }
 
     nonisolated func accommodatePresentedItemDeletion(completionHandler: @escaping (Error?) -> Void) {
         onChange()
         completionHandler(nil)
+    }
+
+    nonisolated func updatePresentedItemURL(to url: URL) {
+        urlLock.lock()
+        currentPresentedItemURL = url
+        urlLock.unlock()
     }
 }

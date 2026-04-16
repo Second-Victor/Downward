@@ -291,6 +291,51 @@ final class DocumentManagerTests: XCTestCase {
         XCTAssertEqual(savedDocument.conflictState, .none)
     }
 
+    @MainActor
+    func testRelocatedSessionSavesRenamedDocumentAtNewPath() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let originalURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Draft.md",
+            contents: """
+            # Entry
+
+            Original text.
+            """
+        )
+        let renamedURL = workspaceURL.appending(path: "Published.md")
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+        var document = try await manager.openDocument(at: originalURL, in: workspaceURL)
+        let observation = try await manager.observeDocumentChanges(for: document)
+
+        try FileManager.default.moveItem(at: originalURL, to: renamedURL)
+        await manager.relocateDocumentSession(
+            for: document,
+            to: renamedURL,
+            relativePath: "Published.md"
+        )
+
+        document.url = renamedURL
+        document.relativePath = "Published.md"
+        document.displayName = "Published.md"
+        document.text = "# Entry\n\nRenamed file edits."
+        document.isDirty = true
+        document.saveState = .unsaved
+
+        let savedDocument = try await manager.saveDocument(document, overwriteConflict: false)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: originalURL.path))
+        XCTAssertEqual(try String(contentsOf: renamedURL, encoding: .utf8), "# Entry\n\nRenamed file edits.")
+        XCTAssertEqual(savedDocument.url, renamedURL)
+        XCTAssertEqual(savedDocument.relativePath, "Published.md")
+        XCTAssertEqual(savedDocument.displayName, "Published.md")
+
+        withExtendedLifetime(observation) {}
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let directoryURL = FileManager.default.temporaryDirectory
             .appending(path: "DocumentManagerTests")

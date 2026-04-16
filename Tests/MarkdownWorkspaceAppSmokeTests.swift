@@ -14,6 +14,7 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         let container = AppContainer(
             logger: DebugLogger(),
             bookmarkStore: StubBookmarkStore(),
+            recentFilesStore: RecentFilesStore(initialItems: []),
             editorAppearanceStore: EditorAppearanceStore(),
             workspaceManager: LiveWorkspaceManager(
                 bookmarkStore: StubBookmarkStore(),
@@ -28,8 +29,8 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
 
         await container.coordinator.bootstrapIfNeeded()
 
-        XCTAssertEqual(container.session.launchState, .noWorkspaceSelected)
-        XCTAssertEqual(container.session.workspaceAccessState, .noneSelected)
+        XCTAssertEqual(container.session.launchState, RootLaunchState.noWorkspaceSelected)
+        XCTAssertEqual(container.session.workspaceAccessState, WorkspaceAccessState.noneSelected)
         XCTAssertNil(container.session.workspaceSnapshot)
     }
 
@@ -123,6 +124,16 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         session.launchState = .workspaceReady
         session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
         session.path = [.editor(firstDocument.url)]
+        let documentManager = DelayedOpenDocumentManager(
+            documents: [
+                firstDocument.url: firstDocument,
+                secondDocument.url: secondDocument,
+            ],
+            openDelays: [
+                firstDocument.url: .milliseconds(180),
+                secondDocument.url: .milliseconds(20),
+            ]
+        )
 
         let coordinator = AppCoordinator(
             session: session,
@@ -130,16 +141,7 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
                 bookmarkStore: StubBookmarkStore(),
                 readySnapshot: PreviewSampleData.nestedWorkspace
             ),
-            documentManager: DelayedOpenDocumentManager(
-                documents: [
-                    firstDocument.url: firstDocument,
-                    secondDocument.url: secondDocument,
-                ],
-                openDelays: [
-                    firstDocument.url: .milliseconds(180),
-                    secondDocument.url: .milliseconds(20),
-                ]
-            ),
+            documentManager: documentManager,
             sessionStore: sessionStore,
             errorReporter: DefaultErrorReporter(logger: DebugLogger()),
             folderPickerBridge: StubFolderPickerBridge(),
@@ -156,12 +158,14 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(30))
         session.path = [.editor(secondDocument.url)]
         viewModel.handleAppear(for: secondDocument.url)
+        viewModel.handleDisappear(for: firstDocument.url)
 
         try await waitUntil {
             session.openDocument?.url == secondDocument.url
         }
         try await Task.sleep(for: .milliseconds(220))
         let restoredSession = try await sessionStore.loadRestorableDocumentSession()
+        let observedURLs = await documentManager.observedURLs
 
         XCTAssertEqual(session.openDocument?.url, secondDocument.url)
         XCTAssertEqual(session.openDocument?.displayName, secondDocument.displayName)
@@ -169,6 +173,59 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         XCTAssertNil(session.editorLoadError)
         XCTAssertNil(session.lastError)
         XCTAssertEqual(restoredSession?.relativePath, secondDocument.relativePath)
+        XCTAssertEqual(observedURLs, [secondDocument.url])
+    }
+
+    @MainActor
+    func testNavigatingAwayBeforeDelayedLoadCompletesDoesNotReopenDocumentOrObservation() async throws {
+        let sessionStore = StubSessionStore()
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.path = [.editor(PreviewSampleData.cleanDocument.url)]
+        let documentManager = DelayedOpenDocumentManager(
+            documents: [
+                PreviewSampleData.cleanDocument.url: PreviewSampleData.cleanDocument,
+            ],
+            openDelays: [
+                PreviewSampleData.cleanDocument.url: .milliseconds(180),
+            ]
+        )
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: PreviewSampleData.nestedWorkspace
+            ),
+            documentManager: documentManager,
+            sessionStore: sessionStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+        let viewModel = EditorViewModel(
+            session: session,
+            coordinator: coordinator,
+            editorAppearanceStore: EditorAppearanceStore(),
+            autosaveDelay: .milliseconds(20)
+        )
+
+        viewModel.handleAppear(for: PreviewSampleData.cleanDocument.url)
+        try await Task.sleep(for: .milliseconds(30))
+        session.path = []
+        viewModel.handleDisappear(for: PreviewSampleData.cleanDocument.url)
+        try await Task.sleep(for: .milliseconds(220))
+
+        let restoredSession = try await sessionStore.loadRestorableDocumentSession()
+        let observedURLs = await documentManager.observedURLs
+
+        XCTAssertNil(session.openDocument)
+        XCTAssertEqual(session.path, [])
+        XCTAssertNil(session.editorLoadError)
+        XCTAssertNil(session.lastError)
+        XCTAssertTrue(observedURLs.isEmpty)
+        XCTAssertNil(restoredSession)
     }
 
     @MainActor
@@ -575,7 +632,11 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
             folderPickerBridge: StubFolderPickerBridge(),
             logger: DebugLogger()
         )
-        let workspaceViewModel = WorkspaceViewModel(session: session, coordinator: coordinator)
+        let workspaceViewModel = WorkspaceViewModel(
+            session: session,
+            coordinator: coordinator,
+            recentFilesStore: RecentFilesStore(initialItems: [])
+        )
 
         _ = await coordinator.renameFile(at: openDocument.url, to: "2026-04-13 Renamed")
         let renamedDocument = try XCTUnwrap(session.openDocument)
@@ -594,7 +655,7 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
             workspaceViewModel.isSelected(
                 .file(
                     .init(
-                        url: renamedURL,
+                        url: URL(filePath: "\(PreviewSampleData.workspaceRootURL.path)/Journal/2026/../2026/2026-04-13 Renamed.md"),
                         displayName: "2026-04-13 Renamed.md",
                         subtitle: "Daily note"
                     )
@@ -604,10 +665,14 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
 
         _ = await coordinator.saveDocument(renamedDocument)
         let savedInputs = await documentManager.savedInputs
+        let relocatedInputs = await documentManager.relocatedInputs
         let persistedSessionAfterSave = try await sessionStore.loadRestorableDocumentSession()
 
         XCTAssertEqual(savedInputs.map(\.url), [renamedURL])
         XCTAssertEqual(savedInputs.map(\.relativePath), [renamedRelativePath])
+        XCTAssertEqual(relocatedInputs.map(\.fromRelativePath), [PreviewSampleData.dirtyDocument.relativePath])
+        XCTAssertEqual(relocatedInputs.map(\.toURL), [renamedURL])
+        XCTAssertEqual(relocatedInputs.map(\.toRelativePath), [renamedRelativePath])
         XCTAssertEqual(persistedSessionAfterSave?.relativePath, renamedRelativePath)
     }
 
@@ -799,8 +864,8 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
 
         await coordinator.clearWorkspace()
 
-        XCTAssertEqual(session.launchState, .noWorkspaceSelected)
-        XCTAssertEqual(session.workspaceAccessState, .noneSelected)
+        XCTAssertEqual(session.launchState, RootLaunchState.noWorkspaceSelected)
+        XCTAssertEqual(session.workspaceAccessState, WorkspaceAccessState.noneSelected)
         XCTAssertNil(session.workspaceSnapshot)
         XCTAssertNil(session.openDocument)
         XCTAssertNil(session.editorLoadError)
@@ -841,7 +906,7 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
 
         let bookmark = try await bookmarkStore.loadBookmark()
         XCTAssertNil(bookmark)
-        XCTAssertEqual(session.launchState, .noWorkspaceSelected)
+        XCTAssertEqual(session.launchState, RootLaunchState.noWorkspaceSelected)
         XCTAssertEqual(session.path, [])
     }
 
@@ -916,8 +981,8 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
 
         XCTAssertNil(bookmark)
         XCTAssertNil(restoredSession)
-        XCTAssertEqual(session.launchState, .noWorkspaceSelected)
-        XCTAssertEqual(session.workspaceAccessState, .noneSelected)
+        XCTAssertEqual(session.launchState, RootLaunchState.noWorkspaceSelected)
+        XCTAssertEqual(session.workspaceAccessState, WorkspaceAccessState.noneSelected)
         XCTAssertNil(session.workspaceSnapshot)
         XCTAssertNil(session.openDocument)
         XCTAssertEqual(session.path, [])
@@ -1230,6 +1295,231 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkspaceViewModelProgrammaticOpenUpdatesNavigationPath() {
+        let container = AppContainer.preview(
+            launchState: .workspaceReady,
+            accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+            snapshot: PreviewSampleData.nestedWorkspace
+        )
+        let workspaceViewModel = container.workspaceViewModel
+
+        workspaceViewModel.openFolder(PreviewSampleData.year2026URL)
+        workspaceViewModel.openDocument(PreviewSampleData.cleanDocument.url)
+
+        XCTAssertEqual(
+            container.session.path,
+            [.folder(PreviewSampleData.year2026URL), .editor(PreviewSampleData.cleanDocument.url)]
+        )
+    }
+
+    @MainActor
+    func testWorkspaceNavigationModeUsesValueLinksOnlyForStackNavigation() {
+        XCTAssertTrue(WorkspaceNavigationMode.stackPath.usesValueNavigationLinks)
+        XCTAssertFalse(WorkspaceNavigationMode.splitSidebar.usesValueNavigationLinks)
+    }
+
+    @MainActor
+    func testPullToRefreshWhileSearchIsActiveRerunsFilterAndKeepsOpenDocumentState() async {
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.openDocument = PreviewSampleData.cleanDocument
+        session.path = [.editor(PreviewSampleData.cleanDocument.url)]
+
+        let refreshedSnapshot = makeWorkspaceSnapshotRemovingFile(url: PreviewSampleData.readmeDocumentURL)
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: refreshedSnapshot
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+        let workspaceViewModel = WorkspaceViewModel(
+            session: session,
+            coordinator: coordinator,
+            recentFilesStore: RecentFilesStore(initialItems: [])
+        )
+
+        workspaceViewModel.searchQuery = "read"
+        XCTAssertEqual(workspaceViewModel.searchResults.map(\.displayName), ["README.md"])
+
+        await workspaceViewModel.refreshFromPullToRefresh()
+
+        XCTAssertEqual(session.workspaceSnapshot, refreshedSnapshot)
+        XCTAssertTrue(workspaceViewModel.isSearching)
+        XCTAssertTrue(workspaceViewModel.searchResults.isEmpty)
+        XCTAssertEqual(session.openDocument?.url, PreviewSampleData.cleanDocument.url)
+        XCTAssertEqual(session.path, [.editor(PreviewSampleData.cleanDocument.url)])
+        XCTAssertNil(session.editorLoadError)
+    }
+
+    @MainActor
+    func testRecentFileOpenedFromSecondarySurfaceReopensCorrectEditorDocument() async throws {
+        let recentItem = RecentFileItem(
+            workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+            relativePath: PreviewSampleData.cleanDocument.relativePath,
+            displayName: PreviewSampleData.cleanDocument.displayName,
+            lastOpenedAt: PreviewSampleData.previewDate
+        )
+        let container = AppContainer.preview(
+            launchState: .workspaceReady,
+            accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+            snapshot: PreviewSampleData.nestedWorkspace,
+            recentFiles: [recentItem]
+        )
+        let workspaceViewModel = container.workspaceViewModel
+        let editorViewModel = container.editorViewModel
+        let item = try XCTUnwrap(workspaceViewModel.recentFiles.first)
+
+        workspaceViewModel.presentRecentFiles()
+        XCTAssertTrue(workspaceViewModel.isShowingRecentFiles)
+
+        workspaceViewModel.openRecentFile(item)
+        XCTAssertFalse(workspaceViewModel.isShowingRecentFiles)
+
+        let resolvedURL = try XCTUnwrap(container.session.path.last?.editorURL)
+        editorViewModel.handleAppear(for: resolvedURL)
+
+        try await waitUntil {
+            container.session.openDocument?.url == resolvedURL
+        }
+
+        XCTAssertEqual(container.session.openDocument?.relativePath, PreviewSampleData.cleanDocument.relativePath)
+        XCTAssertEqual(container.session.path, [.editor(resolvedURL)])
+        XCTAssertNil(container.session.editorLoadError)
+    }
+
+    @MainActor
+    func testRefreshWorkspacePrunesMissingRecentFiles() async {
+        let staleRecentItem = RecentFileItem(
+            workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+            relativePath: "Missing.md",
+            displayName: "Missing.md",
+            lastOpenedAt: PreviewSampleData.previewDate
+        )
+        let recentFilesStore = RecentFilesStore(
+            initialItems: [
+                staleRecentItem,
+                RecentFileItem(
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: PreviewSampleData.cleanDocument.relativePath,
+                    displayName: PreviewSampleData.cleanDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate.addingTimeInterval(-10)
+                ),
+            ]
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: PreviewSampleData.nestedWorkspace
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            recentFilesStore: recentFilesStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.refreshWorkspace()
+
+        XCTAssertEqual(recentFilesStore.items.map(\.displayName), ["Inbox.md"])
+    }
+
+    @MainActor
+    func testRenameUpdatesRecentFileEntry() async {
+        let renamedURL = PreviewSampleData.inboxDocumentURL.deletingLastPathComponent().appending(path: "Inbox Renamed.md")
+        let recentFilesStore = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: PreviewSampleData.cleanDocument.relativePath,
+                    displayName: PreviewSampleData.cleanDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+            ]
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: makeWorkspaceSnapshotReplacingRootFile(
+                    oldURL: PreviewSampleData.inboxDocumentURL,
+                    with: .file(
+                        .init(
+                            url: renamedURL,
+                            displayName: "Localized Inbox Renamed.md",
+                            subtitle: "Root document"
+                        )
+                    )
+                ),
+                renameOutcome: .renamedFile(
+                    oldURL: PreviewSampleData.inboxDocumentURL,
+                    newURL: renamedURL,
+                    displayName: "Localized Inbox Renamed.md",
+                    relativePath: "Inbox Renamed.md"
+                )
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            recentFilesStore: recentFilesStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.renameFile(at: PreviewSampleData.inboxDocumentURL, to: "Inbox Renamed")
+
+        XCTAssertEqual(recentFilesStore.items.map(\.displayName), ["Localized Inbox Renamed.md"])
+        XCTAssertEqual(recentFilesStore.items.first?.relativePath, "Inbox Renamed.md")
+    }
+
+    @MainActor
+    func testDeleteRemovesRecentFileEntry() async {
+        let recentFilesStore = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: PreviewSampleData.cleanDocument.relativePath,
+                    displayName: PreviewSampleData.cleanDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+            ]
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = makeWorkspaceSnapshotRemovingRootFile(url: PreviewSampleData.inboxDocumentURL)
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: makeWorkspaceSnapshotRemovingRootFile(url: PreviewSampleData.inboxDocumentURL),
+                deleteOutcome: .deletedFile(
+                    url: PreviewSampleData.inboxDocumentURL,
+                    displayName: PreviewSampleData.cleanDocument.displayName
+                )
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            recentFilesStore: recentFilesStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.deleteFile(at: PreviewSampleData.inboxDocumentURL)
+
+        XCTAssertTrue(recentFilesStore.items.isEmpty)
+    }
+
+    @MainActor
     private func makeWorkspaceSnapshotReplacingRootFile(
         oldURL: URL,
         with replacement: WorkspaceNode
@@ -1404,6 +1694,12 @@ private actor FailingDocumentManager: DocumentManager {
     func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void> {
         throw openError
     }
+
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {}
 }
 
 private actor RestorationDocumentManager: DocumentManager {
@@ -1439,10 +1735,17 @@ private actor RestorationDocumentManager: DocumentManager {
             continuation.finish()
         }
     }
+
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {}
 }
 
 private actor MutationTrackingDocumentManager: DocumentManager {
     private(set) var savedInputs: [OpenDocument] = []
+    private(set) var relocatedInputs: [RelocatedDocumentSession] = []
 
     func openDocument(at url: URL, in workspaceRootURL: URL) async throws -> OpenDocument {
         throw AppError.documentUnavailable(name: url.lastPathComponent)
@@ -1470,11 +1773,26 @@ private actor MutationTrackingDocumentManager: DocumentManager {
             continuation.finish()
         }
     }
+
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {
+        relocatedInputs.append(
+            RelocatedDocumentSession(
+                fromRelativePath: document.relativePath,
+                toURL: url,
+                toRelativePath: relativePath
+            )
+        )
+    }
 }
 
 private actor DelayedOpenDocumentManager: DocumentManager {
     let documents: [URL: OpenDocument]
     let openDelays: [URL: Duration]
+    private(set) var observedURLs: [URL] = []
 
     init(
         documents: [URL: OpenDocument],
@@ -1509,10 +1827,17 @@ private actor DelayedOpenDocumentManager: DocumentManager {
     }
 
     func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void> {
-        AsyncStream { continuation in
+        observedURLs.append(document.url)
+        return AsyncStream<Void> { continuation in
             continuation.finish()
         }
     }
+
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {}
 }
 
 private actor DelayedRevalidationDocumentManager: DocumentManager {
@@ -1549,6 +1874,18 @@ private actor DelayedRevalidationDocumentManager: DocumentManager {
             continuation.finish()
         }
     }
+
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {}
+}
+
+private struct RelocatedDocumentSession: Equatable, Sendable {
+    let fromRelativePath: String
+    let toURL: URL
+    let toRelativePath: String
 }
 
 private actor MutationTestingWorkspaceManager: WorkspaceManager {

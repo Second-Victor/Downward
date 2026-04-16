@@ -1,7 +1,17 @@
 import SwiftUI
 
+public enum WorkspaceNavigationMode: Equatable {
+    case stackPath
+    case splitSidebar
+
+    public var usesValueNavigationLinks: Bool {
+        self == .stackPath
+    }
+}
+
 struct WorkspaceScreen: View {
     let viewModel: WorkspaceViewModel
+    let navigationMode: WorkspaceNavigationMode
 
     var body: some View {
         Group {
@@ -21,7 +31,8 @@ struct WorkspaceScreen: View {
                 WorkspaceFolderScreen(
                     viewModel: viewModel,
                     folderURL: nil,
-                    showsSettingsButton: true
+                    showsSettingsButton: true,
+                    navigationMode: navigationMode
                 )
             }
         }
@@ -42,7 +53,8 @@ struct WorkspaceScreen: View {
                     snapshot: PreviewSampleData.emptyWorkspace
                 )
                 return container.workspaceViewModel
-            }()
+            }(),
+            navigationMode: .stackPath
         )
     }
 }
@@ -57,7 +69,8 @@ struct WorkspaceScreen: View {
                     snapshot: PreviewSampleData.deepWorkspace
                 )
                 return container.workspaceViewModel
-            }()
+            }(),
+            navigationMode: .stackPath
         )
     }
 }
@@ -72,7 +85,8 @@ struct WorkspaceScreen: View {
                     snapshot: PreviewSampleData.largeWorkspace
                 )
                 return container.workspaceViewModel
-            }()
+            }(),
+            navigationMode: .stackPath
         )
     }
 }
@@ -89,7 +103,8 @@ struct WorkspaceScreen: View {
                 let viewModel = container.workspaceViewModel
                 viewModel.searchQuery = "read"
                 return viewModel
-            }()
+            }(),
+            navigationMode: .stackPath
         )
     }
 }
@@ -106,7 +121,8 @@ struct WorkspaceScreen: View {
                 let viewModel = container.workspaceViewModel
                 viewModel.isLoading = true
                 return viewModel
-            }()
+            }(),
+            navigationMode: .stackPath
         )
     }
 }
@@ -127,7 +143,8 @@ struct WorkspaceScreen: View {
                     recoverySuggestion: "Try refreshing again."
                 )
                 return viewModel
-            }()
+            }(),
+            navigationMode: .stackPath
         )
     }
 }

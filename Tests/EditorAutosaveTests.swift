@@ -621,6 +621,12 @@ private actor RecordingDocumentManager: DocumentManager {
             continuation.finish()
         }
     }
+
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {}
 }
 
 private actor VersionTrackingDocumentManager: DocumentManager {
@@ -707,6 +713,12 @@ private actor VersionTrackingDocumentManager: DocumentManager {
         }
     }
 
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {}
+
     private func makeDocument(
         text: String,
         loadedVersion: DocumentVersion,
@@ -764,6 +776,18 @@ private actor DelayedLiveDocumentManager: DocumentManager {
 
     func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void> {
         try await base.observeDocumentChanges(for: document)
+    }
+
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {
+        await base.relocateDocumentSession(
+            for: document,
+            to: url,
+            relativePath: relativePath
+        )
     }
 }
 

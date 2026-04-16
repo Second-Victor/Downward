@@ -2,24 +2,47 @@ import SwiftUI
 
 struct WorkspaceSearchResultsView: View {
     let viewModel: WorkspaceViewModel
+    let navigationMode: WorkspaceNavigationMode
 
     var body: some View {
         if viewModel.searchResults.isEmpty {
-            ContentUnavailableView(
-                "No Matching Files",
-                systemImage: "magnifyingglass",
-                description: Text("No Markdown or text files in this workspace match \"\(viewModel.searchQueryDescription)\".")
-            )
+            ScrollView {
+                ContentUnavailableView(
+                    "No Matching Files",
+                    systemImage: "magnifyingglass",
+                    description: Text("No Markdown or text files in this workspace match \"\(viewModel.searchQueryDescription)\".")
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.top, 48)
+            }
+            .refreshable {
+                await viewModel.refreshFromPullToRefresh()
+            }
         } else {
             List(viewModel.searchResults) { result in
-                NavigationLink(value: AppRoute.editor(result.url)) {
-                    WorkspaceRowView(
-                        node: result.node,
-                        isSelected: viewModel.isSelectedDocumentURL(result.url)
-                    )
+                if navigationMode.usesValueNavigationLinks == false {
+                    Button {
+                        viewModel.openDocument(result.url)
+                    } label: {
+                        WorkspaceRowView(
+                            node: result.node,
+                            isSelected: viewModel.isSelectedDocument(relativePath: result.relativePath)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    NavigationLink(value: AppRoute.editor(result.url)) {
+                        WorkspaceRowView(
+                            node: result.node,
+                            isSelected: viewModel.isSelectedDocument(relativePath: result.relativePath)
+                        )
+                    }
                 }
             }
             .listStyle(.insetGrouped)
+            .refreshable {
+                await viewModel.refreshFromPullToRefresh()
+            }
         }
     }
 }
@@ -36,7 +59,8 @@ struct WorkspaceSearchResultsView: View {
                 let viewModel = container.workspaceViewModel
                 viewModel.searchQuery = "read"
                 return viewModel
-            }()
+            }(),
+            navigationMode: .stackPath
         )
     }
 }
@@ -53,7 +77,8 @@ struct WorkspaceSearchResultsView: View {
                 let viewModel = container.workspaceViewModel
                 viewModel.searchQuery = "missing"
                 return viewModel
-            }()
+            }(),
+            navigationMode: .stackPath
         )
     }
 }

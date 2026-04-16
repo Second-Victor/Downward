@@ -32,6 +32,40 @@ final class WorkspaceSearchTests: XCTestCase {
     }
 
     @MainActor
+    func testSearchBuildsCanonicalRelativePathsFromURLsInsteadOfDisplayNames() {
+        let snapshot = WorkspaceSnapshot(
+            rootURL: PreviewSampleData.workspaceRootURL,
+            displayName: PreviewSampleData.nestedWorkspace.displayName,
+            rootNodes: [
+                .folder(
+                    .init(
+                        url: PreviewSampleData.referencesURL,
+                        displayName: "Localized References",
+                        children: [
+                            .file(
+                                .init(
+                                    url: PreviewSampleData.readmeDocumentURL,
+                                    displayName: "Localized README.md",
+                                    subtitle: "Project overview"
+                                )
+                            ),
+                        ]
+                    )
+                ),
+            ],
+            lastUpdated: PreviewSampleData.previewDate
+        )
+
+        let results = WorkspaceSearchEngine.results(
+            in: snapshot,
+            matching: "references/readme"
+        )
+
+        XCTAssertEqual(results.map(\.displayName), ["Localized README.md"])
+        XCTAssertEqual(results.map(\.relativePath), ["References/README.md"])
+    }
+
+    @MainActor
     func testClearingSearchReturnsToNormalWorkspaceState() {
         let container = AppContainer.preview(
             launchState: .workspaceReady,

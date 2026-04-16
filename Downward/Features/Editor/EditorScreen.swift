@@ -102,7 +102,8 @@ private extension View {
                     path: [.editor(PreviewSampleData.cleanDocument.url)]
                 )
                 return container.workspaceViewModel
-            }()
+            }(),
+            navigationMode: .splitSidebar
         )
     } detail: {
         NavigationStack {

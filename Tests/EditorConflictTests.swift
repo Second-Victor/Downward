@@ -169,4 +169,10 @@ private actor ConflictResolvingDocumentManager: DocumentManager {
             continuation.finish()
         }
     }
+
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {}
 }
