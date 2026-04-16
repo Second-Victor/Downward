@@ -1295,7 +1295,7 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
-    func testWorkspaceViewModelProgrammaticOpenUpdatesNavigationPath() {
+    func testWorkspaceViewModelProgrammaticFileOpenUsesOnlyEditorRoute() {
         let container = AppContainer.preview(
             launchState: .workspaceReady,
             accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
@@ -1303,12 +1303,27 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         )
         let workspaceViewModel = container.workspaceViewModel
 
-        workspaceViewModel.openFolder(PreviewSampleData.year2026URL)
         workspaceViewModel.openDocument(PreviewSampleData.cleanDocument.url)
 
         XCTAssertEqual(
             container.session.path,
-            [.folder(PreviewSampleData.year2026URL), .editor(PreviewSampleData.cleanDocument.url)]
+            [.editor(PreviewSampleData.cleanDocument.url)]
+        )
+    }
+
+    @MainActor
+    func testRegularWorkspaceDetailBecomesEditorWhenTreeSelectionOpensFile() {
+        let container = AppContainer.preview(
+            launchState: .workspaceReady,
+            accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+            snapshot: PreviewSampleData.nestedWorkspace
+        )
+
+        container.workspaceViewModel.openDocument(PreviewSampleData.cleanDocument.url)
+
+        XCTAssertEqual(
+            container.session.regularWorkspaceDetail,
+            .editor(PreviewSampleData.cleanDocument.url)
         )
     }
 

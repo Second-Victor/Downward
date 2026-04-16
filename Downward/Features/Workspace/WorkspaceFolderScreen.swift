@@ -2,9 +2,9 @@ import SwiftUI
 
 struct WorkspaceFolderScreen: View {
     let viewModel: WorkspaceViewModel
-    let folderURL: URL?
     let showsSettingsButton: Bool
     let navigationMode: WorkspaceNavigationMode
+    let expandedFolderURL: URL?
 
     var body: some View {
         Group {
@@ -13,30 +13,21 @@ struct WorkspaceFolderScreen: View {
                     viewModel: viewModel,
                     navigationMode: navigationMode
                 )
-            } else if let folderURL, viewModel.isFolderMissing(folderURL) {
+            } else if viewModel.nodes.isEmpty {
                 refreshableStateView(
-                    title: "Folder Unavailable",
-                    systemImage: "folder.badge.questionmark",
-                    message: "This folder is no longer visible in the current workspace snapshot."
-                )
-            } else if viewModel.nodes(in: folderURL).isEmpty {
-                refreshableStateView(
-                    title: folderURL == nil ? "No Supported Files" : "No Visible Items",
-                    systemImage: folderURL == nil ? "doc.text.magnifyingglass" : "folder",
-                    message: folderURL == nil
-                        ? "This workspace does not contain any supported files yet."
-                        : "This folder does not contain any supported Markdown or text files."
+                    title: "No Supported Files",
+                    systemImage: "doc.text.magnifyingglass",
+                    message: "This workspace does not contain any supported files yet."
                 )
             } else {
                 List {
                     Section {
-                        ForEach(viewModel.nodes(in: folderURL)) { node in
-                            WorkspaceFolderRow(
-                                viewModel: viewModel,
-                                node: node,
-                                navigationMode: navigationMode
-                            )
-                        }
+                        WorkspaceTreeRows(
+                            viewModel: viewModel,
+                            nodes: viewModel.nodes,
+                            depth: 0,
+                            navigationMode: navigationMode
+                        )
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -45,16 +36,22 @@ struct WorkspaceFolderScreen: View {
                 }
             }
         }
-        .navigationTitle(viewModel.title(for: folderURL))
+        .task(id: expandedFolderURL) {
+            viewModel.syncExpandedFoldersToCurrentSnapshot()
+            if let expandedFolderURL {
+                viewModel.expandFolderAndAncestors(at: expandedFolderURL)
+            }
+        }
+        .navigationTitle(viewModel.workspaceTitle)
         .searchable(text: searchQueryBinding, prompt: "Search Files")
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("New File", systemImage: "plus") {
-                    viewModel.presentCreateFile(in: folderURL)
+                    viewModel.presentCreateFile(in: nil)
                 }
                 .disabled(viewModel.isBusy)
                 .accessibilityLabel("New Text File")
-                .accessibilityHint("Creates a Markdown or text file in the current folder.")
+                .accessibilityHint("Creates a Markdown or text file in the workspace root.")
 
                 if showsSettingsButton {
                     Menu("More", systemImage: "ellipsis.circle") {
@@ -89,7 +86,7 @@ struct WorkspaceFolderScreen: View {
                 viewModel.cancelCreateFile()
             }
         } message: {
-            Text("Create a new Markdown or text file in this folder.")
+            Text("Create a new Markdown or text file.")
         }
         .alert("Rename File", isPresented: renamePromptBinding) {
             TextField("File Name", text: renameFileNameBinding)
@@ -203,100 +200,134 @@ struct WorkspaceFolderScreen: View {
     }
 }
 
-private struct WorkspaceFolderRow: View {
+private struct WorkspaceTreeRows: View {
+    let viewModel: WorkspaceViewModel
+    let nodes: [WorkspaceNode]
+    let depth: Int
+    let navigationMode: WorkspaceNavigationMode
+
+    var body: some View {
+        ForEach(nodes) { node in
+            WorkspaceTreeRow(
+                                viewModel: viewModel,
+                                node: node,
+                                depth: depth,
+                                navigationMode: navigationMode
+                            )
+            if
+                case let .folder(folder) = node,
+                viewModel.isFolderExpanded(at: folder.url)
+            {
+                WorkspaceTreeRows(
+                    viewModel: viewModel,
+                    nodes: folder.children,
+                    depth: depth + 1,
+                    navigationMode: navigationMode
+                )
+            }
+        }
+    }
+}
+
+private struct WorkspaceTreeRow: View {
     let viewModel: WorkspaceViewModel
     let node: WorkspaceNode
+    let depth: Int
     let navigationMode: WorkspaceNavigationMode
 
     var body: some View {
         switch node {
-        case .folder:
-            if navigationMode.usesValueNavigationLinks == false {
-                Button {
-                    viewModel.openFolder(node.url)
-                } label: {
-                    WorkspaceRowView(node: node, isSelected: false)
+        case let .folder(folder):
+            Button {
+                viewModel.toggleFolderExpansion(at: folder.url)
+            } label: {
+                WorkspaceRowView(
+                    node: node,
+                    isSelected: false,
+                    hierarchyDepth: depth,
+                    folderDisclosureState: viewModel.isFolderExpanded(at: folder.url) ? .expanded : .collapsed
+                )
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
+                Button("New File", systemImage: "plus") {
+                    viewModel.presentCreateFile(in: folder.url)
                 }
-                .buttonStyle(.plain)
-            } else {
-                NavigationLink(value: AppRoute.folder(node.url)) {
-                    WorkspaceRowView(node: node, isSelected: false)
-                }
+                .accessibilityLabel("New File in \(node.displayName)")
+                .accessibilityHint("Creates a Markdown or text file inside this folder.")
             }
         case .file:
-            if navigationMode.usesValueNavigationLinks == false {
-                Button {
-                    viewModel.openDocument(node.url)
-                } label: {
-                    WorkspaceRowView(node: node, isSelected: viewModel.isSelected(node))
-                }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    Button("Rename", systemImage: "pencil") {
-                        if case let .file(file) = node {
-                            viewModel.presentRename(for: file)
-                        }
-                    }
-                    .accessibilityLabel("Rename \(node.displayName)")
-                    .accessibilityHint("Changes the file name.")
+            fileRow
+        }
+    }
 
-                    Button("Delete", systemImage: "trash", role: .destructive) {
-                        if case let .file(file) = node {
-                            viewModel.presentDelete(for: file)
-                        }
-                    }
-                    .accessibilityLabel("Delete \(node.displayName)")
-                    .accessibilityHint("Deletes this file from the workspace.")
-                }
-                .swipeActions {
-                    Button("Rename", systemImage: "pencil") {
-                        if case let .file(file) = node {
-                            viewModel.presentRename(for: file)
-                        }
-                    }
-                    .tint(.accentColor)
+    @ViewBuilder
+    private var fileRow: some View {
+        if navigationMode.usesValueNavigationLinks == false {
+            Button {
+                viewModel.openDocument(node.url)
+            } label: {
+                WorkspaceRowView(
+                    node: node,
+                    isSelected: viewModel.isSelected(node),
+                    hierarchyDepth: depth
+                )
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
+                fileContextMenu
+            }
+            .swipeActions {
+                fileSwipeActions
+            }
+        } else {
+            NavigationLink(value: AppRoute.editor(node.url)) {
+                WorkspaceRowView(
+                    node: node,
+                    isSelected: viewModel.isSelected(node),
+                    hierarchyDepth: depth
+                )
+            }
+            .contextMenu {
+                fileContextMenu
+            }
+            .swipeActions {
+                fileSwipeActions
+            }
+        }
+    }
 
-                    Button("Delete", systemImage: "trash", role: .destructive) {
-                        if case let .file(file) = node {
-                            viewModel.presentDelete(for: file)
-                        }
-                    }
-                }
-            } else {
-                NavigationLink(value: AppRoute.editor(node.url)) {
-                    WorkspaceRowView(node: node, isSelected: viewModel.isSelected(node))
-                }
-                .contextMenu {
-                    Button("Rename", systemImage: "pencil") {
-                        if case let .file(file) = node {
-                            viewModel.presentRename(for: file)
-                        }
-                    }
-                    .accessibilityLabel("Rename \(node.displayName)")
-                    .accessibilityHint("Changes the file name.")
+    @ViewBuilder
+    private var fileContextMenu: some View {
+        Button("Rename", systemImage: "pencil") {
+            if case let .file(file) = node {
+                viewModel.presentRename(for: file)
+            }
+        }
+        .accessibilityLabel("Rename \(node.displayName)")
+        .accessibilityHint("Changes the file name.")
 
-                    Button("Delete", systemImage: "trash", role: .destructive) {
-                        if case let .file(file) = node {
-                            viewModel.presentDelete(for: file)
-                        }
-                    }
-                    .accessibilityLabel("Delete \(node.displayName)")
-                    .accessibilityHint("Deletes this file from the workspace.")
-                }
-                .swipeActions {
-                    Button("Rename", systemImage: "pencil") {
-                        if case let .file(file) = node {
-                            viewModel.presentRename(for: file)
-                        }
-                    }
-                    .tint(.accentColor)
+        Button("Delete", systemImage: "trash", role: .destructive) {
+            if case let .file(file) = node {
+                viewModel.presentDelete(for: file)
+            }
+        }
+        .accessibilityLabel("Delete \(node.displayName)")
+        .accessibilityHint("Deletes this file from the workspace.")
+    }
 
-                    Button("Delete", systemImage: "trash", role: .destructive) {
-                        if case let .file(file) = node {
-                            viewModel.presentDelete(for: file)
-                        }
-                    }
-                }
+    @ViewBuilder
+    private var fileSwipeActions: some View {
+        Button("Rename", systemImage: "pencil") {
+            if case let .file(file) = node {
+                viewModel.presentRename(for: file)
+            }
+        }
+        .tint(.accentColor)
+
+        Button("Delete", systemImage: "trash", role: .destructive) {
+            if case let .file(file) = node {
+                viewModel.presentDelete(for: file)
             }
         }
     }
@@ -311,11 +342,12 @@ private struct WorkspaceFolderRow: View {
                     accessState: .ready(displayName: PreviewSampleData.largeWorkspace.displayName),
                     snapshot: PreviewSampleData.largeWorkspace
                 )
+                container.workspaceViewModel.expandFolderAndAncestors(at: PreviewSampleData.largeWorkspace.rootNodes[0].url)
                 return container.workspaceViewModel
             }(),
-            folderURL: nil,
             showsSettingsButton: true,
-            navigationMode: .stackPath
+            navigationMode: .stackPath,
+            expandedFolderURL: nil
         )
     }
     .environment(\.dynamicTypeSize, .accessibility3)
@@ -330,11 +362,12 @@ private struct WorkspaceFolderRow: View {
                     accessState: .ready(displayName: PreviewSampleData.deepWorkspace.displayName),
                     snapshot: PreviewSampleData.deepWorkspace
                 )
+                container.workspaceViewModel.expandFolderAndAncestors(at: PreviewSampleData.deepWorkspaceRootFolderURL)
                 return container.workspaceViewModel
             }(),
-            folderURL: PreviewSampleData.deepWorkspaceRootFolderURL,
             showsSettingsButton: false,
-            navigationMode: .stackPath
+            navigationMode: .stackPath,
+            expandedFolderURL: nil
         )
     }
 }
@@ -348,11 +381,12 @@ private struct WorkspaceFolderRow: View {
                     accessState: .ready(displayName: PreviewSampleData.largeWorkspace.displayName),
                     snapshot: PreviewSampleData.largeWorkspace
                 )
+                container.workspaceViewModel.expandFolderAndAncestors(at: PreviewSampleData.largeWorkspace.rootNodes[0].url)
                 return container.workspaceViewModel
             }(),
-            folderURL: nil,
             showsSettingsButton: true,
-            navigationMode: .stackPath
+            navigationMode: .stackPath,
+            expandedFolderURL: nil
         )
     }
 }

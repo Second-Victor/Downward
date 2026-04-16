@@ -3,10 +3,11 @@ import SwiftUI
 struct WorkspacePlaceholderDetailView: View {
     var body: some View {
         ContentUnavailableView(
-            "Select a Folder or File",
+            "Select a File",
             systemImage: "sidebar.leading",
-            description: Text("Choose a folder to browse deeper or a document to start editing.")
+            description: Text("Browse the workspace in the sidebar and choose a document to start editing.")
         )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
     }
 }

@@ -126,16 +126,37 @@ private struct RegularWorkspaceShell: View {
             )
                 .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 360)
         } detail: {
-            NavigationStack(path: $session.path) {
-                WorkspacePlaceholderDetailView()
-                    .navigationDestination(for: AppRoute.self) { route in
-                        WorkspaceRouteDestination(route: route, viewModel: viewModel)
-                    }
-            }
+            RegularWorkspaceDetailView(viewModel: viewModel)
         }
         .navigationSplitViewStyle(.balanced)
         .onChange(of: session.path) { _, newPath in
             viewModel.didChange(path: newPath)
+        }
+    }
+}
+
+private struct RegularWorkspaceDetailView: View {
+    let viewModel: RootViewModel
+
+    var body: some View {
+        NavigationStack {
+            switch viewModel.session.regularWorkspaceDetail {
+            case .placeholder:
+                WorkspacePlaceholderDetailView()
+            case .settings:
+                SettingsScreen(
+                    workspaceName: viewModel.workspaceName,
+                    accessState: viewModel.workspaceAccessState,
+                    editorAppearanceStore: viewModel.editorAppearanceStore,
+                    reconnectWorkspaceAction: viewModel.presentFolderPicker,
+                    clearWorkspaceAction: viewModel.clearWorkspace
+                )
+            case let .editor(documentURL):
+                EditorScreen(
+                    viewModel: viewModel.editorViewModel,
+                    documentURL: documentURL
+                )
+            }
         }
     }
 }
@@ -149,9 +170,9 @@ private struct WorkspaceRouteDestination: View {
         case let .folder(folderURL):
             WorkspaceFolderScreen(
                 viewModel: viewModel.workspaceViewModel,
-                folderURL: folderURL,
                 showsSettingsButton: false,
-                navigationMode: .stackPath
+                navigationMode: .stackPath,
+                expandedFolderURL: folderURL
             )
         case let .editor(documentURL):
             EditorScreen(

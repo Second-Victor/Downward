@@ -501,10 +501,6 @@ final class AppCoordinator {
         session.path.append(.settings)
     }
 
-    func presentFolder(_ url: URL) {
-        session.path.append(.folder(url))
-    }
-
     func presentEditor(for url: URL) {
         session.editorLoadError = nil
 

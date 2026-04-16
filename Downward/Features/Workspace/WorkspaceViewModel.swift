@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 @MainActor
 @Observable
@@ -16,6 +17,7 @@ final class WorkspaceViewModel {
     var renameFileName = ""
     var isShowingDeleteConfirmation = false
     var isShowingRecentFiles = false
+    private(set) var expandedFolderRelativePaths: Set<String> = []
 
     private(set) var pendingRenameFile: WorkspaceNode.File?
     private(set) var pendingDeleteFile: WorkspaceNode.File?
@@ -110,12 +112,14 @@ final class WorkspaceViewModel {
 
     func loadSnapshotIfNeeded() {
         guard hasLoadedInitialSnapshot == false else {
+            syncExpandedFoldersToCurrentSnapshot()
             return
         }
 
         hasLoadedInitialSnapshot = true
 
         guard session.workspaceSnapshot == nil else {
+            syncExpandedFoldersToCurrentSnapshot()
             return
         }
 
@@ -151,12 +155,52 @@ final class WorkspaceViewModel {
         coordinator.presentEditor(for: item.url(in: currentWorkspaceRootURL))
     }
 
-    func openFolder(_ url: URL) {
-        coordinator.presentFolder(url)
+    func toggleFolderExpansion(at url: URL) {
+        guard let relativePath = folderRelativePath(for: url) else {
+            return
+        }
+
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if expandedFolderRelativePaths.contains(relativePath) {
+                expandedFolderRelativePaths.remove(relativePath)
+            } else {
+                expandedFolderRelativePaths.insert(relativePath)
+            }
+        }
     }
 
     func openDocument(_ url: URL) {
         coordinator.presentEditor(for: url)
+    }
+
+    func isFolderExpanded(at url: URL) -> Bool {
+        guard let relativePath = folderRelativePath(for: url) else {
+            return false
+        }
+
+        return expandedFolderRelativePaths.contains(relativePath)
+    }
+
+    func expandFolderAndAncestors(at url: URL) {
+        guard let relativePath = folderRelativePath(for: url) else {
+            return
+        }
+
+        let components = relativePath.split(separator: "/", omittingEmptySubsequences: true)
+        guard components.isEmpty == false else {
+            return
+        }
+
+        for index in 0..<components.count {
+            expandedFolderRelativePaths.insert(
+                components.prefix(index + 1).joined(separator: "/")
+            )
+        }
+    }
+
+    func syncExpandedFoldersToCurrentSnapshot() {
+        let validFolderPaths = folderRelativePaths(in: nodes)
+        expandedFolderRelativePaths.formIntersection(validFolderPaths)
     }
 
     func presentCreateFile(in folderURL: URL?) {
@@ -276,10 +320,6 @@ final class WorkspaceViewModel {
         return folderNode(for: folderURL)?.children ?? []
     }
 
-    func isFolderMissing(_ folderURL: URL) -> Bool {
-        folderNode(for: folderURL) == nil
-    }
-
     private func startSnapshotLoad() {
         guard let context = beginSnapshotLoad() else {
             return
@@ -329,6 +369,7 @@ final class WorkspaceViewModel {
         switch result {
         case .success:
             loadError = nil
+            syncExpandedFoldersToCurrentSnapshot()
         case let .failure(error):
             if hadSnapshot {
                 session.lastError = error
@@ -351,6 +392,7 @@ final class WorkspaceViewModel {
                 return
             }
 
+            syncExpandedFoldersToCurrentSnapshot()
             isPerformingFileOperation = false
         }
     }
@@ -380,6 +422,31 @@ final class WorkspaceViewModel {
 
     private func folderNode(for folderURL: URL) -> WorkspaceNode.Folder? {
         findFolder(at: folderURL, within: nodes)
+    }
+
+    private func folderRelativePath(for url: URL) -> String? {
+        WorkspaceRelativePath.make(
+            for: url,
+            within: currentWorkspaceRootURL
+        )
+    }
+
+    private func folderRelativePaths(in nodes: [WorkspaceNode]) -> Set<String> {
+        var relativePaths = Set<String>()
+
+        for node in nodes {
+            guard case let .folder(folder) = node else {
+                continue
+            }
+
+            if let currentPath = folderRelativePath(for: folder.url) {
+                relativePaths.insert(currentPath)
+            }
+
+            relativePaths.formUnion(folderRelativePaths(in: folder.children))
+        }
+
+        return relativePaths
     }
 
     private func findFolder(at folderURL: URL, within nodes: [WorkspaceNode]) -> WorkspaceNode.Folder? {

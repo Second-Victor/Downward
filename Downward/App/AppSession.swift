@@ -24,4 +24,26 @@ final class AppSession {
     var currentWorkspaceName: String? {
         workspaceSnapshot?.displayName ?? workspaceAccessState.displayName
     }
+
+    var regularWorkspaceDetail: RegularWorkspaceDetail {
+        if let editorURL = path.last?.editorURL {
+            return .editor(editorURL)
+        }
+
+        if path.last == .settings {
+            return .settings
+        }
+
+        if let openDocument {
+            return .editor(openDocument.url)
+        }
+
+        return .placeholder
+    }
+}
+
+enum RegularWorkspaceDetail: Equatable {
+    case placeholder
+    case settings
+    case editor(URL)
 }

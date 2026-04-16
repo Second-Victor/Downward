@@ -30,9 +30,9 @@ struct WorkspaceScreen: View {
             } else {
                 WorkspaceFolderScreen(
                     viewModel: viewModel,
-                    folderURL: nil,
                     showsSettingsButton: true,
-                    navigationMode: navigationMode
+                    navigationMode: navigationMode,
+                    expandedFolderURL: nil
                 )
             }
         }
