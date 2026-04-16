@@ -13,11 +13,13 @@ struct WorkspaceRowView: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Color.clear
-                .frame(width: CGFloat(hierarchyDepth) * 12)
+            if hierarchyDepth > 0 {
+                Color.clear
+                    .frame(width: CGFloat(hierarchyDepth) * 12)
+            }
 
             Image(systemName: node.isFolder ? "folder" : "doc.text")
-                .font(.system(size: 18, weight: .medium))
+                .font(.title2)
                 .foregroundStyle(node.isFolder ? Color.accentColor : .secondary)
                 .frame(width: 20)
 
@@ -166,7 +168,7 @@ struct WorkspaceRowView: View {
                 )
             ),
             isSelected: false,
-            hierarchyDepth: 1
+            hierarchyDepth: 0
         )
     }
 }
@@ -183,7 +185,7 @@ struct WorkspaceRowView: View {
                 )
             ),
             isSelected: false,
-            hierarchyDepth: 2
+            hierarchyDepth: 1
         )
     }
 }
