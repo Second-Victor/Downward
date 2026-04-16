@@ -10,26 +10,30 @@ struct WorkspaceRowView: View {
     let isSelected: Bool
     var hierarchyDepth: Int = 0
     var folderDisclosureState: FolderDisclosureState? = nil
+    private let indentUnit: CGFloat = 12
+    private let iconColumnWidth: CGFloat = 28
+    private let iconToTitleSpacing: CGFloat = 10
+    private let trailingSpacing: CGFloat = 12
 
     var body: some View {
-        HStack(spacing: 14) {
-            if hierarchyDepth > 0 {
-                Color.clear
-                    .frame(width: CGFloat(hierarchyDepth) * 12)
+        HStack(spacing: 0) {
+            Color.clear
+                .frame(width: indentationWidth)
+
+            HStack(alignment: .center, spacing: iconToTitleSpacing) {
+                Image(systemName: node.isFolder ? "folder" : "doc.text")
+                    .font(.title2)
+                    .foregroundStyle(node.isFolder ? Color.accentColor : .secondary)
+                    .frame(width: iconColumnWidth, alignment: .center)
+
+                VStack(alignment: .leading, spacing: node.subtitle == nil ? 0 : 3) {
+                    Text(node.displayName)
+                        .font(.body)
+                        .lineLimit(1)
+                }
             }
 
-            Image(systemName: node.isFolder ? "folder" : "doc.text")
-                .font(.title2)
-                .foregroundStyle(node.isFolder ? Color.accentColor : .secondary)
-                .frame(width: 20)
-
-            VStack(alignment: .leading, spacing: node.subtitle == nil ? 0 : 3) {
-                Text(node.displayName)
-                    .font(.body)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 12)
+            Spacer(minLength: trailingSpacing)
 
             trailingContent
         }
@@ -102,6 +106,10 @@ struct WorkspaceRowView: View {
         return node.isFolder ? "Opens this folder." : "Opens this document."
     }
 
+    private var indentationWidth: CGFloat {
+        CGFloat(hierarchyDepth) * indentUnit
+    }
+
     private var itemCountText: String? {
         guard let itemCount = node.itemCount else {
             return nil
@@ -145,12 +153,12 @@ struct WorkspaceRowView: View {
     }
 }
 
-#Preview("Folder Row Expanded") {
+#Preview("Nested Folder Row") {
     List {
         WorkspaceRowView(
             node: PreviewSampleData.nestedWorkspace.rootNodes[0],
             isSelected: false,
-            hierarchyDepth: 0,
+            hierarchyDepth: 1,
             folderDisclosureState: .expanded
         )
     }
@@ -173,7 +181,7 @@ struct WorkspaceRowView: View {
     }
 }
 
-#Preview("Indented File Row") {
+#Preview("Nested File Row") {
     List {
         WorkspaceRowView(
             node: .file(
@@ -186,6 +194,23 @@ struct WorkspaceRowView: View {
             ),
             isSelected: false,
             hierarchyDepth: 1
+        )
+    }
+}
+
+#Preview("File Row Metadata") {
+    List {
+        WorkspaceRowView(
+            node: .file(
+                .init(
+                    url: PreviewSampleData.readmeDocumentURL,
+                    displayName: "README.md",
+                    subtitle: "References/README.md",
+                    modifiedAt: PreviewSampleData.previewDate.addingTimeInterval(-5_400)
+                )
+            ),
+            isSelected: false,
+            hierarchyDepth: 0
         )
     }
 }
