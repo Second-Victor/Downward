@@ -41,6 +41,8 @@ final class EditorViewModel {
         session.openDocument
     }
 
+    /// Editor rendering is still single-document: a routed editor becomes editable only when it
+    /// matches the one shared `AppSession.openDocument` slot for the app.
     var currentRouteDocument: OpenDocument? {
         guard session.openDocument?.url == activeEditorURL else {
             return nil
@@ -51,6 +53,10 @@ final class EditorViewModel {
 
     var loadError: UserFacingError? {
         session.editorLoadError
+    }
+
+    var alertError: UserFacingError? {
+        session.editorAlertError
     }
 
     var title: String {
@@ -156,6 +162,7 @@ final class EditorViewModel {
 
         if session.openDocument?.url == documentURL {
             session.editorLoadError = nil
+            session.editorAlertError = nil
             if let currentRouteDocument {
                 startObservingDocumentChanges(for: currentRouteDocument)
             }
@@ -166,6 +173,7 @@ final class EditorViewModel {
         invalidatePendingLoad()
         let generation = loadGeneration
         session.editorLoadError = nil
+        session.editorAlertError = nil
 
         loadTask = Task {
             let result = await coordinator.loadDocument(at: documentURL)
@@ -193,6 +201,7 @@ final class EditorViewModel {
         if currentRouteURL == documentURL {
             currentRouteURL = nil
             session.editorLoadError = nil
+            session.editorAlertError = nil
             invalidatePendingLoad()
             stopObservingDocumentChanges()
         } else if hasVisibleEditor == false {
@@ -203,7 +212,7 @@ final class EditorViewModel {
             ? session.openDocument?.conflictState.activeConflict
             : nil
         {
-            session.lastError = activeConflict.error
+            session.workspaceAlertError = activeConflict.error
             return
         }
 
@@ -243,6 +252,10 @@ final class EditorViewModel {
         coordinator.preserveConflictEdits()
     }
 
+    func dismissAlert() {
+        session.editorAlertError = nil
+    }
+
     func reloadFromDisk() {
         guard let currentRouteDocument, isResolvingConflict == false else {
             return
@@ -260,8 +273,10 @@ final class EditorViewModel {
             switch result {
             case let .success(reloadedDocument):
                 session.openDocument = reloadedDocument
+                session.editorAlertError = nil
                 isShowingConflictResolution = false
-            case .failure:
+            case let .failure(error):
+                session.editorAlertError = error
                 isShowingConflictResolution = false
             }
         }
@@ -338,7 +353,7 @@ final class EditorViewModel {
             if hasVisibleEditor {
                 isShowingConflictResolution = true
             } else {
-                session.lastError = currentDocument.conflictState.activeConflict?.error
+                session.workspaceAlertError = currentDocument.conflictState.activeConflict?.error
             }
             return
         }
@@ -410,7 +425,7 @@ final class EditorViewModel {
                 if triggerConflictResolutionOnConflict {
                     isShowingConflictResolution = true
                 } else {
-                    session.lastError = mergedDocument.conflictState.activeConflict?.error
+                    session.workspaceAlertError = mergedDocument.conflictState.activeConflict?.error
                 }
                 return
             }
@@ -520,8 +535,13 @@ final class EditorViewModel {
             }
 
             guard case let .success(stream) = streamResult else {
+                if case let .failure(error) = streamResult {
+                    session.editorAlertError = error
+                }
                 return
             }
+
+            session.editorAlertError = nil
 
             for await _ in stream {
                 guard Task.isCancelled == false else {
@@ -559,11 +579,12 @@ final class EditorViewModel {
 
                 switch result {
                 case let .success(revalidatedDocument):
+                    session.editorAlertError = nil
                     if revalidatedDocument.conflictState.needsResolution {
                         isShowingConflictResolution = true
                     }
-                case .failure:
-                    break
+                case let .failure(error):
+                    session.editorAlertError = error
                 }
             }
         }

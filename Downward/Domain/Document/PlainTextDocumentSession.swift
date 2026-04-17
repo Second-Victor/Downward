@@ -26,12 +26,32 @@ actor PlainTextDocumentSession {
         )
     }
 
+    /// Fallback polling is degraded mode:
+    /// - `automatic`: only when presenter observation is unavailable or the file lives in a
+    ///   provider-backed location where presenter callbacks are known to be weaker.
+    /// - `always` / `never`: test and diagnostics overrides so the active mode is explicit.
+    enum ObservationFallbackPolicy: Sendable {
+        case automatic
+        case always
+        case never
+    }
+
+    enum ObservationMode: Equatable, Sendable {
+        case filePresenterOnly
+        case filePresenterWithFallbackPolling
+        case fallbackPollingOnly
+        case inactive
+    }
+
     private let workspaceRootURL: URL
     private var relativePath: String
     private let securityScopedAccess: any SecurityScopedAccessHandling
+    private let logger: DebugLogger?
     private let filePresenterEnabled: Bool
+    private let observationFallbackPolicy: ObservationFallbackPolicy
     private let observationFallbackSchedule: ObservationFallbackSchedule
     private let onFallbackPoll: (@Sendable () -> Void)?
+    private let onObservationModeActivated: (@Sendable (ObservationMode) -> Void)?
     private var observationLease: SecurityScopedAccessLease?
     private var observationURL: URL?
     private var filePresenter: PlainTextDocumentFilePresenter?
@@ -39,21 +59,28 @@ actor PlainTextDocumentSession {
     private var changeContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
     private var lastFallbackSnapshot: ObservationFallbackSnapshot?
     private var unchangedFallbackPollCount = 0
+    private var lastPublishedObservationMode: ObservationMode?
 
     init(
         relativePath: String,
         workspaceRootURL: URL,
         securityScopedAccess: any SecurityScopedAccessHandling,
+        logger: DebugLogger? = nil,
         filePresenterEnabled: Bool = true,
+        observationFallbackPolicy: ObservationFallbackPolicy = .automatic,
         observationFallbackSchedule: ObservationFallbackSchedule = .live,
-        onFallbackPoll: (@Sendable () -> Void)? = nil
+        onFallbackPoll: (@Sendable () -> Void)? = nil,
+        onObservationModeActivated: (@Sendable (ObservationMode) -> Void)? = nil
     ) {
         self.relativePath = relativePath
         self.workspaceRootURL = workspaceRootURL
         self.securityScopedAccess = securityScopedAccess
+        self.logger = logger
         self.filePresenterEnabled = filePresenterEnabled
+        self.observationFallbackPolicy = observationFallbackPolicy
         self.observationFallbackSchedule = observationFallbackSchedule
         self.onFallbackPoll = onFallbackPoll
+        self.onObservationModeActivated = onObservationModeActivated
     }
 
     func openDocument(fallbackName: String) async throws -> OpenDocument {
@@ -61,11 +88,13 @@ actor PlainTextDocumentSession {
         let workspaceRootURL = self.workspaceRootURL
         let securityScopedAccess = self.securityScopedAccess
 
-        return try await Task.detached(priority: .userInitiated) {
-            try securityScopedAccess.withAccess(
+        return try await Self.runStructuredBackgroundOperation(priority: .userInitiated) {
+            try Task.checkCancellation()
+            return try securityScopedAccess.withAccess(
                 toDescendantAt: relativePath,
                 within: workspaceRootURL
             ) { securedURL in
+                try Task.checkCancellation()
                 switch Self.readDocumentState(at: securedURL) {
                 case let .success(documentState):
                     return OpenDocument(
@@ -85,7 +114,7 @@ actor PlainTextDocumentSession {
                     throw error
                 }
             }
-        }.value
+        }
     }
 
     func reloadDocument(from document: OpenDocument) async throws -> OpenDocument {
@@ -101,7 +130,8 @@ actor PlainTextDocumentSession {
 
         return AsyncStream { continuation in
             changeContinuations[identifier] = continuation
-            startObservationFallbackIfNeeded()
+            startFallbackObservationIfRequired()
+            publishObservationModeIfNeeded()
             continuation.onTermination = { [weak self] _ in
                 Task {
                     await self?.removeChangeContinuation(for: identifier)
@@ -122,11 +152,13 @@ actor PlainTextDocumentSession {
         let workspaceRootURL = self.workspaceRootURL
         let securityScopedAccess = self.securityScopedAccess
 
-        return try await Task.detached(priority: .utility) {
-            try securityScopedAccess.withAccess(
+        return try await Self.runStructuredBackgroundOperation(priority: .utility) {
+            try Task.checkCancellation()
+            return try securityScopedAccess.withAccess(
                 toDescendantAt: relativePath,
                 within: workspaceRootURL
             ) { securedURL in
+                try Task.checkCancellation()
                 switch Self.readDocumentState(at: securedURL) {
                 case let .success(diskDocument):
                     if document.loadedVersion.matchesCurrentDisk(diskDocument.version) {
@@ -173,7 +205,7 @@ actor PlainTextDocumentSession {
                     throw error
                 }
             }
-        }.value
+        }
     }
 
     /// Performs a coordinated last-writer-wins save for the active editor buffer.
@@ -199,7 +231,7 @@ actor PlainTextDocumentSession {
         let workspaceRootURL = self.workspaceRootURL
         let securityScopedAccess = self.securityScopedAccess
 
-        return try await Task.detached(priority: .utility) {
+        return try await Self.runDetachedWriteOperation(priority: .utility) {
             try securityScopedAccess.withAccess(
                 toDescendantAt: relativePath,
                 within: workspaceRootURL
@@ -241,7 +273,7 @@ actor PlainTextDocumentSession {
                     throw error
                 }
             }
-        }.value
+        }
     }
 
     /// Retargets the active document session after an in-app coordinated rename so subsequent saves,
@@ -272,6 +304,9 @@ actor PlainTextDocumentSession {
         observationLease = lease
         observationURL = observedURL
 
+        // File-presenter callbacks are the primary observation path. Metadata polling stays
+        // degraded mode and only starts later if the session policy says presenter callbacks are
+        // unavailable or the observed location looks provider-backed enough to justify fallback.
         guard filePresenterEnabled else {
             return
         }
@@ -316,7 +351,42 @@ actor PlainTextDocumentSession {
         observationURL = nil
         observationLease?.endAccess()
         observationLease = nil
+        lastPublishedObservationMode = nil
         resetObservationFallbackState()
+    }
+
+    private func startFallbackObservationIfRequired() {
+        guard changeContinuations.isEmpty == false else {
+            return
+        }
+
+        guard shouldActivateFallbackObservation() else {
+            return
+        }
+
+        startObservationFallbackIfNeeded()
+    }
+
+    /// Normal editors stay on presenter callbacks alone. Fallback polling becomes active only when
+    /// the presenter path is unavailable or the policy marks the current location as provider-backed
+    /// degraded mode.
+    private func shouldActivateFallbackObservation() -> Bool {
+        switch observationFallbackPolicy {
+        case .automatic:
+            guard filePresenterEnabled else {
+                return true
+            }
+
+            guard let observationURL else {
+                return false
+            }
+
+            return Self.locationNeedsFallbackObservation(at: observationURL)
+        case .always:
+            return true
+        case .never:
+            return false
+        }
     }
 
     private func startObservationFallbackIfNeeded() {
@@ -367,6 +437,44 @@ actor PlainTextDocumentSession {
     private func resetObservationFallbackState() {
         lastFallbackSnapshot = nil
         unchangedFallbackPollCount = 0
+    }
+
+    private func publishObservationModeIfNeeded() {
+        let mode = currentObservationMode()
+        guard mode != lastPublishedObservationMode else {
+            return
+        }
+
+        lastPublishedObservationMode = mode
+        onObservationModeActivated?(mode)
+
+        guard let observationURL else {
+            logger?.log(category: "Document", "Observation mode: \(mode.description).")
+            return
+        }
+
+        let displayPath = WorkspaceRelativePath.make(for: observationURL, within: workspaceRootURL)
+            ?? observationURL.lastPathComponent
+        logger?.log(
+            category: "Document",
+            "Observing \(displayPath) via \(mode.description)."
+        )
+    }
+
+    private func currentObservationMode() -> ObservationMode {
+        let filePresenterActive = filePresenter != nil
+        let fallbackActive = observationFallbackTask != nil
+
+        switch (filePresenterActive, fallbackActive) {
+        case (true, true):
+            return ObservationMode.filePresenterWithFallbackPolling
+        case (true, false):
+            return ObservationMode.filePresenterOnly
+        case (false, true):
+            return ObservationMode.fallbackPollingOnly
+        case (false, false):
+            return ObservationMode.inactive
+        }
     }
 
     private func loadObservationFallbackSnapshot() -> ObservationFallbackSnapshot? {
@@ -722,6 +830,85 @@ actor PlainTextDocumentSession {
             .split(separator: "/", omittingEmptySubsequences: true)
             .last
             .map(String.init) ?? "Document"
+    }
+
+    /// Treat ubiquitous or non-local volumes as provider-backed locations where presenter callbacks
+    /// are less trustworthy, so metadata polling stays available as degraded observation.
+    nonisolated private static func locationNeedsFallbackObservation(at url: URL) -> Bool {
+        do {
+            let resourceValues = try url.resourceValues(
+                forKeys: [
+                    .isUbiquitousItemKey,
+                    .volumeIsLocalKey,
+                ]
+            )
+
+            if resourceValues.isUbiquitousItem == true {
+                return true
+            }
+
+            if resourceValues.volumeIsLocal == false {
+                return true
+            }
+        } catch {
+            return false
+        }
+
+        return false
+    }
+
+    /// Keeps expensive read/revalidate work off the actor's serial executor without discarding
+    /// parent-task cancellation the way `Task.detached` would.
+    nonisolated private static func runStructuredBackgroundOperation<Value: Sendable>(
+        priority: TaskPriority,
+        operation: @escaping @Sendable () throws -> Value
+    ) async throws -> Value {
+        try await withThrowingTaskGroup(of: Value.self) { group in
+            group.addTask(priority: priority) {
+                try Task.checkCancellation()
+                let value = try operation()
+                try Task.checkCancellation()
+                return value
+            }
+
+            defer {
+                group.cancelAll()
+            }
+
+            guard let value = try await group.next() else {
+                throw CancellationError()
+            }
+
+            return value
+        }
+    }
+
+    /// Save is intentionally detached from caller cancellation once it has started coordinating a
+    /// write. Save requests come from transient UI/autosave tasks, but an in-flight write should
+    /// finish and report a real outcome instead of being interrupted purely because the caller task
+    /// was canceled after the save already began.
+    nonisolated private static func runDetachedWriteOperation<Value: Sendable>(
+        priority: TaskPriority,
+        operation: @escaping @Sendable () throws -> Value
+    ) async throws -> Value {
+        try await Task.detached(priority: priority) {
+            try operation()
+        }.value
+    }
+}
+
+private extension PlainTextDocumentSession.ObservationMode {
+    nonisolated var description: String {
+        switch self {
+        case .filePresenterOnly:
+            "primary file presenter"
+        case .filePresenterWithFallbackPolling:
+            "primary file presenter + degraded fallback polling"
+        case .fallbackPollingOnly:
+            "degraded fallback polling only"
+        case .inactive:
+            "no active observation"
+        }
     }
 }
 

@@ -5,11 +5,13 @@ import XCTest
 final class WorkspaceManagerRestoreTests: XCTestCase {
     @MainActor
     func testRestoreRefreshesStaleBookmarkAndPersistsFreshBookmarkData() async throws {
+        let workspaceID = "workspace-id"
         let bookmarkStore = StubBookmarkStore(
             initialBookmark: StoredWorkspaceBookmark(
                 workspaceName: "Stale Workspace",
                 lastKnownPath: "/tmp/Stale Workspace",
-                bookmarkData: Data("stale-bookmark".utf8)
+                bookmarkData: Data("stale-bookmark".utf8),
+                workspaceID: workspaceID
             )
         )
         let securityScopedAccess = RecordingSecurityScopedAccessHandler(
@@ -33,9 +35,11 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
 
         XCTAssertEqual(snapshot.rootURL, URL(filePath: "/tmp/Renamed Workspace"))
         XCTAssertEqual(snapshot.displayName, "Renamed Workspace")
+        XCTAssertEqual(snapshot.workspaceID, workspaceID)
         XCTAssertEqual(refreshedBookmark?.workspaceName, "Renamed Workspace")
         XCTAssertEqual(refreshedBookmark?.lastKnownPath, "/tmp/Renamed Workspace")
         XCTAssertEqual(refreshedBookmark?.bookmarkData, Data("fresh-bookmark".utf8))
+        XCTAssertEqual(refreshedBookmark?.workspaceID, workspaceID)
         XCTAssertEqual(securityScopedAccess.makeBookmarkCallCount, 1)
     }
 
@@ -74,6 +78,117 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectingFirstWorkspacePersistsBookmarkOnlyAfterUsableSnapshotSucceeds() async throws {
+        let workspaceURL = URL(filePath: "/tmp/Selected Workspace")
+        let bookmarkStore = StubBookmarkStore()
+        let manager = LiveWorkspaceManager(
+            bookmarkStore: bookmarkStore,
+            securityScopedAccess: FakeSecurityScopedAccessHandler(
+                resolvedURL: workspaceURL,
+                isStale: false,
+                shouldAllowAccess: true
+            ),
+            workspaceEnumerator: StubWorkspaceEnumerator(snapshot: PreviewSampleData.emptyWorkspace)
+        )
+
+        let selectionResult = await manager.selectWorkspace(at: workspaceURL)
+        let persistedBookmark = try await bookmarkStore.loadBookmark()
+
+        guard case let .ready(snapshot) = selectionResult else {
+            return XCTFail("Expected workspace selection to succeed.")
+        }
+
+        XCTAssertEqual(snapshot.rootURL, workspaceURL)
+        XCTAssertEqual(snapshot.displayName, "Selected Workspace")
+        XCTAssertEqual(persistedBookmark?.workspaceName, "Selected Workspace")
+        XCTAssertEqual(persistedBookmark?.lastKnownPath, workspaceURL.path)
+        XCTAssertEqual(persistedBookmark?.bookmarkData, Data(workspaceURL.path.utf8))
+    }
+
+    @MainActor
+    func testSuccessfulSelectedWorkspaceBecomesNextRestoreTarget() async throws {
+        let workspaceURL = URL(filePath: "/tmp/Restorable Workspace")
+        let bookmarkStore = StubBookmarkStore()
+        let selectingManager = LiveWorkspaceManager(
+            bookmarkStore: bookmarkStore,
+            securityScopedAccess: FakeSecurityScopedAccessHandler(
+                resolvedURL: workspaceURL,
+                isStale: false,
+                shouldAllowAccess: true
+            ),
+            workspaceEnumerator: StubWorkspaceEnumerator(snapshot: PreviewSampleData.emptyWorkspace)
+        )
+
+        guard case .ready = await selectingManager.selectWorkspace(at: workspaceURL) else {
+            return XCTFail("Expected initial workspace selection to succeed.")
+        }
+
+        let restoringManager = LiveWorkspaceManager(
+            bookmarkStore: bookmarkStore,
+            securityScopedAccess: FakeSecurityScopedAccessHandler(
+                resolvedURL: workspaceURL,
+                isStale: false,
+                shouldAllowAccess: true
+            ),
+            workspaceEnumerator: StubWorkspaceEnumerator(snapshot: PreviewSampleData.nestedWorkspace)
+        )
+
+        let restoreResult = await restoringManager.restoreWorkspace()
+        let loadedBookmark = try await bookmarkStore.loadBookmark()
+        let persistedBookmark = try XCTUnwrap(loadedBookmark)
+
+        guard case let .ready(snapshot) = restoreResult else {
+            return XCTFail("Expected successful selection to become the restore target.")
+        }
+
+        XCTAssertEqual(snapshot.rootURL, workspaceURL)
+        XCTAssertEqual(snapshot.displayName, "Restorable Workspace")
+        XCTAssertEqual(snapshot.workspaceID, persistedBookmark.workspaceID)
+    }
+
+    @MainActor
+    func testSelectingFirstWorkspaceWithFailingInitialSnapshotDoesNotPersistBrokenRestoreState() async throws {
+        let workspaceURL = URL(filePath: "/tmp/Broken Workspace")
+        let bookmarkStore = StubBookmarkStore()
+        let manager = LiveWorkspaceManager(
+            bookmarkStore: bookmarkStore,
+            securityScopedAccess: FakeSecurityScopedAccessHandler(
+                resolvedURL: workspaceURL,
+                isStale: false,
+                shouldAllowAccess: true
+            ),
+            workspaceEnumerator: ScriptedWorkspaceEnumerator(
+                behaviors: [
+                    .failure(
+                        AppError.workspaceRestoreFailed(
+                            details: "The selected folder could not be loaded."
+                        )
+                    )
+                ]
+            )
+        )
+
+        let selectionResult = await manager.selectWorkspace(at: workspaceURL)
+        let persistedBookmark = try await bookmarkStore.loadBookmark()
+
+        guard case let .failed(error) = selectionResult else {
+            return XCTFail("Expected failed result when the first snapshot cannot be built.")
+        }
+
+        XCTAssertEqual(error.title, "Unable to Restore Workspace")
+        XCTAssertNil(persistedBookmark)
+
+        do {
+            _ = try await manager.refreshCurrentWorkspace()
+            XCTFail("Expected no persisted workspace after failed first selection.")
+        } catch let error as AppError {
+            guard case .missingWorkspaceSelection = error else {
+                return XCTFail("Expected missing workspace selection after failed first selection.")
+            }
+        }
+    }
+
+    @MainActor
     func testRefreshUsesResolvedBookmarkURLInsteadOfLastKnownPathFallback() async throws {
         let bookmarkStore = StubBookmarkStore(
             initialBookmark: StoredWorkspaceBookmark(
@@ -99,12 +214,165 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
     }
 
     @MainActor
+    func testReplacingWorkingWorkspaceWithFailingNewSelectionPreservesPreviousPersistedWorkspace() async throws {
+        let oldWorkspaceURL = URL(filePath: "/tmp/Old Workspace")
+        let newWorkspaceURL = URL(filePath: "/tmp/Broken Workspace")
+        let oldBookmark = StoredWorkspaceBookmark(
+            workspaceName: "Old Workspace",
+            lastKnownPath: oldWorkspaceURL.path,
+            bookmarkData: Data("old-bookmark".utf8)
+        )
+        let oldSnapshot = WorkspaceSnapshot(
+            rootURL: oldWorkspaceURL,
+            displayName: "Old Workspace",
+            rootNodes: PreviewSampleData.emptyWorkspace.rootNodes,
+            lastUpdated: PreviewSampleData.previewDate
+        )
+        let bookmarkStore = StubBookmarkStore(initialBookmark: oldBookmark)
+        let manager = LiveWorkspaceManager(
+            bookmarkStore: bookmarkStore,
+            securityScopedAccess: RecordingSecurityScopedAccessHandler(
+                resolvedBookmarks: [
+                    Data("old-bookmark".utf8): ResolvedSecurityScopedURL(
+                        url: oldWorkspaceURL,
+                        displayName: "Old Workspace",
+                        isStale: false
+                    )
+                ],
+                makeBookmarkData: Data(newWorkspaceURL.path.utf8)
+            ),
+            workspaceEnumerator: ScriptedWorkspaceEnumerator(
+                behaviors: [
+                    .immediate(oldSnapshot),
+                    .failure(
+                        AppError.workspaceRestoreFailed(
+                            details: "The selected folder could not be loaded."
+                        )
+                    )
+                ]
+            )
+        )
+
+        guard case .ready = await manager.restoreWorkspace() else {
+            return XCTFail("Expected initial restore to establish the current workspace.")
+        }
+
+        let selectionResult = await manager.selectWorkspace(at: newWorkspaceURL)
+        let persistedBookmark = try await bookmarkStore.loadBookmark()
+        let refreshedSnapshot = try await manager.refreshCurrentWorkspace()
+
+        guard case let .failed(error) = selectionResult else {
+            return XCTFail("Expected replacement selection to fail.")
+        }
+
+        XCTAssertEqual(error.title, "Unable to Restore Workspace")
+        XCTAssertEqual(persistedBookmark, oldBookmark)
+        XCTAssertEqual(refreshedSnapshot.rootURL, oldWorkspaceURL)
+        XCTAssertEqual(refreshedSnapshot.displayName, "Old Workspace")
+    }
+
+    @MainActor
+    func testCancelledRefreshPropagatesCancellationIntoStructuredEnumeration() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let enumerator = ScriptedWorkspaceEnumerator(
+            behaviors: [
+                .immediate(PreviewSampleData.nestedWorkspace),
+                .delayedUntilCancellation(PreviewSampleData.emptyWorkspace),
+            ]
+        )
+        let manager = LiveWorkspaceManager(
+            bookmarkStore: StubBookmarkStore(),
+            securityScopedAccess: FakeSecurityScopedAccessHandler(
+                resolvedURL: workspaceURL,
+                isStale: false,
+                shouldAllowAccess: true
+            ),
+            workspaceEnumerator: enumerator
+        )
+
+        guard case .ready = await manager.selectWorkspace(at: workspaceURL) else {
+            return XCTFail("Expected workspace selection to succeed before refresh cancellation test.")
+        }
+
+        let refreshTask = Task {
+            try await manager.refreshCurrentWorkspace()
+        }
+
+        try await Task.sleep(for: .milliseconds(30))
+        refreshTask.cancel()
+
+        do {
+            _ = try await refreshTask.value
+            XCTFail("Expected cancelled refresh to throw CancellationError.")
+        } catch is CancellationError {
+            XCTAssertEqual(enumerator.cancelledEnumerationCount, 1)
+            XCTAssertEqual(enumerator.completedEnumerationCount, 1)
+        }
+    }
+
+    @MainActor
+    func testRefreshStillSucceedsAfterEarlierRefreshWasCancelled() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let refreshedSnapshot = WorkspaceSnapshot(
+            rootURL: workspaceURL,
+            displayName: workspaceURL.lastPathComponent,
+            rootNodes: PreviewSampleData.nestedWorkspace.rootNodes,
+            lastUpdated: PreviewSampleData.previewDate
+        )
+        let enumerator = ScriptedWorkspaceEnumerator(
+            behaviors: [
+                .immediate(PreviewSampleData.emptyWorkspace),
+                .delayedUntilCancellation(PreviewSampleData.nestedWorkspace),
+                .immediate(refreshedSnapshot),
+            ]
+        )
+        let manager = LiveWorkspaceManager(
+            bookmarkStore: StubBookmarkStore(),
+            securityScopedAccess: FakeSecurityScopedAccessHandler(
+                resolvedURL: workspaceURL,
+                isStale: false,
+                shouldAllowAccess: true
+            ),
+            workspaceEnumerator: enumerator
+        )
+
+        guard case .ready = await manager.selectWorkspace(at: workspaceURL) else {
+            return XCTFail("Expected workspace selection to succeed before retry test.")
+        }
+
+        let cancelledRefreshTask = Task {
+            try await manager.refreshCurrentWorkspace()
+        }
+
+        try await Task.sleep(for: .milliseconds(30))
+        cancelledRefreshTask.cancel()
+        do {
+            _ = try await cancelledRefreshTask.value
+            XCTFail("Expected cancelled refresh to throw CancellationError.")
+        } catch is CancellationError {}
+
+        let snapshot = try await manager.refreshCurrentWorkspace()
+
+        XCTAssertEqual(snapshot.rootURL, refreshedSnapshot.rootURL)
+        XCTAssertEqual(snapshot.displayName, refreshedSnapshot.displayName)
+        XCTAssertEqual(snapshot.rootNodes, refreshedSnapshot.rootNodes)
+        XCTAssertEqual(enumerator.cancelledEnumerationCount, 1)
+        XCTAssertEqual(enumerator.completedEnumerationCount, 2)
+    }
+
+    @MainActor
     func testRestoreUsesRefreshedBookmarkAcrossRelaunchStyleFlow() async throws {
+        let workspaceID = "workspace-id"
         let bookmarkStore = StubBookmarkStore(
             initialBookmark: StoredWorkspaceBookmark(
                 workspaceName: "Original Workspace",
                 lastKnownPath: "/tmp/Original Workspace",
-                bookmarkData: Data("stale-bookmark".utf8)
+                bookmarkData: Data("stale-bookmark".utf8),
+                workspaceID: workspaceID
             )
         )
         let securityScopedAccess = RecordingSecurityScopedAccessHandler(
@@ -148,6 +416,7 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
 
         XCTAssertEqual(snapshot.rootURL, URL(filePath: "/tmp/Renamed Workspace"))
         XCTAssertEqual(snapshot.displayName, "Renamed Workspace")
+        XCTAssertEqual(snapshot.workspaceID, workspaceID)
         XCTAssertEqual(securityScopedAccess.makeBookmarkCallCount, 1)
         XCTAssertEqual(securityScopedAccess.resolvedBookmarkData, [
             Data("stale-bookmark".utf8),
@@ -427,6 +696,83 @@ private final class RecordingWorkspaceFileCoordinator: @unchecked Sendable, Work
             storedDeletedURLs.append(url)
         }
         try accessor(url)
+    }
+}
+
+private final class ScriptedWorkspaceEnumerator: @unchecked Sendable, WorkspaceEnumerating {
+    enum Behavior {
+        case immediate(WorkspaceSnapshot)
+        case delayedUntilCancellation(WorkspaceSnapshot)
+        case failure(AppError)
+    }
+
+    private let lock = NSLock()
+    private var behaviors: [Behavior]
+    private var completedEnumerations = 0
+    private var cancelledEnumerations = 0
+
+    init(behaviors: [Behavior]) {
+        self.behaviors = behaviors
+    }
+
+    var completedEnumerationCount: Int {
+        lock.withLock { completedEnumerations }
+    }
+
+    var cancelledEnumerationCount: Int {
+        lock.withLock { cancelledEnumerations }
+    }
+
+    nonisolated func makeSnapshot(rootURL: URL, displayName: String) throws -> WorkspaceSnapshot {
+        let behavior = lock.withLock {
+            behaviors.isEmpty
+                ? Behavior.immediate(
+                    WorkspaceSnapshot(
+                        rootURL: rootURL,
+                        displayName: displayName,
+                        rootNodes: [],
+                        lastUpdated: Date()
+                    )
+                )
+                : behaviors.removeFirst()
+        }
+
+        switch behavior {
+        case let .immediate(snapshot):
+            lock.withLock {
+                completedEnumerations += 1
+            }
+            return WorkspaceSnapshot(
+                rootURL: rootURL,
+                displayName: displayName,
+                rootNodes: snapshot.rootNodes,
+                lastUpdated: snapshot.lastUpdated
+            )
+        case let .delayedUntilCancellation(snapshot):
+            do {
+                for _ in 0..<200 {
+                    try Task.checkCancellation()
+                    Thread.sleep(forTimeInterval: 0.005)
+                }
+            } catch is CancellationError {
+                lock.withLock {
+                    cancelledEnumerations += 1
+                }
+                throw CancellationError()
+            }
+
+            lock.withLock {
+                completedEnumerations += 1
+            }
+            return WorkspaceSnapshot(
+                rootURL: rootURL,
+                displayName: displayName,
+                rootNodes: snapshot.rootNodes,
+                lastUpdated: snapshot.lastUpdated
+            )
+        case let .failure(error):
+            throw error
+        }
     }
 }
 

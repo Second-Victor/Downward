@@ -3,7 +3,6 @@ import SwiftUI
 struct EditorScreen: View {
     let viewModel: EditorViewModel
     let documentURL: URL
-    private let editorHorizontalInset: CGFloat = 12
 
     var body: some View {
         editorContent
@@ -34,6 +33,15 @@ struct EditorScreen: View {
             .sheet(isPresented: conflictSheetBinding) {
                 ConflictResolutionView(viewModel: viewModel)
             }
+            .alert(item: editorAlertBinding) { error in
+                Alert(
+                    title: Text(error.title),
+                    message: Text([error.message, error.recoverySuggestion].compactMap { $0 }.joined(separator: "\n\n")),
+                    dismissButton: .default(Text("OK")) {
+                        viewModel.dismissAlert()
+                    }
+                )
+            }
     }
     @ViewBuilder
     private var editorContent: some View {
@@ -44,7 +52,7 @@ struct EditorScreen: View {
                     .scrollContentBackground(.hidden)
                     .background(
                         EditorTextViewHostBridge(
-                            horizontalInset: editorHorizontalInset,
+                            horizontalInset: EditorTextViewLayout.horizontalInset,
                             documentIdentity: documentURL
                         )
                     )
@@ -56,8 +64,8 @@ struct EditorScreen: View {
                     Text("Start typing…")
                         .font(viewModel.editorFont)
                         .foregroundStyle(.secondary)
-                        .padding(.top, 8)
-                        .padding(.leading, editorHorizontalInset)
+                        .padding(.top, EditorTextViewLayout.placeholderTopPadding)
+                        .padding(.leading, EditorTextViewLayout.horizontalInset)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
@@ -81,6 +89,13 @@ struct EditorScreen: View {
         Binding(
             get: { viewModel.isShowingConflictResolution },
             set: { viewModel.isShowingConflictResolution = $0 }
+        )
+    }
+
+    private var editorAlertBinding: Binding<UserFacingError?> {
+        Binding(
+            get: { viewModel.alertError },
+            set: { _ in viewModel.dismissAlert() }
         )
     }
 }

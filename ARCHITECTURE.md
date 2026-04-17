@@ -1,298 +1,488 @@
 # ARCHITECTURE.md
 
-## Overview
+## Purpose
 
-Downward is still best understood as four core layers:
+This document describes the **actual current architecture** of Downward as it exists in the repository today.
+It also records the most important boundaries that future work must preserve.
 
-1. **app/session orchestration**
-2. **workspace boundary**
-3. **document boundary**
-4. **SwiftUI feature surfaces**
+Downward is a **workspace-based text editor** for iPhone and iPad.
+The user chooses a real folder from Files, the app restores access to that folder later, browses supported text files inside it, and edits those files in place.
 
-That overall structure is still good.
+The app does **not** own a mirrored document database.
+The chosen workspace remains the source of truth.
 
-The repo does **not** need an architecture rewrite.
-It needs clearer ownership at a few boundaries that recently became more complex.
+---
+
+## Current product model
+
+Today’s product model is:
+
+- one active workspace at a time,
+- one active open document and one active live document session at a time,
+- inline expanding file tree in the browser,
+- compact iPhone-style stack navigation,
+- regular iPad split sidebar/detail navigation,
+- quiet autosave to the real workspace file,
+- explicit conflict UI only when the app can no longer proceed calmly.
+
+That model is important because many current implementation choices depend on it.
+
+---
+
+## Top-level layers
+
+The repo is still organized into four practical layers.
+
+### 1. App composition and session orchestration
+
+Main files:
+
+- `Downward/App/AppContainer.swift`
+- `Downward/App/AppSession.swift`
+- `Downward/App/AppCoordinator.swift`
+- `Downward/App/MarkdownWorkspaceApp.swift`
+- `Downward/Features/Root/RootViewModel.swift`
+- `Downward/Features/Root/RootScreen.swift`
+
+Responsibilities:
+
+- build live and preview dependencies,
+- own root app/session state,
+- bootstrap workspace restore,
+- normalize compact vs regular navigation,
+- coordinate workspace and document flows,
+- bridge app lifecycle changes into workspace refresh and editor flush behavior.
+
+### 2. Workspace boundary
+
+Main files:
+
+- `Downward/Domain/Workspace/WorkspaceManager.swift`
+- `Downward/Infrastructure/WorkspaceEnumerator.swift`
+- `Downward/Domain/Workspace/WorkspaceSnapshot.swift`
+- `Downward/Domain/Workspace/WorkspaceNode.swift`
+- `Downward/Domain/Workspace/WorkspaceRelativePath.swift`
+- `Downward/Domain/Persistence/BookmarkStore.swift`
+- `Downward/Domain/Persistence/RecentFilesStore.swift`
+- `Downward/Domain/Persistence/SessionStore.swift`
+- `Downward/Infrastructure/Platform/SecurityScopedAccess.swift`
+
+Responsibilities:
+
+- persist and restore workspace access,
+- enumerate the current folder tree,
+- refresh the browser snapshot,
+- create/rename/delete files within the workspace,
+- maintain canonical relative-path identity for files,
+- persist recent files and last-open file metadata.
+
+### 3. Document boundary
+
+Main files:
+
+- `Downward/Domain/Document/DocumentManager.swift`
+- `Downward/Domain/Document/PlainTextDocumentSession.swift`
+- `Downward/Domain/Document/OpenDocument.swift`
+- `Downward/Domain/Document/DocumentVersion.swift`
+- `Downward/Domain/Document/DocumentConflict*.swift`
+- `Downward/Domain/Document/DocumentSaveState.swift`
+
+Responsibilities:
+
+- open documents from the active workspace,
+- reload and revalidate against disk,
+- save the in-memory editor buffer back to disk,
+- observe external changes,
+- preserve the editor buffer as authoritative during ordinary typing,
+- map missing/changed files into explicit conflict state when needed.
+
+### 4. SwiftUI feature surfaces
+
+Main files:
+
+- workspace: `Downward/Features/Workspace/*`
+- editor: `Downward/Features/Editor/*`
+- settings: `Downward/Features/Settings/SettingsScreen.swift`
+- root/launch/reconnect: `Downward/Features/Root/*`
+
+Responsibilities:
+
+- render browser/search/editor/settings UI,
+- adapt observable state to SwiftUI views,
+- collect user intents and hand them to the coordinator/view models,
+- avoid direct filesystem/persistence logic inside views.
 
 ---
 
 ## Current source-of-truth map
 
-### App layer
+This is the most important section for future contributors.
 
-- `AppContainer` wires concrete live and preview dependencies
-- `AppSession` holds root UI state
-- `AppCoordinator` orchestrates restore, refresh, selection, mutation, and document/session transitions
-- `RootViewModel` adapts app/session state into launch/root UI
+### Workspace access
 
-### Workspace layer
+**Source of truth:** bookmark data + the currently loaded `WorkspaceSnapshot`
 
-- `WorkspaceManager` owns restore, selection, refresh, and browser-side file mutations
-- `WorkspaceEnumerator` builds snapshots
-- `RecentFilesStore` persists workspace-relative recent file identity
-- `WorkspaceViewModel` turns snapshot state into browser/search/tree UI state
+Owned by:
 
-### Document layer
+- `BookmarkStore`
+- `WorkspaceManager`
+- `SecurityScopedAccessHandling`
 
-- `DocumentManager` owns open / reload / revalidate / save / observe
-- `PlainTextDocumentSession` is the live file-boundary worker for one active document session
-- `EditorViewModel` owns text changes, autosave, conflict presentation, and observation response
+Notes:
 
-### UI layer
+- the app persists a bookmark for the chosen workspace,
+- the live workspace browser is driven by a loaded `WorkspaceSnapshot`,
+- reconnect/restore logic must respect both persisted access and current in-memory state.
 
-- `RootScreen` chooses launch / compact / regular shells
-- `WorkspaceScreen` and `WorkspaceFolderScreen` render the inline tree browser
-- `EditorScreen` renders the active text editor
-- `SettingsScreen` owns workspace and appearance settings UI
+### File identity inside a workspace
 
----
+**Source of truth:** canonical workspace-relative path strings
 
-## What is currently right
+Owned by:
 
-These are the architecture choices to keep:
+- `WorkspaceRelativePath`
+- `OpenDocument.relativePath`
+- `RecentFileItem.relativePath`
+- `RegularWorkspaceDetailSelection.editor(String)`
 
-### 1. Coordinator + managers + focused view models
+Rules:
 
-The coordinator/manager split is readable and gives you real seams for tests.
-Do not collapse file-system behavior back into views.
+- never derive file identity from `displayName`,
+- UI labels can change; identity cannot,
+- recent files, restore, rename reconciliation, and browser/open-document logic must agree on this representation.
 
-### 2. Canonical workspace-relative identity
+### Browser tree contents
 
-The code is on the right path when it treats relative path identity as canonical and display names as presentation-only.
-Keep building on that.
+**Source of truth:** `WorkspaceSnapshot.rootNodes`
 
-### 3. One active document pipeline
+Owned by:
 
-The current app is still effectively a one-open-document editor.
-That constraint is useful because it keeps autosave and observation logic tractable.
+- `WorkspaceManager`
+- `WorkspaceEnumerator`
+- `AppSession.workspaceSnapshot`
 
-### 4. Browser tree state is view-model state, not route state
+Notes:
 
-Folder expansion is now inline and keyed by canonical folder-relative paths.
-That is the right long-term model for a file browser.
+- the browser is snapshot-driven, not live-diff-driven,
+- refresh/mutation flows replace the whole snapshot,
+- `WorkspaceViewModel` derives expansion/search/prompt state around that snapshot.
 
----
+Why this is still the right model today:
 
-## Current architectural fault lines
+- it keeps workspace truth centralized in one accepted snapshot,
+- refresh, restore, reconnect, and mutation reconciliation all reason about one coherent tree,
+- the browser/search surface stays testable without introducing an incremental diff or index layer yet.
 
-## 1. Navigation ownership is not clean enough yet
+Current scaling limit:
 
-### Current shape
+- whole-snapshot replacement is a deliberate simplicity tradeoff, not a claim that very large workspaces are already solved,
+- future work such as very large browser trees, incremental browser updates, richer search ranking, or content search should treat this as the boundary where a more scalable browser/search model would need to start.
 
-- compact mode uses `session.path` as actual `NavigationStack` state
-- regular mode does not truly use a bound path stack, but still derives detail state partly from `session.path`
-- old route concepts still exist even though folder browsing is now inline
+### Current document contents
 
-### Desired shape
+**Source of truth:** `AppSession.openDocument`
 
-- compact stack state is compact-only
-- regular detail selection is regular-only
-- folder browsing does not rely on route history at all
+Owned by:
 
-### Why this matters
+- `AppCoordinator`
+- `EditorViewModel`
+- `DocumentManager` / `PlainTextDocumentSession`
 
-This is now the main structural risk for future features.
+Notes:
 
-If not cleaned up, every new feature touching navigation will have to understand both:
+- there is currently one active open document for the app,
+- `LiveDocumentManager` also keeps one active `PlainTextDocumentSession` for that document,
+- the editor buffer remains authoritative while the user types,
+- save acknowledgements update the confirmed disk version without clobbering newer edits.
 
-- real path history
-- hidden “detail selection by inspecting path” behavior
+### Navigation and visible detail
 
-That increases bug surface area around iPad, rotation, search, settings, and future multi-document ideas.
+**Source of truth:** split between compact path state and regular explicit detail state
 
----
+Owned by:
 
-## 2. The editor host is still a soft boundary
+- `AppSession.path`
+- `AppSession.regularDetailSelection`
+- `AppCoordinator.updateNavigationLayout(_:)`
 
-### Current shape
+Rules:
 
-`EditorScreen` owns:
+- compact layout uses `NavigationStack(path:)`,
+- regular layout uses explicit detail selection,
+- do not make regular detail depend on hidden compact history,
+- folder browsing is now inline tree expansion, not folder-route navigation.
 
-- the SwiftUI editor view
-- placeholder behavior
-- the current UIKit inset workaround
+### Global app messaging / errors
 
-### Desired shape
+**Current source of truth:** `AppSession.workspaceAlertError`, `AppSession.editorLoadError`, and `AppSession.editorAlertError`
 
-The editor host boundary should explicitly own:
-
-- content inset behavior
-- scroll-indicator expectations
-- focus/update lifecycle
-- any future editor bridge behavior
-
-### Why this matters
-
-The editor is now central enough that its UIKit/SwiftUI integration details should not live as tactical logic inside the screen file forever.
+This is a real current boundary, but it is a weak one.
+Future work should treat it as a temporary compromise rather than a long-term design target.
 
 ---
 
-## 3. Refresh ownership stops too low in the stack
+## Current main flows
 
-### Current shape
+## 1. App bootstrap and restore
 
-`LiveWorkspaceManager` protects `currentSnapshot` from stale writes, but stale snapshots can still be returned to the caller and applied in app/session state.
+Flow:
 
-### Desired shape
+1. `MarkdownWorkspaceApp` creates `AppContainer.live()`.
+2. `RootScreen` triggers `RootViewModel.handleFirstAppear()`.
+3. `AppCoordinator.bootstrapIfNeeded()` runs once.
+4. `WorkspaceManager.restoreWorkspace()` loads bookmark state and tries to produce a fresh snapshot.
+5. `AppCoordinator` applies the restore result into `AppSession`.
+6. If restore succeeded, the coordinator optionally reopens the last document from `SessionStore`.
 
-The “newest refresh wins” rule should be enforced at the full application boundary, not just the manager cache boundary.
+Important current behavior:
 
-### Why this matters
+- restore is generation-guarded,
+- invalid workspace access transitions into reconnect state,
+- missing/unreadable last-open files are cleared without tearing down the workspace.
 
-Snapshot authority drives:
+## 2. Browser refresh and reconciliation
 
-- browser tree contents
-- recent-files pruning
-- active-document reconciliation
-- reconnect/error flows
+Flow:
 
----
+1. `WorkspaceViewModel` triggers `AppCoordinator.refreshWorkspace()`.
+2. `WorkspaceManager.refreshCurrentWorkspace()` builds a new snapshot.
+3. `AppCoordinator.runWorkspaceRefresh(...)` decides whether the refresh result is still allowed to apply.
+4. If it wins, the coordinator applies the new snapshot and reconciles navigation/open-document state.
 
-## 4. Observation fallback is still implementation-first rather than policy-first
+Important current behavior:
 
-### Current shape
+- refresh-vs-refresh winner logic exists,
+- clean missing editors are removed when their file disappears from the snapshot,
+- dirty/saving/conflicted editors are preserved.
 
-The fallback emits synthetic changes on a fixed cadence and relies on the editor view model to decide when to revalidate.
+Important current behavior:
 
-### Desired shape
+- refreshes, mutations, restore, and reconnect now compete through one coordinator-owned snapshot-application winner policy.
 
-Observation should expose a clearer policy:
+## 3. Browser mutations
 
-- normal mode: presenter-driven
-- degraded mode: metadata-gated and cheap
-- no-change steady state: quiet
+Flow:
 
-### Why this matters
+1. browser UI asks `WorkspaceViewModel` to create/rename/delete,
+2. `WorkspaceViewModel` forwards to `AppCoordinator`,
+3. `WorkspaceManager` performs coordinated filesystem mutation,
+4. `WorkspaceManager` returns a refreshed post-mutation snapshot,
+5. `AppCoordinator` updates session state, recents, restore state, navigation, and open-document state.
 
-This is a classic place where “it works” can still be too noisy for real devices.
+Important current behavior:
 
----
+- mutations are coordinated through `NSFileCoordinator`,
+- open-document rename/delete reconciliation exists,
+- recent files are updated for rename/delete.
 
-## 5. File-boundary policy is still partially implicit
+Important current behavior:
 
-Two important policies are not yet owned clearly enough:
+- mutation results apply through the same snapshot winner policy as refreshes and restore/reconnect flows.
 
-- what to do with unreadable / hidden / provider-generated descendants during enumeration
-- what durability guarantees the direct-write save path is intentionally making
+## 4. Editor load, save, and observation
 
-Those do not require new abstractions, but they do require explicit architecture language.
+Flow:
 
-## Document Write Strategy
+1. user chooses a file from the browser/search/recent files,
+2. navigation state points to the editor destination,
+3. `EditorScreen` appears for a document URL,
+4. `EditorViewModel` asks the coordinator to load the file,
+5. `DocumentManager` opens the document via `PlainTextDocumentSession`,
+6. `AppCoordinator.activateLoadedDocument(...)` makes it the active `openDocument`,
+7. `EditorViewModel` starts observation for external changes.
 
-### Decision
+Save / revalidate behavior:
 
-Downward intentionally keeps a **coordinated direct-write** save strategy for the active editor document.
+- typing updates `session.openDocument` immediately,
+- autosave is debounced,
+- save acknowledgements merge back into the current document so newer local edits survive late completions,
+- revalidation keeps clean buffers in sync and keeps dirty buffers authoritative,
+- conflict UI is reserved for true missing/divergent cases.
 
-That means:
+Important current compromise:
 
-- the app coordinates the real workspace file URL with `NSFileCoordinator`
-- it writes the current UTF-8 editor buffer directly to that coordinated URL
-- it does **not** add a second temp-file replacement or app-owned staging layer on top of that write
+- `TextEditor` layout behavior still requires a UIKit bridge (`EditorTextViewHostBridge`).
 
-### Why this is the chosen policy
+Single-document ownership inside this flow:
 
-The app edits the user-selected workspace in place, often through Files/iCloud/provider-backed folders.
-For this product, preserving a calm live-file boundary is more important than adding an extra replacement
-step that may:
-
-- manufacture another filesystem replacement event
-- make provider behavior noisier or less predictable
-- complicate file identity for observation/revalidation flows
-- drift away from the “edit the real workspace file directly” trust model
-
-### Recovery expectations
-
-This is not claiming desktop-class crash-safe journaling.
-The product contract is narrower and explicit:
-
-- a normal successful save writes the current editor buffer back to the real workspace path
-- newer in-memory edits must survive older save acknowledgements
-- missing/moved paths surface explicit recovery instead of silent data loss
-- real durability and provider behavior must still be validated on device, especially for iCloud Drive
-  and third-party Files providers
-
-### What should change only with explicit intent
-
-Future contributors should not replace this with temp-file swap, app-owned mirror storage, or any other
-write strategy as a cleanup-by-default change. If the write strategy changes, it should be treated as a
-product/architecture decision with updated QA expectations and save-path tests.
+- `AppSession.openDocument` is the one app-wide editor source of truth,
+- `LiveDocumentManager` owns one active `PlainTextDocumentSession`,
+- `EditorViewModel` save/reload/observe behavior assumes that one routed editor is talking to that one shared live document.
 
 ---
 
-## Proposed architecture adjustments
+## Current strengths
 
-These are **small structural adjustments**, not a rewrite.
+### The app is already testing the right hard things
 
-## Adjustment A — Split navigation state by layout role
+The project has meaningful coverage around:
 
-Suggested shape:
+- save ordering,
+- conflict behavior,
+- restore/reconnect,
+- navigation transitions,
+- refresh races,
+- bookmark refresh behavior,
+- enumeration policy,
+- the editor inset bridge.
 
-- `compactPath: [AppRoute]`
-- `regularDetail: RegularWorkspaceDetailSelection`
+That should be preserved as the architecture evolves.
 
-where regular detail selection is an explicit model, not inferred from compact path history.
+### Canonical identity is now a real cross-cutting rule
 
-## Adjustment B — Introduce an editor host boundary file
+Relative-path identity is no longer an incidental detail.
+It is part of the app’s true contract.
 
-Suggested shape:
+### The document boundary is conceptually sound
 
-- `EditorScreen` remains the feature screen
-- a dedicated host/bridge type owns any UIKit `TextEditor` inset/configuration behavior
-
-That keeps editor UI policy out of general screen composition.
-
-## Adjustment C — Move refresh winner policy to the application edge
-
-Either:
-
-- coordinator owns refresh generation, or
-- manager never returns stale refresh results
-
-Pick one and document it.
-
-## Adjustment D — Promote file policy to documented contracts
-
-Write down:
-
-- enumeration skip/fail policy
-- direct-write durability policy
-- expected QA coverage for provider-backed folders
+`DocumentManager` + `PlainTextDocumentSession` is the right place for the app’s file-editing trust model.
+The next work here is incremental editor capability, not replacement of the boundary itself.
 
 ---
 
-## Architecture invariants to preserve
+## Known weak spots / current compromises
 
-Any future changes should preserve these:
+These are part of the real current architecture and must be acknowledged explicitly.
 
-1. the workspace folder remains the source of truth
-2. canonical relative path remains the identity for restore/recent/reconcile logic
-3. newer in-memory edits survive older save acknowledgements
-4. routine autosave remains quiet
-5. live document observation must not create noisy self-conflicts
-6. file mutations remain coordinated
-7. views do not perform raw file-system work directly
+### 1. `AppCoordinator` is still the main policy sink
+
+The coordinator is still where most cross-domain decisions accumulate.
+That is manageable today, but it is the main maintainability pressure point.
+
+### 2. Error ownership is still pragmatic rather than ideal
+
+`workspaceAlertError`, `editorLoadError`, and `editorAlertError` are still broader than ideal for the app’s long-term shape.
+That is acceptable for the current product size, but not a good long-term target.
+
+### 3. The editor host boundary is still a deliberate workaround
+
+`EditorTextViewHostBridge` is the correct current place for the workaround, but it remains a bridge over `TextEditor` implementation details.
+This is an owned compromise, not a solved platform abstraction.
+
+### 4. The app is intentionally single-document
+
+Current state:
+
+- `AppSession.openDocument` is one shared document slot for the whole app,
+- `LiveDocumentManager` keeps one active `PlainTextDocumentSession`,
+- `EditorViewModel` owns one autosave / observation pipeline for the currently visible editor route,
+- restore, reopen-last-document, rename/delete reconciliation, and recent-file activation all converge on making that one document current.
+
+Why this is useful today:
+
+- save ordering stays simpler because there is one authoritative editor buffer,
+- live observation and fallback observation have one clear owner,
+- restore/navigation logic only has to reconcile one visible editor target,
+- conflict presentation stays tied to one active editing surface.
+
+Known limitations:
+
+- adding another visible editor route would not create another live document session,
+- two panes would compete over `session.openDocument`, editor-local error state, autosave scheduling, and observation ownership,
+- document restore and navigation currently target “the active editor,” not an arbitrary set of editor presentations.
+
+What future contributors must not assume:
+
+- adding tabs, split panes, or multi-window scenes on top of the current `openDocument` slot is not a safe incremental change,
+- making `path` or detail selection hold more editor routes does not by itself create multi-document support,
+- the current `DocumentManager`/`EditorViewModel` pairing is not a shared pool of independent live editor controllers.
+
+Future escape hatch:
+
+Before multi-pane or multi-window work is safe, the architecture would need to revisit at least:
+
+- `AppSession.openDocument` as the single app-wide document source of truth,
+- `LiveDocumentManager`’s one-active-session ownership model,
+- `EditorViewModel`’s single autosave / observation / conflict pipeline,
+- restore and navigation policy that currently resolves one active editor destination,
+- any UI-facing error ownership that still assumes one active editor surface.
+
+Until that redesign happens, contributors should treat the app as intentionally single-document and keep new editor work inside that boundary.
+
+### 5. Search and browser state still assume moderate workspace size
+
+The snapshot/tree/search model is simple and testable, but not yet optimized for very large trees or richer search.
+That is acceptable for the current product: whole-snapshot replacement keeps workspace application and reconciliation honest.
+It is not the right permanent base for:
+
+- very large workspaces where every refresh/search wants to touch the whole tree,
+- incremental browser mutation UI that should avoid replacing the accepted snapshot wholesale,
+- richer search behavior that would benefit from a derived index rather than repeated full-tree traversal.
+
+Until that future work is intentionally designed, contributors should preserve the current snapshot model instead of layering ad hoc large-workspace optimizations into views.
 
 ---
 
-## What not to do next
+## Contributor guardrails
 
-Do **not** do these as a reaction to current issues:
+These are the rules that future work should follow.
 
-- do not replace the whole architecture with a document database
-- do not move file-system coordination into SwiftUI views
-- do not bolt more route cases onto the current mixed compact/regular path model
-- do not spread more editor bridge logic across unrelated view files
-- do not add broad abstraction layers before the ownership boundaries are clarified
+### Identity and filesystem safety
+
+- Never derive file identity from `displayName`.
+- Treat workspace-relative paths as the app’s canonical file identity.
+- Do not assume lexical path prefix checks are enough for true workspace containment.
+- Do not introduce new code paths that can follow redirected descendants without an explicit policy.
+
+### Snapshot application
+
+- Do not let random callers replace `session.workspaceSnapshot` without going through a clear winner policy.
+- Refreshes, mutations, restore, and reconnect all need coherent application rules.
+
+### Async work and cancellation
+
+- Avoid new `Task.detached` usage for cancelable read-side work.
+- The remaining detached write-side work is intentional and should stay narrowly documented rather than copied casually.
+- If background work can outlive the user’s intent, it needs a clearly justified boundary and generation/cancellation behavior.
+
+### UI boundaries
+
+- Keep filesystem and persistence semantics out of views.
+- View models may adapt state, but coordinator/manager boundaries should own cross-feature policy.
+
+### Editor behavior
+
+- Keep the in-memory editor buffer authoritative while the user types.
+- Do not reintroduce noisy save conflicts for ordinary autosave.
+- Keep save/revalidate behavior covered by tests whenever it changes.
+
+### Product limits
+
+- Assume one active workspace, one active document, and one active live document session unless the architecture docs are intentionally changed.
+- Do not accidentally introduce folder-route navigation again; folder browsing is inline tree expansion now.
 
 ---
 
-## Current best next move
+## Recommended target direction
 
-The strongest next move is a narrow hardening pass that:
+This is not a rewrite plan.
+It is the likely next evolution if the codebase keeps growing.
 
-1. splits navigation ownership
-2. isolates the editor host boundary
-3. closes the stale-refresh hole
-4. defines observation and file-boundary policy explicitly
+### Near-term target
 
-That will make the current architecture strong enough for the next real feature wave.
+Keep the current layer shape, but harden these seams:
+
+- workspace containment,
+- snapshot winner policy,
+- cancellation-aware read I/O,
+- scoped error ownership.
+
+### Medium-term target
+
+Extract smaller policy boundaries from `AppCoordinator`, likely around:
+
+- workspace session/application rules,
+- document presentation + restore rules,
+- error routing.
+
+### Longer-term target
+
+Before major new features such as content search, multi-pane editing, or multiple remembered workspaces, the app will likely need:
+
+- a more explicit workspace identity model,
+- a more scalable browser/search state model than whole-snapshot replacement alone,
+- a better search/indexing strategy,
+- clearer document-presentation ownership than one global `openDocument`,
+- a document-session ownership model that can support more than one live editor at a time.
+
+Until then, the current architecture is good enough **if** its weak spots are made explicit and hardened.

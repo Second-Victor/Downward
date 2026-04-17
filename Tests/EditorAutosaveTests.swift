@@ -113,7 +113,7 @@ final class EditorAutosaveTests: XCTestCase {
         XCTAssertEqual(system.session.launchState, .workspaceReady)
         XCTAssertEqual(system.session.openDocument?.text, "# Entry\n\nAutosaved text.")
         XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
-        XCTAssertNil(system.session.lastError)
+        XCTAssertNil(system.session.workspaceAlertError)
         XCTAssertFalse(system.viewModel.isShowingConflictResolution)
     }
 
@@ -454,7 +454,7 @@ final class EditorAutosaveTests: XCTestCase {
         XCTAssertEqual(system.session.openDocument?.text, "Second revision")
         XCTAssertEqual(system.session.openDocument?.loadedVersion.contentDigest, "version-2")
         XCTAssertEqual(system.session.openDocument?.conflictState, DocumentConflictState.none)
-        XCTAssertNil(system.session.lastError)
+        XCTAssertNil(system.session.workspaceAlertError)
     }
 
     @MainActor

@@ -15,13 +15,13 @@ final class EditorTextViewHostBridgeTests: XCTestCase {
 
         bridge.update(
             configuration: .init(
-                horizontalInset: 12,
+                horizontalInset: EditorTextViewLayout.horizontalInset,
                 documentIdentity: PreviewSampleData.cleanDocument.url
             )
         )
 
-        XCTAssertEqual(textView.textContainerInset.left, 12)
-        XCTAssertEqual(textView.textContainerInset.right, 12)
+        XCTAssertEqual(textView.textContainerInset.left, EditorTextViewLayout.horizontalInset)
+        XCTAssertEqual(textView.textContainerInset.right, EditorTextViewLayout.horizontalInset)
         XCTAssertEqual(textView.textContainerInset.top, 8)
         XCTAssertEqual(textView.textContainerInset.bottom, 12)
         XCTAssertEqual(textView.textContainer.lineFragmentPadding, 0)
@@ -37,13 +37,13 @@ final class EditorTextViewHostBridgeTests: XCTestCase {
         container.addSubview(firstTextView)
         bridge.update(
             configuration: .init(
-                horizontalInset: 12,
+                horizontalInset: EditorTextViewLayout.horizontalInset,
                 documentIdentity: PreviewSampleData.cleanDocument.url
             )
         )
 
-        XCTAssertEqual(firstTextView.textContainerInset.left, 12)
-        XCTAssertEqual(firstTextView.textContainerInset.right, 12)
+        XCTAssertEqual(firstTextView.textContainerInset.left, EditorTextViewLayout.horizontalInset)
+        XCTAssertEqual(firstTextView.textContainerInset.right, EditorTextViewLayout.horizontalInset)
 
         firstTextView.removeFromSuperview()
 
@@ -64,8 +64,8 @@ final class EditorTextViewHostBridgeTests: XCTestCase {
         XCTAssertEqual(secondTextView.textContainerInset.top, 4)
         XCTAssertEqual(secondTextView.textContainerInset.bottom, 9)
         XCTAssertEqual(secondTextView.textContainer.lineFragmentPadding, 0)
-        XCTAssertEqual(firstTextView.textContainerInset.left, 12)
-        XCTAssertEqual(firstTextView.textContainerInset.right, 12)
+        XCTAssertEqual(firstTextView.textContainerInset.left, EditorTextViewLayout.horizontalInset)
+        XCTAssertEqual(firstTextView.textContainerInset.right, EditorTextViewLayout.horizontalInset)
     }
 
     @MainActor

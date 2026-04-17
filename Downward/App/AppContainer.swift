@@ -11,7 +11,6 @@ final class AppContainer {
     let documentManager: any DocumentManager
     let errorReporter: any ErrorReporter
     let folderPickerBridge: any FolderPickerBridge
-    let lifecycleObserver: LifecycleObserver
     let session: AppSession
     let coordinator: AppCoordinator
     let workspaceViewModel: WorkspaceViewModel
@@ -27,8 +26,7 @@ final class AppContainer {
         workspaceManager: any WorkspaceManager,
         documentManager: any DocumentManager,
         errorReporter: any ErrorReporter,
-        folderPickerBridge: any FolderPickerBridge,
-        lifecycleObserver: LifecycleObserver
+        folderPickerBridge: any FolderPickerBridge
     ) {
         self.logger = logger
         self.bookmarkStore = bookmarkStore
@@ -39,7 +37,6 @@ final class AppContainer {
         self.documentManager = documentManager
         self.errorReporter = errorReporter
         self.folderPickerBridge = folderPickerBridge
-        self.lifecycleObserver = lifecycleObserver
 
         let session = AppSession()
         self.session = session
@@ -89,9 +86,12 @@ final class AppContainer {
         let workspaceManager = LiveWorkspaceManager(
             bookmarkStore: bookmarkStore,
             securityScopedAccess: securityScopedAccess,
-            workspaceEnumerator: LiveWorkspaceEnumerator()
+            workspaceEnumerator: LiveWorkspaceEnumerator(logger: logger)
         )
-        let documentManager = LiveDocumentManager(securityScopedAccess: securityScopedAccess)
+        let documentManager = LiveDocumentManager(
+            securityScopedAccess: securityScopedAccess,
+            logger: logger
+        )
         let errorReporter = DefaultErrorReporter(logger: logger)
 
         return AppContainer(
@@ -103,8 +103,7 @@ final class AppContainer {
             workspaceManager: workspaceManager,
             documentManager: documentManager,
             errorReporter: errorReporter,
-            folderPickerBridge: LiveFolderPickerBridge(),
-            lifecycleObserver: LifecycleObserver()
+            folderPickerBridge: LiveFolderPickerBridge()
         )
     }
 
@@ -157,21 +156,13 @@ final class AppContainer {
             workspaceManager: workspaceManager,
             documentManager: documentManager,
             errorReporter: errorReporter,
-            folderPickerBridge: StubFolderPickerBridge(),
-            lifecycleObserver: LifecycleObserver()
+            folderPickerBridge: StubFolderPickerBridge()
         )
 
         container.session.launchState = launchState
         container.session.workspaceSnapshot = snapshot
         container.session.openDocument = document
         container.session.path = path
-        container.session.lastError = {
-            if case let .failed(error) = launchState {
-                return error
-            }
-
-            return accessState?.invalidationError
-        }()
 
         if let accessState {
             container.session.workspaceAccessState = accessState

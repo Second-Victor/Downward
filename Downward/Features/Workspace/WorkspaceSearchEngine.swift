@@ -1,5 +1,21 @@
 import Foundation
 
+protocol WorkspaceSearching: Sendable {
+    nonisolated func results(
+        in snapshot: WorkspaceSnapshot,
+        matching rawQuery: String
+    ) -> [WorkspaceSearchResult]
+}
+
+struct LiveWorkspaceSearcher: WorkspaceSearching {
+    nonisolated func results(
+        in snapshot: WorkspaceSnapshot,
+        matching rawQuery: String
+    ) -> [WorkspaceSearchResult] {
+        WorkspaceSearchEngine.results(in: snapshot, matching: rawQuery)
+    }
+}
+
 /// Filters the current in-memory workspace snapshot without touching the file system.
 enum WorkspaceSearchEngine {
     nonisolated static func results(
@@ -15,7 +31,7 @@ enum WorkspaceSearchEngine {
         appendMatches(
             from: snapshot.rootNodes,
             query: query,
-            within: snapshot.rootURL,
+            in: snapshot,
             results: &results
         )
         return results
@@ -24,7 +40,7 @@ enum WorkspaceSearchEngine {
     nonisolated private static func appendMatches(
         from nodes: [WorkspaceNode],
         query: String,
-        within workspaceRootURL: URL,
+        in snapshot: WorkspaceSnapshot,
         results: inout [WorkspaceSearchResult]
     ) {
         for node in nodes {
@@ -33,14 +49,11 @@ enum WorkspaceSearchEngine {
                 appendMatches(
                     from: folder.children,
                     query: query,
-                    within: workspaceRootURL,
+                    in: snapshot,
                     results: &results
                 )
             case let .file(file):
-                guard let relativePath = WorkspaceRelativePath.make(
-                    for: file.url,
-                    within: workspaceRootURL
-                ) else {
+                guard let relativePath = snapshot.relativePath(for: file.url) else {
                     continue
                 }
 

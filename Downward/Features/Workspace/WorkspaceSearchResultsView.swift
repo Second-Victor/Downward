@@ -20,22 +20,12 @@ struct WorkspaceSearchResultsView: View {
             }
         } else {
             List(viewModel.searchResults) { result in
-                if navigationMode.usesValueNavigationLinks == false {
-                    Button {
-                        viewModel.openDocument(result.url)
-                    } label: {
-                        WorkspaceRowView(
-                            node: result.node
-                        )
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    NavigationLink(value: AppRoute.editor(result.url)) {
-                        WorkspaceRowView(
-                            node: result.node
-                        )
-                    }
+                Button {
+                    viewModel.openSearchResult(result)
+                } label: {
+                    WorkspaceSearchRowView(result: result)
                 }
+                .buttonStyle(.plain)
             }
             .listStyle(.insetGrouped)
             .refreshable {
@@ -56,6 +46,63 @@ struct WorkspaceSearchResultsView: View {
                 )
                 let viewModel = container.workspaceViewModel
                 viewModel.searchQuery = "read"
+                return viewModel
+            }(),
+            navigationMode: .stackPath
+        )
+    }
+}
+
+#Preview("Duplicate Filenames") {
+    NavigationStack {
+        WorkspaceSearchResultsView(
+            viewModel: {
+                let duplicateSnapshot = WorkspaceSnapshot(
+                    rootURL: PreviewSampleData.workspaceRootURL,
+                    displayName: "Duplicate Workspace",
+                    rootNodes: [
+                        .folder(
+                            .init(
+                                url: PreviewSampleData.referencesURL,
+                                displayName: "References",
+                                children: [
+                                    .file(
+                                        .init(
+                                            url: PreviewSampleData.readmeDocumentURL,
+                                            displayName: "README.md",
+                                            subtitle: "References/README.md",
+                                            modifiedAt: PreviewSampleData.previewDate
+                                        )
+                                    ),
+                                ]
+                            )
+                        ),
+                        .folder(
+                            .init(
+                                url: PreviewSampleData.archiveURL,
+                                displayName: "Archive",
+                                children: [
+                                    .file(
+                                        .init(
+                                            url: PreviewSampleData.archiveURL.appending(path: "README.md"),
+                                            displayName: "README.md",
+                                            subtitle: "Archive/README.md",
+                                            modifiedAt: PreviewSampleData.previewDate.addingTimeInterval(-3_600)
+                                        )
+                                    ),
+                                ]
+                            )
+                        ),
+                    ],
+                    lastUpdated: PreviewSampleData.previewDate
+                )
+                let container = AppContainer.preview(
+                    launchState: .workspaceReady,
+                    accessState: .ready(displayName: duplicateSnapshot.displayName),
+                    snapshot: duplicateSnapshot
+                )
+                let viewModel = container.workspaceViewModel
+                viewModel.searchQuery = "readme"
                 return viewModel
             }(),
             navigationMode: .stackPath

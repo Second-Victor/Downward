@@ -6,7 +6,11 @@ import SwiftUI
 @Observable
 final class WorkspaceViewModel {
     let session: AppSession
-    var searchQuery = ""
+    var searchQuery = "" {
+        didSet {
+            refreshSearchResultsIfNeeded()
+        }
+    }
     var isLoading = false
     var isRefreshing = false
     var isPerformingFileOperation = false
@@ -21,24 +25,30 @@ final class WorkspaceViewModel {
 
     private(set) var pendingRenameFile: WorkspaceNode.File?
     private(set) var pendingDeleteFile: WorkspaceNode.File?
+    private(set) var searchResults: [WorkspaceSearchResult] = []
 
     private let coordinator: AppCoordinator
     private let recentFilesStore: RecentFilesStore
+    private let searcher: any WorkspaceSearching
     private var loadTask: Task<Void, Never>?
     private var fileOperationTask: Task<Void, Never>?
     private var loadGeneration = 0
     private var fileOperationGeneration = 0
     private var hasLoadedInitialSnapshot = false
     private var pendingCreateFolderURL: URL?
+    private var lastSearchContext: SearchComputationContext?
 
     init(
         session: AppSession,
         coordinator: AppCoordinator,
-        recentFilesStore: RecentFilesStore
+        recentFilesStore: RecentFilesStore,
+        searcher: any WorkspaceSearching = LiveWorkspaceSearcher()
     ) {
         self.session = session
         self.coordinator = coordinator
         self.recentFilesStore = recentFilesStore
+        self.searcher = searcher
+        observeSearchSnapshotChanges()
     }
 
     var workspaceTitle: String {
@@ -47,14 +57,6 @@ final class WorkspaceViewModel {
 
     var nodes: [WorkspaceNode] {
         session.workspaceSnapshot?.rootNodes ?? []
-    }
-
-    var searchResults: [WorkspaceSearchResult] {
-        guard let snapshot = session.workspaceSnapshot else {
-            return []
-        }
-
-        return WorkspaceSearchEngine.results(in: snapshot, matching: searchQuery)
     }
 
     var recentFiles: [RecentFileItem] {
@@ -96,6 +98,7 @@ final class WorkspaceViewModel {
     func loadSnapshotIfNeeded() {
         guard hasLoadedInitialSnapshot == false else {
             syncExpandedFoldersToCurrentSnapshot()
+            refreshSearchResultsIfNeeded()
             return
         }
 
@@ -103,6 +106,7 @@ final class WorkspaceViewModel {
 
         guard session.workspaceSnapshot == nil else {
             syncExpandedFoldersToCurrentSnapshot()
+            refreshSearchResultsIfNeeded()
             return
         }
 
@@ -135,19 +139,15 @@ final class WorkspaceViewModel {
 
     func openRecentFile(_ item: RecentFileItem) {
         isShowingRecentFiles = false
-
-        guard let url = item.url(in: currentWorkspaceRootURL) else {
-            return
-        }
-
-        coordinator.presentEditor(for: url)
+        let preferredURL = session.workspaceSnapshot?.fileURL(forRelativePath: item.relativePath)
+            ?? item.url(in: currentWorkspaceRootURL)
+        coordinator.presentEditor(
+            relativePath: item.relativePath,
+            preferredURL: preferredURL
+        )
     }
 
-    func toggleFolderExpansion(at url: URL) {
-        guard let relativePath = folderRelativePath(for: url) else {
-            return
-        }
-
+    func toggleFolderExpansion(atRelativePath relativePath: String) {
         withAnimation(.easeInOut(duration: 0.18)) {
             if expandedFolderRelativePaths.contains(relativePath) {
                 expandedFolderRelativePaths.remove(relativePath)
@@ -157,8 +157,66 @@ final class WorkspaceViewModel {
         }
     }
 
+    func toggleFolderExpansion(at url: URL) {
+        guard let relativePath = folderRelativePath(for: url) else {
+            return
+        }
+
+        toggleFolderExpansion(atRelativePath: relativePath)
+    }
+
+    func openDocument(
+        relativePath: String,
+        preferredURL: URL? = nil
+    ) {
+        coordinator.presentEditor(
+            relativePath: relativePath,
+            preferredURL: preferredURL
+        )
+    }
+
     func openDocument(_ url: URL) {
-        coordinator.presentEditor(for: url)
+        if let relativePath = relativePath(forFile: url) {
+            openDocument(relativePath: relativePath, preferredURL: url)
+        } else {
+            coordinator.presentEditor(for: url)
+        }
+    }
+
+    func openSearchResult(_ result: WorkspaceSearchResult) {
+        coordinator.presentEditor(
+            relativePath: result.relativePath,
+            preferredURL: result.url
+        )
+    }
+
+    func prepareNavigationLinkOpen(
+        relativePath: String,
+        preferredURL: URL? = nil
+    ) {
+        coordinator.prepareEditorPresentation(
+            relativePath: relativePath,
+            preferredURL: preferredURL
+        )
+    }
+
+    func prepareNavigationLinkOpen(for url: URL) {
+        guard let relativePath = relativePath(forFile: url) else {
+            return
+        }
+
+        prepareNavigationLinkOpen(relativePath: relativePath, preferredURL: url)
+    }
+
+    func prepareNavigationLinkOpen(for result: WorkspaceSearchResult) {
+        coordinator.prepareEditorPresentation(
+            relativePath: result.relativePath,
+            preferredURL: result.url
+        )
+    }
+
+    func isFolderExpanded(atRelativePath relativePath: String) -> Bool {
+        return expandedFolderRelativePaths.contains(relativePath)
     }
 
     func isFolderExpanded(at url: URL) -> Bool {
@@ -166,7 +224,7 @@ final class WorkspaceViewModel {
             return false
         }
 
-        return expandedFolderRelativePaths.contains(relativePath)
+        return isFolderExpanded(atRelativePath: relativePath)
     }
 
     func expandFolderAndAncestors(at url: URL) {
@@ -266,24 +324,37 @@ final class WorkspaceViewModel {
         }
     }
 
-    func title(for folderURL: URL?) -> String {
-        if isSearching {
-            return "Search"
-        }
-
-        guard let folderURL else {
-            return workspaceTitle
-        }
-
-        return folderNode(for: folderURL)?.displayName ?? folderURL.lastPathComponent
-    }
-
     func nodes(in folderURL: URL?) -> [WorkspaceNode] {
         guard let folderURL else {
             return nodes
         }
 
         return folderNode(for: folderURL)?.children ?? []
+    }
+
+    func refreshSearchResultsIfNeeded() {
+        let normalizedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            normalizedQuery.isEmpty == false,
+            let snapshot = session.workspaceSnapshot
+        else {
+            lastSearchContext = nil
+            if searchResults.isEmpty == false {
+                searchResults = []
+            }
+            return
+        }
+
+        let context = SearchComputationContext(
+            snapshot: snapshot,
+            query: normalizedQuery
+        )
+        guard context != lastSearchContext else {
+            return
+        }
+
+        searchResults = searcher.results(in: snapshot, matching: normalizedQuery)
+        lastSearchContext = context
     }
 
     private func startSnapshotLoad() {
@@ -337,9 +408,12 @@ final class WorkspaceViewModel {
         case .success:
             loadError = nil
             syncExpandedFoldersToCurrentSnapshot()
+            refreshSearchResultsIfNeeded()
         case let .failure(error):
             if hadSnapshot {
-                session.lastError = error
+                if session.launchState == .workspaceReady {
+                    session.workspaceAlertError = error
+                }
             } else {
                 loadError = error
             }
@@ -366,6 +440,7 @@ final class WorkspaceViewModel {
             }
 
             syncExpandedFoldersToCurrentSnapshot()
+            refreshSearchResultsIfNeeded()
         }
     }
 
@@ -416,13 +491,21 @@ final class WorkspaceViewModel {
     }
 
     private func folderRelativePath(for url: URL) -> String? {
-        WorkspaceRelativePath.make(
-            for: url,
-            within: currentWorkspaceRootURL
-        )
+        session.workspaceSnapshot?.relativePath(for: url)
     }
 
-    private func folderRelativePaths(in nodes: [WorkspaceNode]) -> Set<String> {
+    private func relativePath(forFile url: URL) -> String? {
+        if let openDocument = session.openDocument, openDocument.url == url {
+            return openDocument.relativePath
+        }
+
+        return session.workspaceSnapshot?.relativePath(for: url)
+    }
+
+    private func folderRelativePaths(
+        in nodes: [WorkspaceNode],
+        parentRelativePath: String? = nil
+    ) -> Set<String> {
         var relativePaths = Set<String>()
 
         for node in nodes {
@@ -430,14 +513,29 @@ final class WorkspaceViewModel {
                 continue
             }
 
-            if let currentPath = folderRelativePath(for: folder.url) {
-                relativePaths.insert(currentPath)
-            }
+            let currentPath = joinedRelativePath(
+                parentRelativePath,
+                component: folder.url.lastPathComponent
+            )
+            relativePaths.insert(currentPath)
 
-            relativePaths.formUnion(folderRelativePaths(in: folder.children))
+            relativePaths.formUnion(
+                folderRelativePaths(
+                    in: folder.children,
+                    parentRelativePath: currentPath
+                )
+            )
         }
 
         return relativePaths
+    }
+
+    private func joinedRelativePath(_ parentRelativePath: String?, component: String) -> String {
+        guard let parentRelativePath, parentRelativePath.isEmpty == false else {
+            return component
+        }
+
+        return "\(parentRelativePath)/\(component)"
     }
 
     private func findFolder(at folderURL: URL, within nodes: [WorkspaceNode]) -> WorkspaceNode.Folder? {
@@ -457,4 +555,20 @@ final class WorkspaceViewModel {
 
         return nil
     }
+
+    private func observeSearchSnapshotChanges() {
+        withObservationTracking {
+            _ = session.workspaceSnapshot
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.refreshSearchResultsIfNeeded()
+                self?.observeSearchSnapshotChanges()
+            }
+        }
+    }
+}
+
+private struct SearchComputationContext: Equatable {
+    let snapshot: WorkspaceSnapshot
+    let query: String
 }

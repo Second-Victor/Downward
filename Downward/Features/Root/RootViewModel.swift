@@ -53,7 +53,7 @@ final class RootViewModel {
             return nil
         }
 
-        return session.lastError
+        return session.workspaceAlertError
     }
 
     func handleFirstAppear() async {
@@ -104,6 +104,6 @@ final class RootViewModel {
     }
 
     func dismissAlert() {
-        session.lastError = nil
+        session.workspaceAlertError = nil
     }
 }

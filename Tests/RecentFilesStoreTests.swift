@@ -8,9 +8,9 @@ final class RecentFilesStoreTests: XCTestCase {
         let openedAt = Date(timeIntervalSince1970: 10)
         let reopenedAt = Date(timeIntervalSince1970: 20)
 
-        store.record(document: PreviewSampleData.cleanDocument, openedAt: openedAt)
-        store.record(document: PreviewSampleData.dirtyDocument, openedAt: reopenedAt)
-        store.record(document: PreviewSampleData.cleanDocument, openedAt: reopenedAt.addingTimeInterval(10))
+        store.record(document: PreviewSampleData.cleanDocument, in: PreviewSampleData.nestedWorkspace, openedAt: openedAt)
+        store.record(document: PreviewSampleData.dirtyDocument, in: PreviewSampleData.nestedWorkspace, openedAt: reopenedAt)
+        store.record(document: PreviewSampleData.cleanDocument, in: PreviewSampleData.nestedWorkspace, openedAt: reopenedAt.addingTimeInterval(10))
 
         XCTAssertEqual(store.items.map(\.displayName), ["Inbox.md", "2026-04-13.md"])
         XCTAssertEqual(store.items.first?.relativePath, PreviewSampleData.cleanDocument.relativePath)
@@ -24,8 +24,8 @@ final class RecentFilesStoreTests: XCTestCase {
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let store = RecentFilesStore(userDefaults: userDefaults)
-        store.record(document: PreviewSampleData.cleanDocument, openedAt: .init(timeIntervalSince1970: 100))
-        store.record(document: PreviewSampleData.dirtyDocument, openedAt: .init(timeIntervalSince1970: 200))
+        store.record(document: PreviewSampleData.cleanDocument, in: PreviewSampleData.nestedWorkspace, openedAt: .init(timeIntervalSince1970: 100))
+        store.record(document: PreviewSampleData.dirtyDocument, in: PreviewSampleData.nestedWorkspace, openedAt: .init(timeIntervalSince1970: 200))
 
         let reloadedStore = RecentFilesStore(userDefaults: userDefaults)
 
@@ -34,6 +34,38 @@ final class RecentFilesStoreTests: XCTestCase {
             PreviewSampleData.dirtyDocument.relativePath,
             PreviewSampleData.cleanDocument.relativePath,
         ])
+        XCTAssertEqual(reloadedStore.items.map(\.workspaceID), [
+            PreviewSampleData.nestedWorkspace.workspaceID,
+            PreviewSampleData.nestedWorkspace.workspaceID,
+        ])
+    }
+
+    @MainActor
+    func testRecentFilesStoreReadsLegacyStoredItemsWithoutWorkspaceID() throws {
+        let suiteName = "RecentFilesStoreTests.\(UUID().uuidString)"
+        let userDefaults = UserDefaults(suiteName: suiteName)!
+        userDefaults.removePersistentDomain(forName: suiteName)
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let legacyPayload = try JSONEncoder().encode(
+            [
+                LegacyRecentFileItemPayload(
+                    workspaceRootPath: "/preview/LegacyWorkspace",
+                    relativePath: "Inbox.md",
+                    displayName: "Inbox.md",
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+            ]
+        )
+        userDefaults.set(legacyPayload, forKey: "recentFiles.items")
+
+        let store = RecentFilesStore(userDefaults: userDefaults)
+
+        XCTAssertEqual(store.items.map(\.displayName), ["Inbox.md"])
+        XCTAssertEqual(
+            store.items.first?.workspaceID,
+            WorkspaceIdentity.legacyPathID(forPath: "/preview/LegacyWorkspace")
+        )
     }
 
     @MainActor
@@ -122,6 +154,7 @@ final class RecentFilesStoreTests: XCTestCase {
         let store = RecentFilesStore(
             initialItems: [
                 RecentFileItem(
+                    workspaceID: PreviewSampleData.nestedWorkspace.workspaceID,
                     workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
                     relativePath: PreviewSampleData.cleanDocument.relativePath,
                     displayName: PreviewSampleData.cleanDocument.displayName,
@@ -131,7 +164,7 @@ final class RecentFilesStoreTests: XCTestCase {
         )
 
         store.renameItem(
-            workspaceRootURL: PreviewSampleData.workspaceRootURL,
+            using: PreviewSampleData.nestedWorkspace,
             oldRelativePath: PreviewSampleData.cleanDocument.relativePath,
             newRelativePath: "Inbox Renamed.md",
             displayName: "Inbox Renamed.md"
@@ -141,10 +174,73 @@ final class RecentFilesStoreTests: XCTestCase {
         XCTAssertEqual(store.items.first?.relativePath, "Inbox Renamed.md")
 
         store.removeItem(
-            workspaceRootURL: PreviewSampleData.workspaceRootURL,
+            using: PreviewSampleData.nestedWorkspace,
             relativePath: "Inbox Renamed.md"
         )
 
         XCTAssertTrue(store.items.isEmpty)
     }
+
+    @MainActor
+    func testRecentFilesStoreAdoptsLegacyWorkspacePathItemsIntoStableWorkspaceID() {
+        let store = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceRootPath: "/preview/OldWorkspacePath",
+                    relativePath: PreviewSampleData.cleanDocument.relativePath,
+                    displayName: PreviewSampleData.cleanDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+            ]
+        )
+        let movedWorkspaceSnapshot = WorkspaceSnapshot(
+            workspaceID: "workspace-stable-id",
+            recentFileLookupPaths: [
+                "/preview/OldWorkspacePath",
+                "/preview/NewWorkspacePath",
+            ],
+            rootURL: URL(filePath: "/preview/NewWorkspacePath"),
+            displayName: "Moved Workspace",
+            rootNodes: PreviewSampleData.nestedWorkspace.rootNodes,
+            lastUpdated: PreviewSampleData.previewDate
+        )
+
+        store.adoptWorkspaceIdentity(using: movedWorkspaceSnapshot)
+
+        XCTAssertEqual(store.items.first?.workspaceID, "workspace-stable-id")
+        XCTAssertEqual(store.items.first?.workspaceRootPath, "/preview/NewWorkspacePath")
+        XCTAssertEqual(store.recentItems(for: movedWorkspaceSnapshot).map(\.displayName), ["Inbox.md"])
+    }
+
+    @MainActor
+    func testRecentFilesStoreShowsStableWorkspaceItemsAfterResolvedPathChanges() {
+        let movedWorkspaceSnapshot = WorkspaceSnapshot(
+            workspaceID: "workspace-stable-id",
+            recentFileLookupPaths: ["/preview/OldWorkspacePath", "/preview/NewWorkspacePath"],
+            rootURL: URL(filePath: "/preview/NewWorkspacePath"),
+            displayName: "Moved Workspace",
+            rootNodes: PreviewSampleData.nestedWorkspace.rootNodes,
+            lastUpdated: PreviewSampleData.previewDate
+        )
+        let store = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceID: "workspace-stable-id",
+                    workspaceRootPath: "/preview/OldWorkspacePath",
+                    relativePath: PreviewSampleData.cleanDocument.relativePath,
+                    displayName: PreviewSampleData.cleanDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+            ]
+        )
+
+        XCTAssertEqual(store.recentItems(for: movedWorkspaceSnapshot).map(\.displayName), ["Inbox.md"])
+    }
+}
+
+private struct LegacyRecentFileItemPayload: Codable {
+    let workspaceRootPath: String
+    let relativePath: String
+    let displayName: String
+    let lastOpenedAt: Date
 }

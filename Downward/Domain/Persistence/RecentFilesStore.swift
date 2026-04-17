@@ -41,13 +41,15 @@ final class RecentFilesStore {
             return []
         }
 
-        let workspaceRootPath = Self.workspaceRootPath(for: snapshot.rootURL)
-        return items.filter { $0.workspaceRootPath == workspaceRootPath }
+        return items.filter { Self.belongs($0, to: snapshot) }
     }
 
-    func record(document: OpenDocument, openedAt: Date = .now) {
+    /// Recent files follow the bookmark-owned workspace identity, not just the current resolved path.
+    /// That lets moved/restored workspaces keep history once the active workspace adopts legacy items.
+    func record(document: OpenDocument, in snapshot: WorkspaceSnapshot, openedAt: Date = .now) {
         let item = RecentFileItem(
-            workspaceRootPath: Self.workspaceRootPath(for: document.workspaceRootURL),
+            workspaceID: snapshot.workspaceID,
+            workspaceRootPath: Self.workspaceRootPath(for: snapshot.rootURL),
             relativePath: document.relativePath,
             displayName: document.displayName,
             lastOpenedAt: openedAt
@@ -56,17 +58,14 @@ final class RecentFilesStore {
     }
 
     func pruneInvalidItems(using snapshot: WorkspaceSnapshot) {
-        let workspaceRootPath = Self.workspaceRootPath(for: snapshot.rootURL)
+        adoptWorkspaceIdentity(using: snapshot)
         let validRelativePaths = Set(
-            Self.relativeFilePaths(
-                in: snapshot.rootNodes,
-                within: snapshot.rootURL
-            )
+            Self.relativeFilePaths(in: snapshot)
         )
         let previousItems = items
 
         items = items.filter { item in
-            guard item.workspaceRootPath == workspaceRootPath else {
+            guard Self.belongs(item, to: snapshot) else {
                 return true
             }
 
@@ -79,21 +78,22 @@ final class RecentFilesStore {
     }
 
     func renameItem(
-        workspaceRootURL: URL,
+        using snapshot: WorkspaceSnapshot,
         oldRelativePath: String,
         newRelativePath: String,
         displayName: String
     ) {
-        let workspaceRootPath = Self.workspaceRootPath(for: workspaceRootURL)
+        adoptWorkspaceIdentity(using: snapshot)
         guard let index = items.firstIndex(where: {
-            $0.workspaceRootPath == workspaceRootPath && $0.relativePath == oldRelativePath
+            Self.belongs($0, to: snapshot) && $0.relativePath == oldRelativePath
         }) else {
             return
         }
 
         let existingItem = items.remove(at: index)
         let renamedItem = RecentFileItem(
-            workspaceRootPath: workspaceRootPath,
+            workspaceID: snapshot.workspaceID,
+            workspaceRootPath: Self.workspaceRootPath(for: snapshot.rootURL),
             relativePath: newRelativePath,
             displayName: displayName,
             lastOpenedAt: existingItem.lastOpenedAt
@@ -102,11 +102,11 @@ final class RecentFilesStore {
         persist()
     }
 
-    func removeItem(workspaceRootURL: URL, relativePath: String) {
-        let workspaceRootPath = Self.workspaceRootPath(for: workspaceRootURL)
+    func removeItem(using snapshot: WorkspaceSnapshot, relativePath: String) {
+        adoptWorkspaceIdentity(using: snapshot)
         let previousItems = items
         items.removeAll {
-            $0.workspaceRootPath == workspaceRootPath && $0.relativePath == relativePath
+            Self.belongs($0, to: snapshot) && $0.relativePath == relativePath
         }
 
         if items != previousItems {
@@ -114,8 +114,32 @@ final class RecentFilesStore {
         }
     }
 
+    func adoptWorkspaceIdentity(using snapshot: WorkspaceSnapshot) {
+        let updatedItems = items.map { item in
+            guard item.workspaceID != snapshot.workspaceID, Self.belongs(item, to: snapshot) else {
+                return item
+            }
+
+            return RecentFileItem(
+                workspaceID: snapshot.workspaceID,
+                workspaceRootPath: Self.workspaceRootPath(for: snapshot.rootURL),
+                relativePath: item.relativePath,
+                displayName: item.displayName,
+                lastOpenedAt: item.lastOpenedAt
+            )
+        }
+
+        let normalizedItems = Self.normalizedItems(updatedItems, maximumCount: maximumCount)
+        guard normalizedItems != items else {
+            return
+        }
+
+        items = normalizedItems
+        persist()
+    }
+
     nonisolated static func workspaceRootPath(for url: URL) -> String {
-        url.standardizedFileURL.path
+        WorkspaceIdentity.normalizedPath(for: url)
     }
 
     private func upsert(_ item: RecentFileItem) {
@@ -171,23 +195,25 @@ final class RecentFilesStore {
         return Array(deduplicatedItems.prefix(maximumCount))
     }
 
-    private static func relativeFilePaths(
-        in nodes: [WorkspaceNode],
-        within workspaceRootURL: URL
-    ) -> [String] {
+    private static func belongs(
+        _ item: RecentFileItem,
+        to snapshot: WorkspaceSnapshot
+    ) -> Bool {
+        item.workspaceID == snapshot.workspaceID
+            || snapshot.recentFileLookupPaths.contains(item.workspaceRootPath)
+    }
+
+    private static func relativeFilePaths(in snapshot: WorkspaceSnapshot) -> [String] {
+        flattenFileURLs(in: snapshot.rootNodes).compactMap { snapshot.relativePath(for: $0) }
+    }
+
+    private static func flattenFileURLs(in nodes: [WorkspaceNode]) -> [URL] {
         nodes.flatMap { node in
             switch node {
             case let .folder(folder):
-                return relativeFilePaths(in: folder.children, within: workspaceRootURL)
+                return flattenFileURLs(in: folder.children)
             case let .file(file):
-                if let relativePath = WorkspaceRelativePath.make(
-                    for: file.url,
-                    within: workspaceRootURL
-                ) {
-                    return [relativePath]
-                } else {
-                    return []
-                }
+                return [file.url]
             }
         }
     }

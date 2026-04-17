@@ -40,7 +40,7 @@ final class EditorConflictTests: XCTestCase {
         system.viewModel.handleDisappear(for: PreviewSampleData.cleanDocument.url)
         try await Task.sleep(for: .milliseconds(20))
 
-        XCTAssertEqual(system.session.lastError, conflictedDocument.conflictState.activeConflict?.error)
+        XCTAssertEqual(system.session.workspaceAlertError, conflictedDocument.conflictState.activeConflict?.error)
         XCTAssertNotNil(system.session.openDocument)
     }
 
@@ -57,7 +57,7 @@ final class EditorConflictTests: XCTestCase {
         system.viewModel.handleDisappear(for: PreviewSampleData.cleanDocument.url)
         try await Task.sleep(for: .milliseconds(40))
 
-        XCTAssertEqual(system.session.lastError, conflictedDocument.conflictState.activeConflict?.error)
+        XCTAssertEqual(system.session.workspaceAlertError, conflictedDocument.conflictState.activeConflict?.error)
         XCTAssertEqual(system.session.openDocument?.conflictState, conflictedDocument.conflictState)
     }
 

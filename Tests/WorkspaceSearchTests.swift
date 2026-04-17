@@ -3,6 +3,33 @@ import XCTest
 
 final class WorkspaceSearchTests: XCTestCase {
     @MainActor
+    func testWorkspaceViewModelCachesSearchResultsOutsideRepeatedReads() {
+        let container = AppContainer.preview(
+            launchState: .workspaceReady,
+            accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+            snapshot: PreviewSampleData.nestedWorkspace
+        )
+        let searcher = CountingWorkspaceSearcher()
+        let viewModel = WorkspaceViewModel(
+            session: container.session,
+            coordinator: container.coordinator,
+            recentFilesStore: RecentFilesStore(initialItems: []),
+            searcher: searcher
+        )
+
+        viewModel.searchQuery = "read"
+
+        XCTAssertEqual(viewModel.searchResults.map(\.displayName), ["README.md"])
+        XCTAssertEqual(viewModel.searchResults.map(\.displayName), ["README.md"])
+        XCTAssertEqual(searcher.invocationCount, 1)
+
+        viewModel.searchQuery = "read"
+
+        XCTAssertEqual(viewModel.searchResults.map(\.displayName), ["README.md"])
+        XCTAssertEqual(searcher.invocationCount, 1)
+    }
+
+    @MainActor
     func testSearchMatchesFilesByFilenameAndRelativePathInSnapshotOrder() {
         let results = WorkspaceSearchEngine.results(
             in: PreviewSampleData.nestedWorkspace,
@@ -66,6 +93,55 @@ final class WorkspaceSearchTests: XCTestCase {
     }
 
     @MainActor
+    func testSearchResultsKeepDuplicateFilenamesDisambiguatedByPathContext() {
+        let snapshot = WorkspaceSnapshot(
+            rootURL: PreviewSampleData.workspaceRootURL,
+            displayName: "Duplicate Workspace",
+            rootNodes: [
+                .folder(
+                    .init(
+                        url: PreviewSampleData.referencesURL,
+                        displayName: "References",
+                        children: [
+                            .file(
+                                .init(
+                                    url: PreviewSampleData.readmeDocumentURL,
+                                    displayName: "README.md",
+                                    subtitle: "References/README.md"
+                                )
+                            ),
+                        ]
+                    )
+                ),
+                .folder(
+                    .init(
+                        url: PreviewSampleData.archiveURL,
+                        displayName: "Archive",
+                        children: [
+                            .file(
+                                .init(
+                                    url: PreviewSampleData.archiveURL.appending(path: "README.md"),
+                                    displayName: "README.md",
+                                    subtitle: "Archive/README.md"
+                                )
+                            ),
+                        ]
+                    )
+                ),
+            ],
+            lastUpdated: PreviewSampleData.previewDate
+        )
+
+        let results = WorkspaceSearchEngine.results(
+            in: snapshot,
+            matching: "readme"
+        )
+
+        XCTAssertEqual(results.map(\.displayName), ["README.md", "README.md"])
+        XCTAssertEqual(results.map(\.pathContextText), ["References/README.md", "Archive/README.md"])
+    }
+
+    @MainActor
     func testClearingSearchReturnsToNormalWorkspaceState() {
         let container = AppContainer.preview(
             launchState: .workspaceReady,
@@ -113,7 +189,28 @@ final class WorkspaceSearchTests: XCTestCase {
             lastUpdated: PreviewSampleData.previewDate
         )
 
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+
         XCTAssertTrue(viewModel.isSearching)
         XCTAssertTrue(viewModel.searchResults.isEmpty)
+    }
+}
+
+private final class CountingWorkspaceSearcher: @unchecked Sendable, WorkspaceSearching {
+    private let lock = NSLock()
+    private var count = 0
+
+    var invocationCount: Int {
+        lock.withLock { count }
+    }
+
+    func results(
+        in snapshot: WorkspaceSnapshot,
+        matching rawQuery: String
+    ) -> [WorkspaceSearchResult] {
+        lock.withLock {
+            count += 1
+        }
+        return WorkspaceSearchEngine.results(in: snapshot, matching: rawQuery)
     }
 }

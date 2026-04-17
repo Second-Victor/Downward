@@ -13,7 +13,16 @@ final class AppCoordinator {
     private let folderPickerBridge: any FolderPickerBridge
     private let logger: DebugLogger
     private var workspaceTransitionGeneration = 0
-    private var workspaceRefreshGeneration = 0
+    private var workspaceSnapshotApplyGeneration = 0
+
+    /// Every async operation that can replace `session.workspaceSnapshot` claims one of these tokens
+    /// before it starts. Snapshot replacement, recent-file pruning, and open-document reconciliation
+    /// may run only while that token is still the newest claimed token for the current workspace
+    /// transition. This keeps refreshes and mutations under one explicit winner policy.
+    private struct WorkspaceSnapshotApplyContext {
+        let applyGeneration: Int
+        let transitionGeneration: Int
+    }
 
     init(
         session: AppSession,
@@ -43,11 +52,13 @@ final class AppCoordinator {
         session.hasBootstrapped = true
         session.launchState = .restoringWorkspace
         let generation = nextWorkspaceTransitionGeneration()
+        let applyContext = nextWorkspaceSnapshotApplyContext()
 
         let restoreResult = await workspaceManager.restoreWorkspace()
-        applyRestoreResult(restoreResult, generation: generation)
+        applyRestoreResult(restoreResult, context: applyContext)
 
-        if case let .ready(snapshot) = restoreResult {
+        if case let .ready(snapshot) = restoreResult,
+           shouldApplyWorkspaceSnapshotResult(applyContext) {
             await restoreLastOpenDocumentIfPossible(for: snapshot, generation: generation)
         }
     }
@@ -82,14 +93,20 @@ final class AppCoordinator {
         named proposedName: String,
         in folderURL: URL?
     ) async -> Result<WorkspaceMutationOutcome, UserFacingError> {
+        let applyContext = nextWorkspaceSnapshotApplyContext()
+
         do {
             let mutationResult = try await workspaceManager.createFile(
                 named: proposedName,
                 in: folderURL
             )
-            await applyWorkspaceMutationResult(mutationResult)
+            await applyWorkspaceMutationResult(mutationResult, context: applyContext)
             return .success(mutationResult.outcome)
         } catch let error as AppError {
+            guard shouldApplyWorkspaceSnapshotResult(applyContext, requiresReadyWorkspace: true) else {
+                return .failure(errorReporter.makeUserFacingError(from: error))
+            }
+
             if case let .workspaceAccessInvalid(displayName) = error {
                 let reconnectError = transitionToWorkspaceReconnectState(
                     displayName: session.currentWorkspaceName ?? displayName,
@@ -100,9 +117,21 @@ final class AppCoordinator {
 
             errorReporter.report(error, context: "Creating file")
             let userFacingError = errorReporter.makeUserFacingError(from: error)
-            session.lastError = userFacingError
+            session.workspaceAlertError = userFacingError
             return .failure(userFacingError)
         } catch {
+            guard shouldApplyWorkspaceSnapshotResult(applyContext, requiresReadyWorkspace: true) else {
+                return .failure(
+                    errorReporter.makeUserFacingError(
+                        from: AppError.fileOperationFailed(
+                            action: "Create File",
+                            name: proposedName.isEmpty ? "Untitled.md" : proposedName,
+                            details: "The file could not be created."
+                        )
+                    )
+                )
+            }
+
             let appError = AppError.fileOperationFailed(
                 action: "Create File",
                 name: proposedName.isEmpty ? "Untitled.md" : proposedName,
@@ -110,7 +139,7 @@ final class AppCoordinator {
             )
             errorReporter.report(appError, context: "Creating file")
             let userFacingError = errorReporter.makeUserFacingError(from: appError)
-            session.lastError = userFacingError
+            session.workspaceAlertError = userFacingError
             return .failure(userFacingError)
         }
     }
@@ -119,6 +148,8 @@ final class AppCoordinator {
         at url: URL,
         to proposedName: String
     ) async -> Result<WorkspaceMutationOutcome, UserFacingError> {
+        var applyContext: WorkspaceSnapshotApplyContext?
+
         do {
             if let openDocument = session.openDocument, openDocument.url == url {
                 guard openDocument.saveState != .saving else {
@@ -127,7 +158,7 @@ final class AppCoordinator {
                         message: "\(openDocument.displayName) is still saving.",
                         recoverySuggestion: "Wait for the current save to finish, then try renaming it again."
                     )
-                    session.lastError = error
+                    session.workspaceAlertError = error
                     return .failure(error)
                 }
 
@@ -137,18 +168,25 @@ final class AppCoordinator {
                         message: "Resolve the current conflict before renaming \(openDocument.displayName).",
                         recoverySuggestion: "Finish resolving the document, then try again."
                     )
-                    session.lastError = error
+                    session.workspaceAlertError = error
                     return .failure(error)
                 }
             }
 
+            let claimedApplyContext = nextWorkspaceSnapshotApplyContext()
+            applyContext = claimedApplyContext
             let mutationResult = try await workspaceManager.renameFile(
                 at: url,
                 to: proposedName
             )
-            await applyWorkspaceMutationResult(mutationResult)
+            await applyWorkspaceMutationResult(mutationResult, context: claimedApplyContext)
             return .success(mutationResult.outcome)
         } catch let error as AppError {
+            guard let applyContext,
+                  shouldApplyWorkspaceSnapshotResult(applyContext, requiresReadyWorkspace: true) else {
+                return .failure(errorReporter.makeUserFacingError(from: error))
+            }
+
             if case let .workspaceAccessInvalid(displayName) = error {
                 let reconnectError = transitionToWorkspaceReconnectState(
                     displayName: session.currentWorkspaceName ?? displayName,
@@ -159,9 +197,22 @@ final class AppCoordinator {
 
             errorReporter.report(error, context: "Renaming file")
             let userFacingError = errorReporter.makeUserFacingError(from: error)
-            session.lastError = userFacingError
+            session.workspaceAlertError = userFacingError
             return .failure(userFacingError)
         } catch {
+            guard let applyContext,
+                  shouldApplyWorkspaceSnapshotResult(applyContext, requiresReadyWorkspace: true) else {
+                return .failure(
+                    errorReporter.makeUserFacingError(
+                        from: AppError.fileOperationFailed(
+                            action: "Rename File",
+                            name: url.lastPathComponent,
+                            details: "The file could not be renamed."
+                        )
+                    )
+                )
+            }
+
             let appError = AppError.fileOperationFailed(
                 action: "Rename File",
                 name: url.lastPathComponent,
@@ -169,12 +220,14 @@ final class AppCoordinator {
             )
             errorReporter.report(appError, context: "Renaming file")
             let userFacingError = errorReporter.makeUserFacingError(from: appError)
-            session.lastError = userFacingError
+            session.workspaceAlertError = userFacingError
             return .failure(userFacingError)
         }
     }
 
     func deleteFile(at url: URL) async -> Result<WorkspaceMutationOutcome, UserFacingError> {
+        var applyContext: WorkspaceSnapshotApplyContext?
+
         do {
             if let openDocument = session.openDocument, openDocument.url == url {
                 if openDocument.saveState == .saving {
@@ -183,7 +236,7 @@ final class AppCoordinator {
                         message: "\(openDocument.displayName) is still saving.",
                         recoverySuggestion: "Wait for the current save to finish, then try deleting it again."
                     )
-                    session.lastError = error
+                    session.workspaceAlertError = error
                     return .failure(error)
                 }
 
@@ -193,15 +246,22 @@ final class AppCoordinator {
                         message: "Finish with \(openDocument.displayName) before deleting it from the browser.",
                         recoverySuggestion: "Let it save or resolve the conflict first."
                     )
-                    session.lastError = error
+                    session.workspaceAlertError = error
                     return .failure(error)
                 }
             }
 
+            let claimedApplyContext = nextWorkspaceSnapshotApplyContext()
+            applyContext = claimedApplyContext
             let mutationResult = try await workspaceManager.deleteFile(at: url)
-            await applyWorkspaceMutationResult(mutationResult)
+            await applyWorkspaceMutationResult(mutationResult, context: claimedApplyContext)
             return .success(mutationResult.outcome)
         } catch let error as AppError {
+            guard let applyContext,
+                  shouldApplyWorkspaceSnapshotResult(applyContext, requiresReadyWorkspace: true) else {
+                return .failure(errorReporter.makeUserFacingError(from: error))
+            }
+
             if case let .workspaceAccessInvalid(displayName) = error {
                 let reconnectError = transitionToWorkspaceReconnectState(
                     displayName: session.currentWorkspaceName ?? displayName,
@@ -212,9 +272,22 @@ final class AppCoordinator {
 
             errorReporter.report(error, context: "Deleting file")
             let userFacingError = errorReporter.makeUserFacingError(from: error)
-            session.lastError = userFacingError
+            session.workspaceAlertError = userFacingError
             return .failure(userFacingError)
         } catch {
+            guard let applyContext,
+                  shouldApplyWorkspaceSnapshotResult(applyContext, requiresReadyWorkspace: true) else {
+                return .failure(
+                    errorReporter.makeUserFacingError(
+                        from: AppError.fileOperationFailed(
+                            action: "Delete File",
+                            name: url.lastPathComponent,
+                            details: "The file could not be deleted."
+                        )
+                    )
+                )
+            }
+
             let appError = AppError.fileOperationFailed(
                 action: "Delete File",
                 name: url.lastPathComponent,
@@ -222,7 +295,7 @@ final class AppCoordinator {
             )
             errorReporter.report(appError, context: "Deleting file")
             let userFacingError = errorReporter.makeUserFacingError(from: appError)
-            session.lastError = userFacingError
+            session.workspaceAlertError = userFacingError
             return .failure(userFacingError)
         }
     }
@@ -233,7 +306,15 @@ final class AppCoordinator {
         }
 
         do {
-            let document = try await documentManager.openDocument(at: url, in: workspaceRootURL)
+            let document: OpenDocument
+            if let pendingPresentation = trustedPendingEditorPresentation(for: url) {
+                document = try await documentManager.openDocument(
+                    atRelativePath: pendingPresentation.relativePath,
+                    in: workspaceRootURL
+                )
+            } else {
+                document = try await documentManager.openDocument(at: url, in: workspaceRootURL)
+            }
             return .success(document)
         } catch let error as AppError {
             if case let .workspaceAccessInvalid(displayName) = error {
@@ -260,11 +341,28 @@ final class AppCoordinator {
 
     /// Applies a loaded document only after the caller has confirmed it is still the intended route.
     func activateLoadedDocument(_ document: OpenDocument) async {
+        if let pendingPresentation = session.pendingEditorPresentation,
+           pendingPresentation.relativePath == document.relativePath {
+            session.applyNavigationState(
+                WorkspaceNavigationPolicy.replacingEditorPresentation(
+                    from: session.navigationState,
+                    oldURL: pendingPresentation.routeURL,
+                    newURL: document.url,
+                    oldRelativePath: pendingPresentation.relativePath,
+                    newRelativePath: document.relativePath,
+                    openDocument: session.openDocument
+                )
+            )
+            session.pendingEditorPresentation = nil
+        }
+
         session.openDocument = document
         session.editorLoadError = nil
-        session.lastError = nil
+        session.editorAlertError = nil
         await saveRestorableDocumentSession(for: document)
-        recentFilesStore.record(document: document)
+        if let snapshot = session.workspaceSnapshot {
+            recentFilesStore.record(document: document, in: snapshot)
+        }
     }
 
     func updateDocumentText(_ text: String) {
@@ -292,7 +390,6 @@ final class AppCoordinator {
                 document,
                 overwriteConflict: overwriteConflict
             )
-            session.lastError = nil
             await saveRestorableDocumentSession(for: savedDocument)
             logger.log(
                 category: "Persistence",
@@ -301,12 +398,9 @@ final class AppCoordinator {
             return .success(savedDocument)
         } catch let error as AppError {
             if case .documentUnavailable = error,
-               let workspaceRootURL = session.workspaceSnapshot?.rootURL,
-               let relativePath = relativePath(for: document.url, within: workspaceRootURL) {
-                recentFilesStore.removeItem(
-                    workspaceRootURL: workspaceRootURL,
-                    relativePath: relativePath
-                )
+               let snapshot = session.workspaceSnapshot,
+               let relativePath = relativePath(for: document.url, within: snapshot.rootURL) {
+                recentFilesStore.removeItem(using: snapshot, relativePath: relativePath)
             }
 
             if case let .workspaceAccessInvalid(displayName) = error {
@@ -319,7 +413,6 @@ final class AppCoordinator {
 
             errorReporter.report(error, context: "Saving document")
             let userFacingError = errorReporter.makeUserFacingError(from: error)
-            session.lastError = userFacingError
             return .failure(userFacingError)
         } catch {
             let appError = AppError.documentSaveFailed(
@@ -328,7 +421,6 @@ final class AppCoordinator {
             )
             errorReporter.report(appError, context: "Saving document")
             let userFacingError = errorReporter.makeUserFacingError(from: appError)
-            session.lastError = userFacingError
             return .failure(userFacingError)
         }
     }
@@ -349,7 +441,6 @@ final class AppCoordinator {
 
             errorReporter.report(error, context: "Observing document changes")
             let userFacingError = errorReporter.makeUserFacingError(from: error)
-            session.lastError = userFacingError
             return .failure(userFacingError)
         } catch {
             let appError = AppError.documentOpenFailed(
@@ -358,7 +449,6 @@ final class AppCoordinator {
             )
             errorReporter.report(appError, context: "Observing document changes")
             let userFacingError = errorReporter.makeUserFacingError(from: appError)
-            session.lastError = userFacingError
             return .failure(userFacingError)
         }
     }
@@ -399,7 +489,7 @@ final class AppCoordinator {
                 }
 
                 if session.visibleEditorRelativePath == nil {
-                    session.lastError = revalidatedDocument.conflictState.activeConflict?.error
+                    session.workspaceAlertError = revalidatedDocument.conflictState.activeConflict?.error
                 }
             } else if documentChanged {
                 await saveRestorableDocumentSession(for: revalidatedDocument)
@@ -417,7 +507,6 @@ final class AppCoordinator {
 
             errorReporter.report(error, context: "Observed document revalidation")
             let userFacingError = errorReporter.makeUserFacingError(from: error)
-            session.lastError = userFacingError
             return .failure(userFacingError)
         } catch {
             let appError = AppError.documentOpenFailed(
@@ -426,7 +515,6 @@ final class AppCoordinator {
             )
             errorReporter.report(appError, context: "Observed document revalidation")
             let userFacingError = errorReporter.makeUserFacingError(from: appError)
-            session.lastError = userFacingError
             return .failure(userFacingError)
         }
     }
@@ -434,7 +522,6 @@ final class AppCoordinator {
     func reloadDocumentFromDisk(_ document: OpenDocument) async -> Result<OpenDocument, UserFacingError> {
         do {
             let reloadedDocument = try await documentManager.reloadDocument(from: document)
-            session.lastError = nil
             await saveRestorableDocumentSession(for: reloadedDocument)
             return .success(reloadedDocument)
         } catch let error as AppError {
@@ -448,7 +535,6 @@ final class AppCoordinator {
 
             errorReporter.report(error, context: "Reloading document")
             let userFacingError = errorReporter.makeUserFacingError(from: error)
-            session.lastError = userFacingError
             return .failure(userFacingError)
         } catch {
             let appError = AppError.documentOpenFailed(
@@ -457,7 +543,6 @@ final class AppCoordinator {
             )
             errorReporter.report(appError, context: "Reloading document")
             let userFacingError = errorReporter.makeUserFacingError(from: appError)
-            session.lastError = userFacingError
             return .failure(userFacingError)
         }
     }
@@ -484,51 +569,83 @@ final class AppCoordinator {
 
         let visibleSelection = session.visibleDetailSelection
         session.navigationLayout = layout
-
-        switch layout {
-        case .compact:
-            session.path = compactPath(for: visibleSelection)
-            session.regularDetailSelection = .placeholder
-        case .regular:
-            session.regularDetailSelection = visibleSelection
-            session.path = []
-        }
+        session.applyNavigationState(
+            WorkspaceNavigationPolicy.stateForLayoutChange(
+                visibleSelection: visibleSelection,
+                layout: layout,
+                resolveEditorURL: resolvedEditorURL(for:)
+            )
+        )
     }
 
     func presentSettings() {
-        switch session.navigationLayout {
-        case .compact:
-            guard session.path.contains(.settings) == false else {
-                return
-            }
+        session.pendingEditorPresentation = nil
+        session.applyNavigationState(
+            WorkspaceNavigationPolicy.stateForPresentedSettings(
+                from: session.navigationState,
+                layout: session.navigationLayout
+            )
+        )
+    }
 
-            session.path.append(.settings)
-        case .regular:
-            session.regularDetailSelection = .settings
+    func prepareEditorPresentation(
+        relativePath: String,
+        preferredURL: URL? = nil
+    ) {
+        guard let routeURL = editorRouteURL(for: relativePath, preferredURL: preferredURL) else {
+            return
         }
+
+        session.editorLoadError = nil
+        session.editorAlertError = nil
+        session.pendingEditorPresentation = .init(
+            routeURL: routeURL,
+            relativePath: relativePath
+        )
+    }
+
+    func presentEditor(
+        relativePath: String,
+        preferredURL: URL? = nil
+    ) {
+        guard let routeURL = editorRouteURL(for: relativePath, preferredURL: preferredURL) else {
+            return
+        }
+
+        session.editorLoadError = nil
+        session.editorAlertError = nil
+        session.pendingEditorPresentation = .init(
+            routeURL: routeURL,
+            relativePath: relativePath
+        )
+        session.applyNavigationState(
+            WorkspaceNavigationPolicy.stateForPresentedEditor(
+                relativePath: relativePath,
+                routeURL: routeURL,
+                layout: session.navigationLayout,
+                existingNavigationState: session.navigationState
+            )
+        )
     }
 
     func presentEditor(for url: URL) {
-        session.editorLoadError = nil
-
-        switch session.navigationLayout {
-        case .compact:
-            if let editorIndex = session.path.lastIndex(where: \.isEditor) {
-                session.path = Array(session.path.prefix(upTo: editorIndex))
-            }
-
-            session.path.append(.editor(url))
-        case .regular:
-            guard
-                let workspaceRootURL = session.workspaceSnapshot?.rootURL,
-                let relativePath = relativePath(for: url, within: workspaceRootURL)
-            else {
-                session.regularDetailSelection = .placeholder
-                return
-            }
-
-            session.regularDetailSelection = .editor(relativePath)
+        if let relativePath = editorRelativePath(for: url) {
+            presentEditor(relativePath: relativePath, preferredURL: url)
+            return
         }
+
+        session.pendingEditorPresentation = nil
+        session.editorLoadError = nil
+        session.editorAlertError = nil
+        session.applyNavigationState(
+            WorkspaceNavigationPolicy.stateForPresentedEditor(
+                at: url,
+                layout: session.navigationLayout,
+                snapshot: session.workspaceSnapshot,
+                openDocument: session.openDocument,
+                existingNavigationState: session.navigationState
+            )
+        )
     }
 
     func clearWorkspace() async {
@@ -540,25 +657,35 @@ final class AppCoordinator {
             session.workspaceSnapshot = nil
             session.workspaceAccessState = .noneSelected
             session.openDocument = nil
+            session.pendingEditorPresentation = nil
+            session.workspaceAlertError = nil
             session.editorLoadError = nil
+            session.editorAlertError = nil
             clearNavigationState()
-            session.lastError = nil
             session.launchState = .noWorkspaceSelected
         } catch let error as AppError {
             errorReporter.report(error, context: "Clearing workspace")
-            session.lastError = errorReporter.makeUserFacingError(from: error)
+            session.workspaceAlertError = errorReporter.makeUserFacingError(from: error)
         } catch {
             let appError = AppError.workspaceClearFailed(
                 details: "The workspace could not be cleared right now."
             )
             errorReporter.report(appError, context: "Clearing workspace")
-            session.lastError = errorReporter.makeUserFacingError(from: appError)
+            session.workspaceAlertError = errorReporter.makeUserFacingError(from: appError)
         }
     }
 
     func didChangeNavigationPath(_ path: [AppRoute]) {
         if path.contains(where: \.isEditor) == false, session.editorLoadError != nil {
             session.editorLoadError = nil
+        }
+
+        if path.contains(where: \.isEditor) == false, session.editorAlertError != nil {
+            session.editorAlertError = nil
+        }
+
+        if path.contains(where: \.isEditor) == false {
+            session.pendingEditorPresentation = nil
         }
     }
 
@@ -575,8 +702,8 @@ final class AppCoordinator {
         }
 
         guard case .success = result else {
-            if case let .failure(error) = result {
-                session.lastError = error
+            if case let .failure(error) = result, session.launchState == .workspaceReady {
+                session.workspaceAlertError = error
             }
             return
         }
@@ -588,7 +715,14 @@ final class AppCoordinator {
             return
         }
 
-        _ = await revalidateObservedDocument(matching: openDocument)
+        let revalidationResult = await revalidateObservedDocument(matching: openDocument)
+        if case let .failure(error)? = revalidationResult {
+            if session.visibleEditorRelativePath == openDocument.relativePath {
+                session.editorAlertError = error
+            } else {
+                session.workspaceAlertError = error
+            }
+        }
     }
 
     func handleFolderPickerResult(_ result: Result<[URL], Error>) async {
@@ -601,19 +735,23 @@ final class AppCoordinator {
 
             if isReplacingActiveWorkspace == false {
                 session.launchState = .restoringWorkspace
-                session.lastError = nil
+                session.workspaceAlertError = nil
             }
 
             let generation = nextWorkspaceTransitionGeneration()
+            let applyContext = nextWorkspaceSnapshotApplyContext()
             logger.log("Selected workspace folder: \(url.lastPathComponent)")
             let selectionResult = await workspaceManager.selectWorkspace(at: url)
             if isReplacingActiveWorkspace {
-                applyWorkspaceReplacementResult(selectionResult, generation: generation)
+                applyWorkspaceReplacementResult(selectionResult, context: applyContext)
             } else {
-                applyRestoreResult(selectionResult, generation: generation)
+                applyRestoreResult(selectionResult, context: applyContext)
             }
 
-            guard generation == workspaceTransitionGeneration else {
+            guard
+                generation == workspaceTransitionGeneration,
+                shouldApplyWorkspaceSnapshotResult(applyContext)
+            else {
                 return
             }
 
@@ -628,10 +766,10 @@ final class AppCoordinator {
             }
         case let .failure(error):
             if session.launchState == .workspaceReady {
-                session.lastError = error
+                session.workspaceAlertError = error
             } else {
                 session.launchState = .failed(error)
-                session.lastError = nil
+                session.workspaceAlertError = nil
             }
         }
     }
@@ -641,31 +779,36 @@ final class AppCoordinator {
         return workspaceTransitionGeneration
     }
 
-    private func nextWorkspaceRefreshContext() -> (refreshGeneration: Int, transitionGeneration: Int) {
-        workspaceRefreshGeneration += 1
-        return (workspaceRefreshGeneration, workspaceTransitionGeneration)
+    private func nextWorkspaceSnapshotApplyContext() -> WorkspaceSnapshotApplyContext {
+        workspaceSnapshotApplyGeneration += 1
+        return WorkspaceSnapshotApplyContext(
+            applyGeneration: workspaceSnapshotApplyGeneration,
+            transitionGeneration: workspaceTransitionGeneration
+        )
     }
 
-    /// Applies a refresh result only if it is still the newest in-flight refresh for the current
-    /// workspace session. Older or superseded refreshes become no-ops before they can touch session state.
+    /// Applies a snapshot result only if it still belongs to the newest claimed workspace operation
+    /// for the current workspace transition. Older refreshes and older mutations become no-ops at
+    /// the apply boundary, so only one winner can replace `session.workspaceSnapshot` and run the
+    /// follow-on reconciliation/pruning work.
     private func runWorkspaceRefresh(
         errorContext: String,
         fallbackDetails: String
     ) async -> Result<WorkspaceSnapshot, UserFacingError>? {
-        let context = nextWorkspaceRefreshContext()
+        let context = nextWorkspaceSnapshotApplyContext()
 
         do {
             let snapshot = try await workspaceManager.refreshCurrentWorkspace()
-            guard shouldApplyWorkspaceRefreshResult(context) else {
+            guard shouldApplyWorkspaceSnapshotResult(context, requiresReadyWorkspace: true) else {
                 return nil
             }
 
-            await applyRefreshedWorkspaceSnapshot(snapshot)
+            await applyRefreshedWorkspaceSnapshot(snapshot, context: context)
             return .success(snapshot)
         } catch is CancellationError {
             return nil
         } catch let error as AppError {
-            guard shouldApplyWorkspaceRefreshResult(context) else {
+            guard shouldApplyWorkspaceSnapshotResult(context, requiresReadyWorkspace: true) else {
                 return nil
             }
 
@@ -680,7 +823,7 @@ final class AppCoordinator {
             errorReporter.report(error, context: errorContext)
             return .failure(errorReporter.makeUserFacingError(from: error))
         } catch {
-            guard shouldApplyWorkspaceRefreshResult(context) else {
+            guard shouldApplyWorkspaceSnapshotResult(context, requiresReadyWorkspace: true) else {
                 return nil
             }
 
@@ -690,12 +833,18 @@ final class AppCoordinator {
         }
     }
 
-    private func shouldApplyWorkspaceRefreshResult(
-        _ context: (refreshGeneration: Int, transitionGeneration: Int)
+    private func shouldApplyWorkspaceSnapshotResult(
+        _ context: WorkspaceSnapshotApplyContext,
+        requiresReadyWorkspace: Bool = false
     ) -> Bool {
-        context.refreshGeneration == workspaceRefreshGeneration
-            && context.transitionGeneration == workspaceTransitionGeneration
-            && session.launchState == .workspaceReady
+        guard
+            context.applyGeneration == workspaceSnapshotApplyGeneration,
+            context.transitionGeneration == workspaceTransitionGeneration
+        else {
+            return false
+        }
+
+        return requiresReadyWorkspace == false || session.launchState == .workspaceReady
     }
 
     private func isSameLogicalDocument(
@@ -709,231 +858,125 @@ final class AppCoordinator {
         return lhs.workspaceRootURL == rhs.workspaceRootURL && lhs.relativePath == rhs.relativePath
     }
 
-    private var shouldPreserveCurrentEditorDespiteMissingSnapshotEntry: Bool {
-        guard let openDocument = session.openDocument else {
-            return false
-        }
-
-        return openDocument.isDirty || openDocument.saveState == .saving || openDocument.conflictState.isConflicted
-    }
-
     /// Reconciles stale navigation and selection after a workspace refresh without disturbing
     /// an in-flight or intentionally preserved editor session.
-    private func applyRefreshedWorkspaceSnapshot(_ snapshot: WorkspaceSnapshot) async {
-        let previousVisibleEditorRelativePath = session.visibleEditorRelativePath
+    private func applyRefreshedWorkspaceSnapshot(
+        _ snapshot: WorkspaceSnapshot,
+        context: WorkspaceSnapshotApplyContext
+    ) async {
+        guard shouldApplyWorkspaceSnapshotResult(context, requiresReadyWorkspace: true) else {
+            return
+        }
+
         session.workspaceSnapshot = snapshot
         session.workspaceAccessState = .ready(displayName: snapshot.displayName)
+        session.workspaceAlertError = nil
+        recentFilesStore.adoptWorkspaceIdentity(using: snapshot)
         recentFilesStore.pruneInvalidItems(using: snapshot)
-
-        if shouldPreserveCurrentEditorDespiteMissingSnapshotEntry == false {
-            session.path = reconciledCompactNavigationPath(from: session.path, within: snapshot)
-            session.regularDetailSelection = reconciledRegularDetailSelection(
-                from: session.regularDetailSelection,
-                within: snapshot
-            )
-        }
-
-        guard let openDocument = session.openDocument else {
-            if session.visibleEditorRelativePath == nil {
-                session.editorLoadError = nil
-            }
-            return
-        }
-
-        guard snapshotContainsFile(relativePath: openDocument.relativePath, in: snapshot) == false else {
-            return
-        }
-
-        guard shouldPreserveCurrentEditorDespiteMissingSnapshotEntry == false else {
-            return
-        }
-
-        let hadVisibleEditor = previousVisibleEditorRelativePath == openDocument.relativePath
-        session.openDocument = nil
-        session.editorLoadError = nil
-        removeEditorPresentation(matchingRelativePath: openDocument.relativePath)
-        await clearRestorableDocumentSession()
-
-        if hadVisibleEditor {
-            session.lastError = UserFacingError(
-                title: "Document Unavailable",
-                message: "\(openDocument.displayName) is no longer available in the workspace.",
-                recoverySuggestion: "Choose another file from the browser."
-            )
-        }
-    }
-
-    private func reconciledCompactNavigationPath(
-        from path: [AppRoute],
-        within snapshot: WorkspaceSnapshot
-    ) -> [AppRoute] {
-        var reconciledPath: [AppRoute] = []
-
-        for route in path {
-            switch route {
-            case .settings:
-                reconciledPath.append(route)
-            case let .editor(documentURL):
-                guard
-                    let relativePath = WorkspaceRelativePath.make(
-                        for: documentURL,
-                        within: snapshot.rootURL
-                    ),
-                    snapshotContainsFile(relativePath: relativePath, in: snapshot)
-                else {
-                    return reconciledPath
-                }
-                reconciledPath.append(route)
-            }
-        }
-
-        return reconciledPath
-    }
-
-    private func reconciledRegularDetailSelection(
-        from selection: RegularWorkspaceDetailSelection,
-        within snapshot: WorkspaceSnapshot
-    ) -> RegularWorkspaceDetailSelection {
-        switch selection {
-        case .placeholder, .settings:
-            return selection
-        case let .editor(relativePath):
-            guard snapshotContainsFile(relativePath: relativePath, in: snapshot) else {
-                return .placeholder
-            }
-
-            return .editor(relativePath)
-        }
-    }
-
-    private func snapshotContainsFile(
-        relativePath: String,
-        in snapshot: WorkspaceSnapshot
-    ) -> Bool {
-        snapshotContainsNode(
-            relativePath: relativePath,
-            matchingFolder: false,
-            within: snapshot.rootURL,
-            nodes: snapshot.rootNodes
+        let reconciliation = WorkspaceSessionPolicy.reconcileAfterApplyingSnapshot(
+            snapshot,
+            navigationState: session.navigationState,
+            navigationLayout: session.navigationLayout,
+            openDocument: session.openDocument,
+            visibleEditorRelativePath: session.visibleEditorRelativePath
         )
-    }
+        session.applyNavigationState(reconciliation.navigationState)
 
-    private func snapshotContainsNode(
-        relativePath: String,
-        matchingFolder: Bool,
-        within workspaceRootURL: URL,
-        nodes: [WorkspaceNode]
-    ) -> Bool {
-        for node in nodes {
-            if
-                let nodeRelativePath = WorkspaceRelativePath.make(
-                    for: node.url,
-                    within: workspaceRootURL
-                ),
-                nodeRelativePath == relativePath,
-                node.isFolder == matchingFolder
-            {
-                return true
-            }
-
-            if let children = node.children,
-               snapshotContainsNode(
-                   relativePath: relativePath,
-                   matchingFolder: matchingFolder,
-                   within: workspaceRootURL,
-                   nodes: children
-               ) {
-                return true
-            }
+        if reconciliation.shouldClearOpenDocument {
+            session.openDocument = nil
         }
 
-        return false
+        if reconciliation.shouldClearEditorLoadError {
+            session.editorLoadError = nil
+        }
+
+        if reconciliation.shouldClearEditorAlertError {
+            session.editorAlertError = nil
+        }
+
+        if reconciliation.shouldClearRestorableDocumentSession {
+            await clearRestorableDocumentSession()
+        }
+
+        if let workspaceAlertError = reconciliation.workspaceAlertError {
+            session.workspaceAlertError = workspaceAlertError
+        }
     }
 
-    private func applyRestoreResult(_ restoreResult: WorkspaceRestoreResult, generation: Int) {
-        guard generation == workspaceTransitionGeneration else {
+    private func applyRestoreResult(
+        _ restoreResult: WorkspaceRestoreResult,
+        context: WorkspaceSnapshotApplyContext
+    ) {
+        guard shouldApplyWorkspaceSnapshotResult(context) else {
             return
         }
 
-        session.openDocument = nil
-        session.editorLoadError = nil
-        clearNavigationState()
+        let application = WorkspaceSessionPolicy.restoreApplication(for: restoreResult)
+        applyWorkspaceSessionState(application)
 
-        switch restoreResult {
-        case .noWorkspaceSelected:
-            session.workspaceSnapshot = nil
-            session.workspaceAccessState = .noneSelected
-            session.launchState = .noWorkspaceSelected
-            session.lastError = nil
-        case let .ready(snapshot):
-            session.workspaceSnapshot = snapshot
-            session.workspaceAccessState = .ready(displayName: snapshot.displayName)
-            session.launchState = .workspaceReady
-            session.lastError = nil
+        if let snapshot = application.snapshotToPruneRecentFiles {
+            recentFilesStore.adoptWorkspaceIdentity(using: snapshot)
             recentFilesStore.pruneInvalidItems(using: snapshot)
-        case let .accessInvalid(accessState):
-            session.workspaceSnapshot = nil
-            session.workspaceAccessState = accessState
-            session.launchState = .workspaceAccessInvalid
-            session.lastError = accessState.invalidationError
-        case let .failed(error):
-            session.workspaceSnapshot = nil
-            session.launchState = .failed(error)
-            session.lastError = error
         }
     }
 
-    private func applyWorkspaceReplacementResult(_ restoreResult: WorkspaceRestoreResult, generation: Int) {
-        guard generation == workspaceTransitionGeneration else {
+    private func applyWorkspaceReplacementResult(
+        _ restoreResult: WorkspaceRestoreResult,
+        context: WorkspaceSnapshotApplyContext
+    ) {
+        guard shouldApplyWorkspaceSnapshotResult(context) else {
             return
         }
 
         switch restoreResult {
         case let .ready(snapshot):
-            applyRestoreResult(.ready(snapshot), generation: generation)
+            applyRestoreResult(.ready(snapshot), context: context)
         case let .accessInvalid(accessState):
-            session.lastError = accessState.invalidationError
+            session.workspaceAlertError = accessState.invalidationError
         case let .failed(error):
-            session.lastError = error
+            session.workspaceAlertError = error
         case .noWorkspaceSelected:
             break
         }
     }
 
-    private func present(_ error: AppError, context: String) {
-        errorReporter.report(error, context: context)
-        session.lastError = errorReporter.makeUserFacingError(from: error)
-    }
+    private func applyWorkspaceMutationResult(
+        _ mutationResult: WorkspaceMutationResult,
+        context: WorkspaceSnapshotApplyContext
+    ) async {
+        guard shouldApplyWorkspaceSnapshotResult(context, requiresReadyWorkspace: true) else {
+            return
+        }
 
-    private func applyWorkspaceMutationResult(_ mutationResult: WorkspaceMutationResult) async {
+        let previousSnapshot = session.workspaceSnapshot
         session.workspaceSnapshot = mutationResult.snapshot
-        session.lastError = nil
+        session.workspaceAlertError = nil
+        recentFilesStore.adoptWorkspaceIdentity(using: mutationResult.snapshot)
 
         switch mutationResult.outcome {
         case .createdFile:
             break
         case let .renamedFile(oldURL, newURL, displayName, newRelativePath):
-            let oldRelativePath = session.workspaceSnapshot.flatMap { snapshot in
-                WorkspaceRelativePath.make(for: oldURL, within: snapshot.rootURL)
-            }
+            let oldRelativePath = previousSnapshot?.relativePath(for: oldURL)
 
-            if let workspaceRootURL = session.workspaceSnapshot?.rootURL,
-               let oldRelativePath {
+            if let oldRelativePath {
                 recentFilesStore.renameItem(
-                    workspaceRootURL: workspaceRootURL,
+                    using: mutationResult.snapshot,
                     oldRelativePath: oldRelativePath,
                     newRelativePath: newRelativePath,
                     displayName: displayName
                 )
             }
 
-            session.path = session.path.map { route in
-                route.replacingEditorURL(oldURL: oldURL, newURL: newURL)
-            }
-            replaceRegularEditorSelection(
-                oldRelativePath: oldRelativePath,
-                newRelativePath: newRelativePath,
-                oldURL: oldURL
+            session.applyNavigationState(
+                WorkspaceNavigationPolicy.replacingEditorPresentation(
+                    from: session.navigationState,
+                    oldURL: oldURL,
+                    newURL: newURL,
+                    oldRelativePath: oldRelativePath,
+                    newRelativePath: newRelativePath,
+                    openDocument: session.openDocument
+                )
             )
 
             if var openDocument = session.openDocument, openDocument.url == oldURL {
@@ -949,10 +992,9 @@ final class AppCoordinator {
                 await saveRestorableDocumentSession(for: openDocument)
             }
         case let .deletedFile(url, displayName):
-            if let workspaceRootURL = session.workspaceSnapshot?.rootURL,
-               let relativePath = WorkspaceRelativePath.make(for: url, within: workspaceRootURL) {
+            if let relativePath = WorkspaceRelativePath.make(for: url, within: mutationResult.snapshot.rootURL) {
                 recentFilesStore.removeItem(
-                    workspaceRootURL: workspaceRootURL,
+                    using: mutationResult.snapshot,
                     relativePath: relativePath
                 )
             }
@@ -960,9 +1002,17 @@ final class AppCoordinator {
             if session.openDocument?.url == url {
                 session.openDocument = nil
                 session.editorLoadError = nil
-                removeEditorPresentation(matchingRelativePath: nil, matchingURL: url)
+                session.editorAlertError = nil
+                session.applyNavigationState(
+                    WorkspaceNavigationPolicy.removingEditorPresentation(
+                        from: session.navigationState,
+                        workspaceRootURL: session.workspaceSnapshot?.rootURL,
+                        matchingRelativePath: nil,
+                        matchingURL: url
+                    )
+                )
                 await clearRestorableDocumentSession()
-                session.lastError = UserFacingError(
+                session.workspaceAlertError = UserFacingError(
                     title: "Document Deleted",
                     message: "\(displayName) was deleted from the workspace.",
                     recoverySuggestion: "Choose another file from the browser."
@@ -977,23 +1027,16 @@ final class AppCoordinator {
         displayName: String,
         message: String
     ) -> UserFacingError {
-        let reconnectError = UserFacingError(
+        let application = WorkspaceSessionPolicy.reconnectApplication(
+            displayName: displayName,
+            message: message
+        )
+        applyWorkspaceSessionState(application)
+        return application.workspaceAlertError ?? application.workspaceAccessState?.invalidationError ?? UserFacingError(
             title: "Workspace Needs Reconnect",
             message: message,
             recoverySuggestion: "Reconnect the folder to continue."
         )
-
-        session.workspaceSnapshot = nil
-        session.workspaceAccessState = .invalid(
-            displayName: displayName,
-            error: reconnectError
-        )
-        session.launchState = .workspaceAccessInvalid
-        session.openDocument = nil
-        session.editorLoadError = nil
-        clearNavigationState()
-        session.lastError = reconnectError
-        return reconnectError
     }
 
     private func restoreLastOpenDocumentIfPossible(
@@ -1017,10 +1060,7 @@ final class AppCoordinator {
             return
         }
 
-        guard let documentURL = Self.resolveDocumentURL(
-            for: restorableSession.relativePath,
-            within: snapshot.rootURL
-        ) else {
+        guard let documentURL = snapshot.fileURL(forRelativePath: restorableSession.relativePath) else {
             logger.log(
                 category: "Restore",
                 "Clearing stale last-open session for invalid document path \(restorableSession.relativePath)."
@@ -1031,7 +1071,7 @@ final class AppCoordinator {
 
         do {
             let document = try await documentManager.openDocument(
-                at: documentURL,
+                atRelativePath: restorableSession.relativePath,
                 in: snapshot.rootURL
             )
 
@@ -1041,8 +1081,14 @@ final class AppCoordinator {
 
             session.openDocument = document
             session.editorLoadError = nil
-            presentRestoredEditor(document)
-            recentFilesStore.record(document: document)
+            session.editorAlertError = nil
+            session.applyNavigationState(
+                WorkspaceNavigationPolicy.stateForRestoredEditor(
+                    document,
+                    layout: session.navigationLayout
+                )
+            )
+            recentFilesStore.record(document: document, in: snapshot)
         } catch let error as AppError {
             switch error {
             case .documentUnavailable:
@@ -1064,7 +1110,7 @@ final class AppCoordinator {
                 )
             default:
                 errorReporter.report(error, context: "Restoring last open document")
-                session.lastError = errorReporter.makeUserFacingError(from: error)
+                session.workspaceAlertError = errorReporter.makeUserFacingError(from: error)
             }
         } catch {
             let appError = AppError.documentOpenFailed(
@@ -1072,7 +1118,7 @@ final class AppCoordinator {
                 details: "The previous editor document could not be restored."
             )
             errorReporter.report(appError, context: "Restoring last open document")
-            session.lastError = errorReporter.makeUserFacingError(from: appError)
+            session.workspaceAlertError = errorReporter.makeUserFacingError(from: appError)
         }
     }
 
@@ -1094,13 +1140,6 @@ final class AppCoordinator {
         }
     }
 
-    private static func resolveDocumentURL(
-        for relativePath: String,
-        within rootURL: URL
-    ) -> URL? {
-        WorkspaceRelativePath.resolveExisting(relativePath, within: rootURL)
-    }
-
     private func relativePath(
         for url: URL,
         within rootURL: URL
@@ -1109,23 +1148,7 @@ final class AppCoordinator {
     }
 
     private func clearNavigationState() {
-        session.path = []
-        session.regularDetailSelection = .placeholder
-    }
-
-    private func compactPath(for selection: RegularWorkspaceDetailSelection) -> [AppRoute] {
-        switch selection {
-        case .placeholder:
-            return []
-        case .settings:
-            return [.settings]
-        case let .editor(relativePath):
-            guard let url = resolvedEditorURL(for: relativePath) else {
-                return []
-            }
-
-            return [.editor(url)]
-        }
+        session.applyNavigationState(.placeholder)
     }
 
     private func resolvedEditorURL(for relativePath: String) -> URL? {
@@ -1133,80 +1156,84 @@ final class AppCoordinator {
             return openDocument.url
         }
 
-        guard let rootURL = session.workspaceSnapshot?.rootURL else {
+        return session.workspaceSnapshot?.fileURL(forRelativePath: relativePath)
+    }
+
+    private func editorRelativePath(for url: URL) -> String? {
+        if let openDocument = session.openDocument, openDocument.url == url {
+            return openDocument.relativePath
+        }
+
+        return session.workspaceSnapshot?.relativePath(for: url)
+    }
+
+    private func editorRouteURL(for relativePath: String, preferredURL: URL?) -> URL? {
+        if let preferredURL {
+            return preferredURL
+        }
+
+        if let openDocument = session.openDocument, openDocument.relativePath == relativePath {
+            return openDocument.url
+        }
+
+        if let snapshotURL = session.workspaceSnapshot?.fileURL(forRelativePath: relativePath) {
+            return snapshotURL
+        }
+
+        guard let workspaceRootURL = session.workspaceSnapshot?.rootURL else {
             return nil
         }
 
-        return Self.resolveDocumentURL(for: relativePath, within: rootURL)
+        return WorkspaceRelativePath.resolve(relativePath, within: workspaceRootURL)
     }
 
-    private func removeEditorPresentation(
-        matchingRelativePath relativePath: String?,
-        matchingURL url: URL? = nil
-    ) {
-        let targetRelativePath = relativePath ?? {
-            guard
-                let url,
-                let workspaceRootURL = session.workspaceSnapshot?.rootURL
-            else {
-                return nil
-            }
-
-            return WorkspaceRelativePath.make(for: url, within: workspaceRootURL)
-        }()
-
-        session.path.removeAll { route in
-            guard let editorURL = route.editorURL else {
-                return false
-            }
-
-            if let url, editorURL == url {
-                return true
-            }
-
-            guard
-                let targetRelativePath,
-                let workspaceRootURL = session.workspaceSnapshot?.rootURL
-            else {
-                return false
-            }
-
-            return WorkspaceRelativePath.make(for: editorURL, within: workspaceRootURL) == targetRelativePath
+    /// Uses trusted pending relative-path identity whenever the UI still says that logical file is
+    /// being opened, even if the rendered regular-detail URL was re-resolved differently.
+    private func trustedPendingEditorPresentation(
+        for documentURL: URL
+    ) -> AppSession.PendingEditorPresentation? {
+        guard let pendingPresentation = session.pendingEditorPresentation else {
+            return nil
         }
 
-        switch session.regularDetailSelection {
-        case let .editor(selectedRelativePath) where targetRelativePath == nil || selectedRelativePath == targetRelativePath:
-            session.regularDetailSelection = .placeholder
-        default:
-            break
+        if pendingPresentation.routeURL == documentURL {
+            return pendingPresentation
         }
+
+        guard session.navigationLayout == .regular else {
+            return nil
+        }
+
+        guard case let .editor(selectedRelativePath) = session.regularDetailSelection,
+              selectedRelativePath == pendingPresentation.relativePath else {
+            return nil
+        }
+
+        return pendingPresentation
     }
 
-    private func replaceRegularEditorSelection(
-        oldRelativePath: String?,
-        newRelativePath: String,
-        oldURL: URL
-    ) {
-        switch session.regularDetailSelection {
-        case let .editor(selectedRelativePath):
-            if selectedRelativePath == newRelativePath || selectedRelativePath == oldRelativePath {
-                session.regularDetailSelection = .editor(newRelativePath)
-            }
-        default:
-            if let openDocument = session.openDocument, openDocument.url == oldURL {
-                session.regularDetailSelection = .editor(newRelativePath)
-            }
-        }
-    }
+    private func applyWorkspaceSessionState(_ application: WorkspaceSessionStateApplication) {
+        session.workspaceSnapshot = application.workspaceSnapshot
 
-    private func presentRestoredEditor(_ document: OpenDocument) {
-        switch session.navigationLayout {
-        case .compact:
-            session.path = [.editor(document.url)]
-            session.regularDetailSelection = .placeholder
-        case .regular:
-            session.path = []
-            session.regularDetailSelection = .editor(document.relativePath)
+        if let workspaceAccessState = application.workspaceAccessState {
+            session.workspaceAccessState = workspaceAccessState
         }
+
+        session.launchState = application.launchState
+        session.workspaceAlertError = application.workspaceAlertError
+
+        if application.shouldClearOpenDocument {
+            session.openDocument = nil
+        }
+
+        if application.shouldClearEditorLoadError {
+            session.editorLoadError = nil
+        }
+
+        if application.shouldClearEditorAlertError {
+            session.editorAlertError = nil
+        }
+
+        session.applyNavigationState(application.navigationState)
     }
 }

@@ -4,6 +4,8 @@ import Foundation
 protocol DocumentManager: Sendable {
     /// Opens a document by resolving its path relative to the active workspace root.
     func openDocument(at url: URL, in workspaceRootURL: URL) async throws -> OpenDocument
+    /// Opens a document using trusted workspace-relative identity when the caller already knows it.
+    func openDocument(atRelativePath relativePath: String, in workspaceRootURL: URL) async throws -> OpenDocument
     func reloadDocument(from document: OpenDocument) async throws -> OpenDocument
     /// Revalidates the active document using the same policy as live observation:
     /// clean buffers can silently refresh from disk, dirty buffers keep the local text authoritative,
@@ -21,24 +23,50 @@ protocol DocumentManager: Sendable {
     ) async
 }
 
+extension DocumentManager {
+    func openDocument(
+        atRelativePath relativePath: String,
+        in workspaceRootURL: URL
+    ) async throws -> OpenDocument {
+        let url = WorkspaceRelativePath.resolve(relativePath, within: workspaceRootURL)
+        return try await openDocument(at: url, in: workspaceRootURL)
+    }
+}
+
 actor LiveDocumentManager: DocumentManager {
     private let securityScopedAccess: any SecurityScopedAccessHandling
+    private let logger: DebugLogger?
+    // The live document layer is intentionally single-document today: one app-wide active key maps
+    // to one active PlainTextDocumentSession. Multi-pane or multi-window editing would need this
+    // ownership model redesigned before concurrent live sessions are safe.
     private var activeSessionKey: DocumentSessionKey?
     private var activeSession: PlainTextDocumentSession?
 
-    init(securityScopedAccess: any SecurityScopedAccessHandling) {
+    init(
+        securityScopedAccess: any SecurityScopedAccessHandling,
+        logger: DebugLogger? = nil
+    ) {
         self.securityScopedAccess = securityScopedAccess
+        self.logger = logger
     }
 
     func openDocument(at url: URL, in workspaceRootURL: URL) async throws -> OpenDocument {
         let relativePath = try Self.relativePath(for: url, within: workspaceRootURL)
+        return try await openDocument(atRelativePath: relativePath, in: workspaceRootURL)
+    }
+
+    func openDocument(
+        atRelativePath relativePath: String,
+        in workspaceRootURL: URL
+    ) async throws -> OpenDocument {
         let session = makeActiveSession(
             for: DocumentSessionKey(
                 workspaceRootURL: workspaceRootURL,
                 relativePath: relativePath
             )
         )
-        return try await session.openDocument(fallbackName: url.lastPathComponent)
+        let fallbackName = relativePath.split(separator: "/").last.map(String.init) ?? "Document"
+        return try await session.openDocument(fallbackName: fallbackName)
     }
 
     func reloadDocument(from document: OpenDocument) async throws -> OpenDocument {
@@ -106,7 +134,8 @@ actor LiveDocumentManager: DocumentManager {
         let session = PlainTextDocumentSession(
             relativePath: key.relativePath,
             workspaceRootURL: key.workspaceRootURL,
-            securityScopedAccess: securityScopedAccess
+            securityScopedAccess: securityScopedAccess,
+            logger: logger
         )
         activeSessionKey = key
         activeSession = session

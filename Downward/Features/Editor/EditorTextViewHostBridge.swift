@@ -1,6 +1,11 @@
 import SwiftUI
 import UIKit
 
+enum EditorTextViewLayout {
+    static let horizontalInset: CGFloat = 12
+    static let placeholderTopPadding: CGFloat = 8
+}
+
 /// Owns the narrow UIKit bridge needed to tune the `UITextView` that SwiftUI currently uses
 /// under `TextEditor`.
 ///

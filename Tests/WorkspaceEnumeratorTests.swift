@@ -68,6 +68,28 @@ final class WorkspaceEnumeratorTests: XCTestCase {
         XCTAssertEqual(yearFolder.children.map(\.displayName), ["2026-04-13.md"])
     }
 
+    func testWorkspaceRelativePathAcceptsEnumeratedDescendantAgainstEquivalentWorkspaceRootNormalization() throws {
+        let (rootURL, aliasedRootURL, cleanupRootURL) = try makeAliasedWorkspace(named: "Workspace")
+        defer { removeItemIfPresent(at: cleanupRootURL) }
+
+        let journalURL = try createDirectory(named: "Journal", in: rootURL)
+        let yearURL = try createDirectory(named: "2026", in: journalURL)
+        try createFile(named: "2026-04-13.md", in: yearURL)
+
+        let snapshot = try LiveWorkspaceEnumerator().makeSnapshot(
+            rootURL: rootURL,
+            displayName: "Workspace"
+        )
+        let fileURL = try XCTUnwrap(
+            snapshot.fileURL(forRelativePath: "Journal/2026/2026-04-13.md")
+        )
+
+        XCTAssertEqual(
+            WorkspaceRelativePath.make(for: fileURL, within: aliasedRootURL),
+            "Journal/2026/2026-04-13.md"
+        )
+    }
+
     func testEnumeratorIncludesEmptyFoldersAndFoldersWithoutSupportedFiles() throws {
         let rootURL = try makeTemporaryWorkspace()
         defer { removeItemIfPresent(at: rootURL) }
@@ -136,6 +158,29 @@ final class WorkspaceEnumeratorTests: XCTestCase {
         }
 
         XCTAssertEqual(readableFolder.children.map(\.displayName), ["Keep.md"])
+    }
+
+    func testEnumeratorReportsPartialSkipDiagnosticsForUnreadableDescendants() throws {
+        let rootURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: rootURL) }
+
+        _ = try createDirectory(named: "Readable", in: rootURL)
+        let unreadableFolderURL = try createDirectory(named: "Unreadable", in: rootURL)
+        try createFile(named: "Hidden.md", in: unreadableFolderURL)
+        defer { restoreReadablePermissions(at: unreadableFolderURL) }
+        try makeUnreadable(at: unreadableFolderURL)
+
+        let diagnosticsBox = WorkspaceEnumerationDiagnosticsBox()
+        _ = try LiveWorkspaceEnumerator(
+            onDiagnostics: { diagnostics in
+                diagnosticsBox.set(diagnostics)
+            }
+        ).makeSnapshot(
+            rootURL: rootURL,
+            displayName: "Workspace"
+        )
+
+        XCTAssertEqual(diagnosticsBox.value?.skippedDescendantPaths, ["Unreadable"])
     }
 
     func testEnumeratorSkipsHiddenSubtrees() throws {
@@ -239,6 +284,27 @@ final class WorkspaceEnumeratorTests: XCTestCase {
         return rootURL
     }
 
+    private func makeAliasedWorkspace(
+        named name: String
+    ) throws -> (workspaceURL: URL, aliasedWorkspaceURL: URL, cleanupRootURL: URL) {
+        let fileManager = FileManager.default
+        let cleanupRootURL = fileManager.temporaryDirectory
+            .appending(path: "WorkspaceEnumeratorTests")
+            .appending(path: UUID().uuidString)
+        let realParentURL = cleanupRootURL.appending(path: "RealParent")
+        let aliasParentURL = cleanupRootURL.appending(path: "AliasParent")
+        let workspaceURL = realParentURL.appending(path: name)
+
+        try fileManager.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        try fileManager.createSymbolicLink(at: aliasParentURL, withDestinationURL: realParentURL)
+
+        return (
+            workspaceURL: workspaceURL,
+            aliasedWorkspaceURL: aliasParentURL.appending(path: name),
+            cleanupRootURL: cleanupRootURL
+        )
+    }
+
     @discardableResult
     private func createDirectory(named name: String, in parentURL: URL) throws -> URL {
         let directoryURL = parentURL.appending(path: name)
@@ -284,5 +350,28 @@ final class WorkspaceEnumeratorTests: XCTestCase {
             [.posixPermissions: 0o700],
             ofItemAtPath: url.path
         )
+    }
+}
+
+private final class WorkspaceEnumerationDiagnosticsBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var diagnostics: WorkspaceEnumerationDiagnostics?
+
+    var value: WorkspaceEnumerationDiagnostics? {
+        lock.withLock { diagnostics }
+    }
+
+    func set(_ diagnostics: WorkspaceEnumerationDiagnostics) {
+        lock.withLock {
+            self.diagnostics = diagnostics
+        }
+    }
+}
+
+private extension NSLock {
+    func withLock<T>(_ operation: () throws -> T) rethrows -> T {
+        lock()
+        defer { unlock() }
+        return try operation()
     }
 }

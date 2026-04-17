@@ -10,14 +10,8 @@ struct WorkspaceSearchResult: Hashable, Identifiable, Sendable {
         relativePath
     }
 
-    nonisolated var node: WorkspaceNode {
-        .file(
-            .init(
-                url: url,
-                displayName: displayName,
-                subtitle: relativePath == displayName ? nil : relativePath,
-                modifiedAt: modifiedAt
-            )
-        )
+    /// Search results need explicit path context so duplicate filenames remain distinguishable.
+    nonisolated var pathContextText: String {
+        relativePath == displayName ? "Workspace root" : relativePath
     }
 }

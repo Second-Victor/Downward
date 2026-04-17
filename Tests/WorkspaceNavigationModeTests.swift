@@ -37,6 +37,38 @@ final class WorkspaceNavigationModeTests: XCTestCase {
     }
 
     @MainActor
+    func testTreeStyleProgrammaticOpenInRegularModeUsesTrustedRelativeIdentity() {
+        let (session, coordinator, viewModel) = makeWorkspaceSystem()
+        let preferredRouteURL = URL(
+            filePath: "\(PreviewSampleData.workspaceRootURL.path)/Journal/../Inbox.md"
+        )
+        XCTAssertNotEqual(preferredRouteURL, PreviewSampleData.cleanDocument.url)
+
+        coordinator.updateNavigationLayout(.regular)
+        viewModel.openDocument(
+            relativePath: PreviewSampleData.cleanDocument.relativePath,
+            preferredURL: preferredRouteURL
+        )
+
+        XCTAssertEqual(
+            session.pendingEditorPresentation,
+            .init(
+                routeURL: preferredRouteURL,
+                relativePath: PreviewSampleData.cleanDocument.relativePath
+            )
+        )
+        XCTAssertEqual(
+            session.regularDetailSelection,
+            .editor(PreviewSampleData.cleanDocument.relativePath)
+        )
+        XCTAssertEqual(
+            session.regularWorkspaceDetail,
+            .editor(preferredRouteURL)
+        )
+        XCTAssertEqual(session.path, [])
+    }
+
+    @MainActor
     func testFolderExpansionTogglesInlineWithoutChangingNavigationPath() {
         let (session, viewModel) = makeWorkspaceViewModel()
 
@@ -106,6 +138,27 @@ final class WorkspaceNavigationModeTests: XCTestCase {
         session.regularDetailSelection = .settings
 
         XCTAssertEqual(session.regularWorkspaceDetail, .settings)
+    }
+
+    @MainActor
+    func testRegularWorkspaceDetailPrefersPendingRouteURLForSelectedRelativePath() {
+        let (session, coordinator, _) = makeWorkspaceSystem()
+        let preferredRouteURL = URL(
+            filePath: "\(PreviewSampleData.workspaceRootURL.path)/References/../Inbox.md"
+        )
+        XCTAssertNotEqual(preferredRouteURL, PreviewSampleData.cleanDocument.url)
+
+        coordinator.updateNavigationLayout(.regular)
+        session.pendingEditorPresentation = .init(
+            routeURL: preferredRouteURL,
+            relativePath: PreviewSampleData.cleanDocument.relativePath
+        )
+        session.regularDetailSelection = .editor(PreviewSampleData.cleanDocument.relativePath)
+
+        XCTAssertEqual(
+            session.regularWorkspaceDetail,
+            .editor(preferredRouteURL)
+        )
     }
 
     @MainActor

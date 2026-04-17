@@ -17,16 +17,44 @@ enum WorkspaceNavigationLayout: Equatable {
 @MainActor
 @Observable
 final class AppSession {
+    struct PendingEditorPresentation: Equatable {
+        let routeURL: URL
+        let relativePath: String
+    }
+
     var launchState: RootLaunchState = .noWorkspaceSelected
     var workspaceAccessState: WorkspaceAccessState = .noneSelected
     var workspaceSnapshot: WorkspaceSnapshot?
+    /// The app currently owns one active editor document at a time. Navigation may point at
+    /// different editor URLs over time, but the live editor model still reconciles through this
+    /// single shared slot until a broader multi-document redesign exists.
     var openDocument: OpenDocument?
+    /// Workspace/browser alerts presented from the root shell while a workspace is active.
+    var workspaceAlertError: UserFacingError?
+    /// Editor-only load failures shown in place of the editor when a routed file cannot open.
     var editorLoadError: UserFacingError?
+    /// Editor-local alerts for operational failures that should not fight with workspace alerts.
+    var editorAlertError: UserFacingError?
+    /// Browser/search/recent-file opens seed trusted snapshot relative-path identity here before the
+    /// editor route appears, so the load path does not need to re-derive identity from a raw URL.
+    var pendingEditorPresentation: PendingEditorPresentation?
     var navigationLayout: WorkspaceNavigationLayout = .compact
     var path: [AppRoute] = []
     var regularDetailSelection: RegularWorkspaceDetailSelection = .placeholder
-    var lastError: UserFacingError?
     var hasBootstrapped = false
+
+    var navigationState: WorkspaceNavigationState {
+        get {
+            WorkspaceNavigationState(
+                path: path,
+                regularDetailSelection: regularDetailSelection
+            )
+        }
+        set {
+            path = newValue.path
+            regularDetailSelection = newValue.regularDetailSelection
+        }
+    }
 
     var currentWorkspaceName: String? {
         workspaceSnapshot?.displayName ?? workspaceAccessState.displayName
@@ -34,7 +62,11 @@ final class AppSession {
 
     /// Resolves the explicit regular-width detail selection into renderable detail content.
     var regularWorkspaceDetail: RegularWorkspaceDetail {
-        regularDetailSelection.resolved(in: workspaceSnapshot, openDocument: openDocument)
+        regularDetailSelection.resolved(
+            in: workspaceSnapshot,
+            openDocument: openDocument,
+            pendingEditorPresentation: pendingEditorPresentation
+        )
     }
 
     var visibleDetailSelection: RegularWorkspaceDetailSelection {
@@ -52,10 +84,7 @@ final class AppSession {
                     return .editor(openDocument.relativePath)
                 }
 
-                guard
-                    let workspaceRootURL = workspaceSnapshot?.rootURL,
-                    let relativePath = WorkspaceRelativePath.make(for: url, within: workspaceRootURL)
-                else {
+                guard let relativePath = workspaceSnapshot?.relativePath(for: url) else {
                     return .placeholder
                 }
 
@@ -83,6 +112,10 @@ final class AppSession {
             return relativePath
         }
     }
+
+    func applyNavigationState(_ navigationState: WorkspaceNavigationState) {
+        self.navigationState = navigationState
+    }
 }
 
 enum RegularWorkspaceDetailSelection: Equatable {
@@ -92,7 +125,8 @@ enum RegularWorkspaceDetailSelection: Equatable {
 
     func resolved(
         in snapshot: WorkspaceSnapshot?,
-        openDocument: OpenDocument?
+        openDocument: OpenDocument?,
+        pendingEditorPresentation: AppSession.PendingEditorPresentation?
     ) -> RegularWorkspaceDetail {
         switch self {
         case .placeholder:
@@ -104,14 +138,12 @@ enum RegularWorkspaceDetailSelection: Equatable {
                 return .editor(openDocument.url)
             }
 
-            guard let rootURL = snapshot?.rootURL else {
-                return .placeholder
+            if let pendingEditorPresentation,
+               pendingEditorPresentation.relativePath == relativePath {
+                return .editor(pendingEditorPresentation.routeURL)
             }
 
-            guard let documentURL = WorkspaceRelativePath.resolveExisting(
-                relativePath,
-                within: rootURL
-            ) else {
+            guard let documentURL = snapshot?.fileURL(forRelativePath: relativePath) else {
                 return .placeholder
             }
 

@@ -104,6 +104,95 @@ final class DocumentManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testOpenDocumentAtRelativePathLoadsNestedDocument() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let nestedFolderURL = workspaceURL.appending(path: "Journal").appending(path: "2026")
+        try FileManager.default.createDirectory(
+            at: nestedFolderURL,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        _ = try makeTemporaryFile(
+            in: nestedFolderURL,
+            named: "Entry.md",
+            contents: "# Entry\n\nNested file."
+        )
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+
+        let document = try await manager.openDocument(
+            atRelativePath: "Journal/2026/Entry.md",
+            in: workspaceURL
+        )
+
+        XCTAssertEqual(document.relativePath, "Journal/2026/Entry.md")
+        XCTAssertEqual(document.displayName, "Entry.md")
+        XCTAssertTrue(document.text.contains("Nested file."))
+    }
+
+    @MainActor
+    func testOpenDocumentAcceptsEquivalentWorkspaceRootNormalizationForValidDescendant() async throws {
+        let (workspaceURL, aliasedWorkspaceURL, cleanupRootURL) = try makeAliasedWorkspace(named: "Workspace")
+        defer { removeItemIfPresent(at: cleanupRootURL) }
+
+        let nestedFolderURL = workspaceURL.appending(path: "Journal").appending(path: "2026")
+        try FileManager.default.createDirectory(
+            at: nestedFolderURL,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        let fileURL = try makeTemporaryFile(
+            in: nestedFolderURL,
+            named: "Entry.md",
+            contents: "# Entry\n\nNormalized root mismatch."
+        )
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+
+        let document = try await manager.openDocument(at: fileURL, in: aliasedWorkspaceURL)
+
+        XCTAssertEqual(document.relativePath, "Journal/2026/Entry.md")
+        XCTAssertEqual(document.displayName, "Entry.md")
+    }
+
+    @MainActor
+    func testEnumeratedDocumentStillOpensWhenWorkspaceRootNormalizationDiffers() async throws {
+        let (workspaceURL, aliasedWorkspaceURL, cleanupRootURL) = try makeAliasedWorkspace(named: "Workspace")
+        defer { removeItemIfPresent(at: cleanupRootURL) }
+
+        let nestedFolderURL = workspaceURL.appending(path: "Projects").appending(path: "Downward")
+        try FileManager.default.createDirectory(
+            at: nestedFolderURL,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        _ = try makeTemporaryFile(
+            in: nestedFolderURL,
+            named: "README.md",
+            contents: "# Downward\n\nSnapshot-backed open."
+        )
+
+        let snapshot = try LiveWorkspaceEnumerator().makeSnapshot(
+            rootURL: workspaceURL,
+            displayName: "Workspace"
+        )
+        let enumeratedFileURL = try XCTUnwrap(
+            snapshot.fileURL(forRelativePath: "Projects/Downward/README.md")
+        )
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+
+        let document = try await manager.openDocument(
+            at: enumeratedFileURL,
+            in: aliasedWorkspaceURL
+        )
+
+        XCTAssertEqual(document.relativePath, "Projects/Downward/README.md")
+        XCTAssertEqual(document.url.lastPathComponent, "README.md")
+    }
+
+    @MainActor
     func testOpenDocumentRejectsSymbolicLinkPointingOutsideWorkspace() async throws {
         let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
         let externalURL = try makeTemporaryDirectory(named: "External")
@@ -132,6 +221,91 @@ final class DocumentManagerTests: XCTestCase {
             }
 
             XCTAssertEqual(name, "Escaped.md")
+        }
+    }
+
+    @MainActor
+    func testOpenDocumentAtRelativePathRejectsSymbolicLinkPointingOutsideWorkspace() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        let externalURL = try makeTemporaryDirectory(named: "External")
+        defer { removeItemIfPresent(at: workspaceURL) }
+        defer { removeItemIfPresent(at: externalURL) }
+
+        let externalFileURL = try makeTemporaryFile(
+            in: externalURL,
+            named: "Escaped.md",
+            contents: "# Escaped\n\nOutside the workspace."
+        )
+        let symbolicLinkURL = workspaceURL.appending(path: "Escaped.md")
+        try FileManager.default.createSymbolicLink(
+            at: symbolicLinkURL,
+            withDestinationURL: externalFileURL
+        )
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+
+        do {
+            _ = try await manager.openDocument(atRelativePath: "Escaped.md", in: workspaceURL)
+            XCTFail("Expected escaped symbolic link open to throw.")
+        } catch let error as AppError {
+            guard case let .documentUnavailable(name) = error else {
+                return XCTFail("Expected documentUnavailable for escaped symbolic link.")
+            }
+
+            XCTAssertEqual(name, "Escaped.md")
+        }
+    }
+
+    @MainActor
+    func testOpenDocumentAtRelativePathRejectsEscapingDescendantComponents() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+
+        do {
+            _ = try await manager.openDocument(
+                atRelativePath: "../Escaped.md",
+                in: workspaceURL
+            )
+            XCTFail("Expected escaping relative path open to throw.")
+        } catch let error as AppError {
+            guard case let .documentUnavailable(name) = error else {
+                return XCTFail("Expected documentUnavailable for escaped relative path.")
+            }
+
+            XCTAssertEqual(name, "Escaped.md")
+        }
+    }
+
+    @MainActor
+    func testCancelledOpenDocumentPropagatesCancellationIntoStructuredRead() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let fileURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Entry.md",
+            contents: "# Entry\n\nCancellable open."
+        )
+        let accessHandler = ScriptedDocumentSecurityAccessHandler(
+            behaviors: [.delayedUntilCancellation]
+        )
+        let manager = LiveDocumentManager(securityScopedAccess: accessHandler)
+
+        let openTask = Task {
+            try await manager.openDocument(at: fileURL, in: workspaceURL)
+        }
+
+        try await Task.sleep(for: .milliseconds(30))
+        openTask.cancel()
+
+        do {
+            _ = try await openTask.value
+            XCTFail("Expected cancelled open to throw CancellationError.")
+        } catch is CancellationError {
+            XCTAssertEqual(accessHandler.cancelledAccessCount, 1)
+            XCTAssertEqual(accessHandler.performedOperationCount, 0)
         }
     }
 
@@ -221,6 +395,38 @@ final class DocumentManagerTests: XCTestCase {
         XCTAssertEqual(revalidatedDocument.conflictState, .none)
         XCTAssertTrue(revalidatedDocument.isDirty)
         XCTAssertEqual(revalidatedDocument.text, "# Entry\n\nLocal edits still in memory.")
+    }
+
+    @MainActor
+    func testCancelledRevalidatePropagatesCancellationIntoStructuredRead() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let fileURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Entry.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+        let accessHandler = ScriptedDocumentSecurityAccessHandler(
+            behaviors: [.immediate, .delayedUntilCancellation]
+        )
+        let manager = LiveDocumentManager(securityScopedAccess: accessHandler)
+        let document = try await manager.openDocument(at: fileURL, in: workspaceURL)
+
+        let revalidationTask = Task {
+            try await manager.revalidateDocument(document)
+        }
+
+        try await Task.sleep(for: .milliseconds(30))
+        revalidationTask.cancel()
+
+        do {
+            _ = try await revalidationTask.value
+            XCTFail("Expected cancelled revalidation to throw CancellationError.")
+        } catch is CancellationError {
+            XCTAssertEqual(accessHandler.cancelledAccessCount, 1)
+            XCTAssertEqual(accessHandler.performedOperationCount, 1)
+        }
     }
 
     @MainActor
@@ -515,6 +721,161 @@ final class DocumentManagerTests: XCTestCase {
         observationTask.cancel()
     }
 
+    @MainActor
+    func testPrimaryObservationDoesNotStartFallbackPollingWhenPresenterObservationIsEnabled() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        _ = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Observed.md",
+            contents: "# Entry\n\nStable text."
+        )
+        let recorder = FallbackObservationRecorder()
+        let session = PlainTextDocumentSession(
+            relativePath: "Observed.md",
+            workspaceRootURL: workspaceURL,
+            securityScopedAccess: FakeDocumentSecurityAccessHandler(),
+            filePresenterEnabled: true,
+            observationFallbackSchedule: .init(
+                intervals: [.milliseconds(20), .milliseconds(40), .milliseconds(80)]
+            ),
+            onFallbackPoll: {
+                Task {
+                    await recorder.recordPoll()
+                }
+            }
+        )
+
+        let stream = try await session.observeChanges()
+        let observationTask = Task {
+            for await _ in stream {}
+        }
+
+        try await Task.sleep(for: .milliseconds(140))
+
+        let pollCount = await recorder.pollCount
+        XCTAssertEqual(pollCount, 0)
+
+        observationTask.cancel()
+        withExtendedLifetime(stream) {}
+    }
+
+    @MainActor
+    func testObservationModeDiagnosticsReportPrimaryPresenterForOrdinaryLocalFile() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        _ = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Observed.md",
+            contents: "# Entry\n\nStable text."
+        )
+        let recorder = ObservationModeRecorder()
+        let session = PlainTextDocumentSession(
+            relativePath: "Observed.md",
+            workspaceRootURL: workspaceURL,
+            securityScopedAccess: FakeDocumentSecurityAccessHandler(),
+            filePresenterEnabled: true,
+            onObservationModeActivated: { mode in
+                Task {
+                    await recorder.record(mode)
+                }
+            }
+        )
+
+        let stream = try await session.observeChanges()
+        let observationTask = Task {
+            for await _ in stream {}
+        }
+
+        try await waitUntil(timeout: .milliseconds(120)) {
+            await recorder.mode == .filePresenterOnly
+        }
+
+        observationTask.cancel()
+        withExtendedLifetime(stream) {}
+    }
+
+    @MainActor
+    func testFallbackObservationStartsWhenPolicyMarksPrimaryObservationInsufficient() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        _ = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Observed.md",
+            contents: "# Entry\n\nStable text."
+        )
+        let recorder = FallbackObservationRecorder()
+        let session = PlainTextDocumentSession(
+            relativePath: "Observed.md",
+            workspaceRootURL: workspaceURL,
+            securityScopedAccess: FakeDocumentSecurityAccessHandler(),
+            filePresenterEnabled: true,
+            observationFallbackPolicy: .always,
+            observationFallbackSchedule: .init(
+                intervals: [.milliseconds(20), .milliseconds(40), .milliseconds(80)]
+            ),
+            onFallbackPoll: {
+                Task {
+                    await recorder.recordPoll()
+                }
+            }
+        )
+
+        let stream = try await session.observeChanges()
+        let observationTask = Task {
+            for await _ in stream {}
+        }
+
+        try await waitUntil(timeout: .milliseconds(120)) {
+            await recorder.pollCount > 0
+        }
+
+        observationTask.cancel()
+        withExtendedLifetime(stream) {}
+    }
+
+    @MainActor
+    func testObservationModeDiagnosticsReportDegradedFallbackWhenPrimaryObservationIsUnavailable() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        _ = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Observed.md",
+            contents: "# Entry\n\nStable text."
+        )
+        let recorder = ObservationModeRecorder()
+        let session = PlainTextDocumentSession(
+            relativePath: "Observed.md",
+            workspaceRootURL: workspaceURL,
+            securityScopedAccess: FakeDocumentSecurityAccessHandler(),
+            filePresenterEnabled: false,
+            observationFallbackSchedule: .init(
+                intervals: [.milliseconds(20), .milliseconds(40), .milliseconds(80)]
+            ),
+            onObservationModeActivated: { mode in
+                Task {
+                    await recorder.record(mode)
+                }
+            }
+        )
+
+        let stream = try await session.observeChanges()
+        let observationTask = Task {
+            for await _ in stream {}
+        }
+
+        try await waitUntil(timeout: .milliseconds(120)) {
+            await recorder.mode == .fallbackPollingOnly
+        }
+
+        observationTask.cancel()
+        withExtendedLifetime(stream) {}
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let directoryURL = FileManager.default.temporaryDirectory
             .appending(path: "DocumentManagerTests")
@@ -564,6 +925,14 @@ private actor FallbackObservationRecorder {
 
     func recordEvent() {
         eventCount += 1
+    }
+}
+
+private actor ObservationModeRecorder {
+    private(set) var mode: PlainTextDocumentSession.ObservationMode?
+
+    func record(_ mode: PlainTextDocumentSession.ObservationMode) {
+        self.mode = mode
     }
 }
 
@@ -657,10 +1026,113 @@ private final class RecordingDocumentSecurityAccessHandler: @unchecked Sendable,
     }
 }
 
+private final class ScriptedDocumentSecurityAccessHandler: @unchecked Sendable, SecurityScopedAccessHandling {
+    enum Behavior {
+        case immediate
+        case delayedUntilCancellation
+    }
+
+    private let lock = NSLock()
+    private var behaviors: [Behavior]
+    private var performedOperations = 0
+    private var cancelledAccesses = 0
+
+    init(behaviors: [Behavior]) {
+        self.behaviors = behaviors
+    }
+
+    var performedOperationCount: Int {
+        lock.withLock { performedOperations }
+    }
+
+    var cancelledAccessCount: Int {
+        lock.withLock { cancelledAccesses }
+    }
+
+    func makeBookmark(for url: URL) throws -> Data {
+        Data()
+    }
+
+    func resolveBookmark(_ data: Data) throws -> ResolvedSecurityScopedURL {
+        ResolvedSecurityScopedURL(url: URL(filePath: "/tmp"), displayName: "tmp", isStale: false)
+    }
+
+    func validateAccess(to url: URL) throws {}
+
+    func beginAccess(to url: URL) throws -> SecurityScopedAccessLease {
+        SecurityScopedAccessLease(url: url, stopHandler: nil)
+    }
+
+    func withAccess<Value>(to url: URL, operation: (URL) throws -> Value) throws -> Value {
+        try operation(url)
+    }
+
+    func withAccess<Value>(
+        toDescendantAt relativePath: String,
+        within workspaceRootURL: URL,
+        operation: (URL) throws -> Value
+    ) throws -> Value {
+        let behavior = lock.withLock {
+            behaviors.isEmpty ? Behavior.immediate : behaviors.removeFirst()
+        }
+
+        switch behavior {
+        case .immediate:
+            break
+        case .delayedUntilCancellation:
+            for _ in 0..<200 {
+                if Task.isCancelled {
+                    lock.withLock {
+                        cancelledAccesses += 1
+                    }
+                    throw CancellationError()
+                }
+
+                Thread.sleep(forTimeInterval: 0.005)
+            }
+        }
+
+        guard let descendantURL = WorkspaceRelativePath.resolveCandidate(
+            relativePath,
+            within: workspaceRootURL
+        ) else {
+            throw AppError.documentUnavailable(
+                name: relativePath.split(separator: "/").last.map(String.init) ?? "Document"
+            )
+        }
+
+        lock.withLock {
+            performedOperations += 1
+        }
+        return try operation(descendantURL)
+    }
+}
+
 private extension NSLock {
     func withLock<Value>(_ operation: () throws -> Value) rethrows -> Value {
         lock()
         defer { unlock() }
         return try operation()
     }
+}
+
+private func makeAliasedWorkspace(
+    named name: String
+) throws -> (workspaceURL: URL, aliasedWorkspaceURL: URL, cleanupRootURL: URL) {
+    let fileManager = FileManager.default
+    let cleanupRootURL = fileManager.temporaryDirectory
+        .appending(path: "DocumentManagerTests")
+        .appending(path: UUID().uuidString)
+    let realParentURL = cleanupRootURL.appending(path: "RealParent")
+    let aliasParentURL = cleanupRootURL.appending(path: "AliasParent")
+    let workspaceURL = realParentURL.appending(path: name)
+
+    try fileManager.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+    try fileManager.createSymbolicLink(at: aliasParentURL, withDestinationURL: realParentURL)
+
+    return (
+        workspaceURL: workspaceURL,
+        aliasedWorkspaceURL: aliasParentURL.appending(path: name),
+        cleanupRootURL: cleanupRootURL
+    )
 }

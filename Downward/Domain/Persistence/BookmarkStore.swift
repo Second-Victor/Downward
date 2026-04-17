@@ -4,6 +4,19 @@ struct StoredWorkspaceBookmark: Equatable, Sendable {
     let workspaceName: String
     let lastKnownPath: String
     let bookmarkData: Data
+    let workspaceID: String
+
+    nonisolated init(
+        workspaceName: String,
+        lastKnownPath: String,
+        bookmarkData: Data,
+        workspaceID: String = WorkspaceIdentity.makePersistentID()
+    ) {
+        self.workspaceName = workspaceName
+        self.lastKnownPath = lastKnownPath
+        self.bookmarkData = bookmarkData
+        self.workspaceID = workspaceID
+    }
 }
 
 /// Persists the selected workspace bookmark and minimal metadata needed for restore messaging.
@@ -38,11 +51,25 @@ struct UserDefaultsBookmarkStore: BookmarkStore {
             throw AppError.workspaceRestoreFailed(details: "Saved workspace data is unreadable.")
         }
 
-        return StoredWorkspaceBookmark(
+        if let workspaceID = payload["workspaceID"] as? String {
+            return StoredWorkspaceBookmark(
+                workspaceName: workspaceName,
+                lastKnownPath: lastKnownPath,
+                bookmarkData: bookmarkData,
+                workspaceID: workspaceID
+            )
+        }
+
+        // Migrate old bookmark payloads in place so the restored workspace gets a stable identity
+        // that survives later reconnects, path moves, and stale bookmark refreshes.
+        let upgradedBookmark = StoredWorkspaceBookmark(
             workspaceName: workspaceName,
             lastKnownPath: lastKnownPath,
             bookmarkData: bookmarkData
         )
+        try await saveBookmark(upgradedBookmark)
+
+        return upgradedBookmark
     }
 
     func saveBookmark(_ bookmark: StoredWorkspaceBookmark) async throws {
@@ -51,6 +78,7 @@ struct UserDefaultsBookmarkStore: BookmarkStore {
                 "workspaceName": bookmark.workspaceName,
                 "lastKnownPath": bookmark.lastKnownPath,
                 "bookmarkData": bookmark.bookmarkData,
+                "workspaceID": bookmark.workspaceID,
             ],
             forKey: bookmarkKey
         )

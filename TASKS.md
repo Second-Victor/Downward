@@ -8,6 +8,12 @@ It is organized by priority and written so each task can be turned into a focuse
 The project does **not** need a rewrite.
 It needs targeted hardening in a deliberate order.
 
+Status note:
+
+- the hardening/cleanup tasks in this file are now complete,
+- the checklist below remains as the historical record of what was hardened and how success was defined,
+- active forward-looking work should now start from `PLANS.md` and `TECH_DEBT.md` instead of reopening this backlog as if it were still live.
+
 ---
 
 ## Release blockers
@@ -44,7 +50,7 @@ The current code can violate that promise in edge cases.
 
 ---
 
-## [ ] 2. Unify workspace snapshot winner policy across refreshes and mutations
+## [x] 2. Unify workspace snapshot winner policy across refreshes and mutations
 
 **Problem**
 
@@ -72,7 +78,7 @@ The browser and reconciliation logic can still jump backward after create/rename
 
 ---
 
-## [ ] 3. Remove `Task.detached` from cancelable read-side I/O
+## [x] 3. Remove `Task.detached` from cancelable read-side I/O
 
 **Problem**
 
@@ -100,7 +106,7 @@ That is fragile for future async work and provider-backed folders.
 
 ## High-priority robustness work
 
-## [ ] 4. Reduce coordinator pressure by extracting smaller policy seams
+## [x] 4. Reduce coordinator pressure by extracting smaller policy seams
 
 **Problem**
 
@@ -128,7 +134,7 @@ That is the next maintainability risk.
 
 ---
 
-## [ ] 5. Scope error ownership by surface instead of using global error slots
+## [x] 5. Scope error ownership by surface instead of using global error slots
 
 **Problem**
 
@@ -154,7 +160,7 @@ As the app grows, this will cause overwritten alerts, confusing error lifetime, 
 
 ---
 
-## [ ] 6. Make fallback observation truly degraded mode
+## [x] 6. Make fallback observation truly degraded mode
 
 **Problem**
 
@@ -180,7 +186,7 @@ This keeps extra background work and complexity alive in the normal editor path.
 
 ---
 
-## [ ] 7. Make new-workspace selection persistence transactional
+## [x] 7. Make new-workspace selection persistence transactional
 
 **Problem**
 
@@ -207,7 +213,7 @@ A failed selection can become the next restore target even though it never becam
 
 ## Medium-priority architecture cleanup
 
-## [ ] 8. Introduce a stable workspace identity for recent files
+## [x] 8. Introduce a stable workspace identity for recent files
 
 **Problem**
 
@@ -233,7 +239,7 @@ Recent-file persistence should not feel less stable than workspace restore.
 
 ---
 
-## [ ] 9. Separate search result presentation from tree-row presentation
+## [x] 9. Separate search result presentation from tree-row presentation
 
 **Problem**
 
@@ -259,7 +265,7 @@ Search correctness suffers when different files share the same name.
 
 ---
 
-## 10. Move search computation out of the hot render path
+## [x] 10. Move search computation out of the hot render path
 
 **Problem**
 
@@ -284,7 +290,7 @@ That is acceptable now, but it is not a good base for larger workspaces or riche
 
 ---
 
-## 11. Document the single-document model and its future escape hatch
+## [x] 11. Document the single-document model and its future escape hatch
 
 **Problem**
 
@@ -309,7 +315,7 @@ Hidden product limits turn into accidental architectural drift.
 
 ## Future feature groundwork
 
-## 12. Add diagnostics for partial enumeration skips and observation mode
+## [x] 12. Add diagnostics for partial enumeration skips and observation mode
 
 **Problem**
 
@@ -333,7 +339,7 @@ Future provider-related bugs will be much harder to debug without lightweight di
 
 ---
 
-## 13. Plan the eventual move from whole-snapshot replacement to more scalable browser/search infrastructure
+## [x] 13. Plan the eventual move from whole-snapshot replacement to more scalable browser/search infrastructure
 
 **Problem**
 
@@ -359,7 +365,7 @@ This is not urgent today, but it will matter before content search or highly dyn
 
 ## Polish / nice-to-have
 
-## 14. Remove dead or half-migrated APIs after the hardening work lands
+## [x] 14. Remove dead or half-migrated APIs after the hardening work lands
 
 **Problem**
 
@@ -385,7 +391,7 @@ This is not a blocker, but it makes the codebase noisier than it needs to be.
 
 ---
 
-## 15. Unify editor placeholder alignment with the editor inset bridge
+## [x] 15. Unify editor placeholder alignment with the editor inset bridge
 
 **Problem**
 

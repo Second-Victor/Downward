@@ -4,7 +4,6 @@ struct WorkspaceFolderScreen: View {
     let viewModel: WorkspaceViewModel
     let showsSettingsButton: Bool
     let navigationMode: WorkspaceNavigationMode
-    let expandedFolderURL: URL?
 
     var body: some View {
         Group {
@@ -25,6 +24,7 @@ struct WorkspaceFolderScreen: View {
                         WorkspaceTreeRows(
                             viewModel: viewModel,
                             nodes: viewModel.nodes,
+                            parentRelativePath: nil,
                             depth: 0,
                             navigationMode: navigationMode
                         )
@@ -34,12 +34,6 @@ struct WorkspaceFolderScreen: View {
                 .refreshable {
                     await viewModel.refreshFromPullToRefresh()
                 }
-            }
-        }
-        .task(id: expandedFolderURL) {
-            viewModel.syncExpandedFoldersToCurrentSnapshot()
-            if let expandedFolderURL {
-                viewModel.expandFolderAndAncestors(at: expandedFolderURL)
             }
         }
         .navigationTitle(viewModel.workspaceTitle)
@@ -203,35 +197,51 @@ struct WorkspaceFolderScreen: View {
 private struct WorkspaceTreeRows: View {
     let viewModel: WorkspaceViewModel
     let nodes: [WorkspaceNode]
+    let parentRelativePath: String?
     let depth: Int
     let navigationMode: WorkspaceNavigationMode
 
     var body: some View {
         ForEach(nodes) { node in
+            let relativePath = joinedRelativePath(
+                parentRelativePath,
+                component: node.url.lastPathComponent
+            )
             WorkspaceTreeRow(
-                                viewModel: viewModel,
-                                node: node,
-                                depth: depth,
-                                navigationMode: navigationMode
-                            )
+                viewModel: viewModel,
+                node: node,
+                relativePath: relativePath,
+                depth: depth,
+                navigationMode: navigationMode
+            )
             if
                 case let .folder(folder) = node,
-                viewModel.isFolderExpanded(at: folder.url)
+                viewModel.isFolderExpanded(atRelativePath: relativePath)
             {
                 WorkspaceTreeRows(
                     viewModel: viewModel,
                     nodes: folder.children,
+                    parentRelativePath: relativePath,
                     depth: depth + 1,
                     navigationMode: navigationMode
                 )
             }
         }
     }
+
+    private func joinedRelativePath(_ parentRelativePath: String?, component: String) -> String {
+        guard let parentRelativePath, parentRelativePath.isEmpty == false else {
+            return component
+        }
+
+        return "\(parentRelativePath)/\(component)"
+    }
 }
 
 private struct WorkspaceTreeRow: View {
     let viewModel: WorkspaceViewModel
     let node: WorkspaceNode
+    let relativePath: String
     let depth: Int
     let navigationMode: WorkspaceNavigationMode
 
@@ -239,12 +249,12 @@ private struct WorkspaceTreeRow: View {
         switch node {
         case let .folder(folder):
             Button {
-                viewModel.toggleFolderExpansion(at: folder.url)
+                viewModel.toggleFolderExpansion(atRelativePath: relativePath)
             } label: {
                 WorkspaceRowView(
                     node: node,
                     hierarchyDepth: depth,
-                    folderDisclosureState: viewModel.isFolderExpanded(at: folder.url) ? .expanded : .collapsed
+                    folderDisclosureState: viewModel.isFolderExpanded(atRelativePath: relativePath) ? .expanded : .collapsed
                 )
             }
             .buttonStyle(.plain)
@@ -262,35 +272,23 @@ private struct WorkspaceTreeRow: View {
 
     @ViewBuilder
     private var fileRow: some View {
-        if navigationMode.usesValueNavigationLinks == false {
-            Button {
-                viewModel.openDocument(node.url)
-            } label: {
-                WorkspaceRowView(
-                    node: node,
-                    hierarchyDepth: depth
-                )
-            }
-            .buttonStyle(.plain)
-            .contextMenu {
-                fileContextMenu
-            }
-            .swipeActions {
-                fileSwipeActions
-            }
-        } else {
-            NavigationLink(value: AppRoute.editor(node.url)) {
-                WorkspaceRowView(
-                    node: node,
-                    hierarchyDepth: depth
-                )
-            }
-            .contextMenu {
-                fileContextMenu
-            }
-            .swipeActions {
-                fileSwipeActions
-            }
+        Button {
+            viewModel.openDocument(
+                relativePath: relativePath,
+                preferredURL: node.url
+            )
+        } label: {
+            WorkspaceRowView(
+                node: node,
+                hierarchyDepth: depth
+            )
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            fileContextMenu
+        }
+        .swipeActions {
+            fileSwipeActions
         }
     }
 
@@ -343,8 +341,7 @@ private struct WorkspaceTreeRow: View {
                 return container.workspaceViewModel
             }(),
             showsSettingsButton: true,
-            navigationMode: .stackPath,
-            expandedFolderURL: nil
+            navigationMode: .stackPath
         )
     }
     .environment(\.dynamicTypeSize, .accessibility3)
@@ -363,8 +360,7 @@ private struct WorkspaceTreeRow: View {
                 return container.workspaceViewModel
             }(),
             showsSettingsButton: false,
-            navigationMode: .stackPath,
-            expandedFolderURL: nil
+            navigationMode: .stackPath
         )
     }
 }
@@ -382,8 +378,7 @@ private struct WorkspaceTreeRow: View {
                 return container.workspaceViewModel
             }(),
             showsSettingsButton: true,
-            navigationMode: .stackPath,
-            expandedFolderURL: nil
+            navigationMode: .stackPath
         )
     }
 }

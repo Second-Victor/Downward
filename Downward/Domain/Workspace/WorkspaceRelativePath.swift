@@ -6,6 +6,8 @@ enum WorkspaceRelativePath {
     /// - relative-path identity is only trusted after the descendant passes a stronger boundary check
     /// - reject any symlinked descendant entirely, even if it resolves back inside the workspace
     /// - require existing descendants to resolve under the canonical workspace root
+    /// - allow equivalent root aliases to derive the same canonical relative identity when the
+    ///   ancestor walk still reaches the real workspace root without crossing a symlinked escape
     /// - allow non-existing mutation targets only when every existing ancestor stays in-root and is not a symlink
     nonisolated static func make(
         for itemURL: URL,
@@ -70,17 +72,13 @@ enum WorkspaceRelativePath {
         forExistingItemAt itemURL: URL,
         within workspaceRootURL: URL
     ) -> [String]? {
-        let itemComponents = itemURL.standardizedFileURL.pathComponents
-        let rootComponents = workspaceRootURL.standardizedFileURL.pathComponents
-
-        guard
-            itemComponents.count > rootComponents.count,
-            itemComponents.starts(with: rootComponents)
-        else {
+        guard let relativeComponents = ancestorRelativePathComponents(
+            forExistingItemAt: itemURL,
+            within: workspaceRootURL
+        ) else {
             return nil
         }
 
-        let relativeComponents = Array(itemComponents.dropFirst(rootComponents.count))
         guard validateDescendantComponents(
             relativeComponents,
             within: workspaceRootURL,
@@ -90,6 +88,42 @@ enum WorkspaceRelativePath {
         }
 
         return relativeComponents
+    }
+
+    nonisolated private static func ancestorRelativePathComponents(
+        forExistingItemAt itemURL: URL,
+        within workspaceRootURL: URL
+    ) -> [String]? {
+        let standardizedRootURL = workspaceRootURL.standardizedFileURL
+        let canonicalRootURL = workspaceRootURL.resolvingSymlinksInPath().standardizedFileURL
+        var currentURL = itemURL.standardizedFileURL
+        var relativeComponents: [String] = []
+
+        while true {
+            let resourceValues: URLResourceValues
+            do {
+                resourceValues = try currentURL.resourceValues(forKeys: [.isSymbolicLinkKey])
+            } catch {
+                return nil
+            }
+
+            guard resourceValues.isSymbolicLink != true else {
+                return nil
+            }
+
+            let canonicalCurrentURL = currentURL.resolvingSymlinksInPath().standardizedFileURL
+            if currentURL == standardizedRootURL || canonicalCurrentURL == canonicalRootURL {
+                return relativeComponents.isEmpty ? nil : relativeComponents
+            }
+
+            let parentURL = currentURL.deletingLastPathComponent().standardizedFileURL
+            guard parentURL != currentURL else {
+                return nil
+            }
+
+            relativeComponents.insert(currentURL.lastPathComponent, at: 0)
+            currentURL = parentURL
+        }
     }
 
     nonisolated private static func resolveValidated(

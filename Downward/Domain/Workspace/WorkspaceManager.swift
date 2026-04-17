@@ -88,7 +88,9 @@ actor LiveWorkspaceManager: WorkspaceManager {
 
             let snapshot = try await loadSnapshot(
                 rootURL: resolvedWorkspace.url,
-                displayName: resolvedWorkspace.displayName
+                displayName: resolvedWorkspace.displayName,
+                workspaceID: resolvedWorkspace.workspaceID,
+                recentFileLookupPaths: resolvedWorkspace.recentFileLookupPaths
             )
             return .ready(snapshot)
         } catch let error as AppError {
@@ -112,23 +114,30 @@ actor LiveWorkspaceManager: WorkspaceManager {
     }
 
     func selectWorkspace(at url: URL) async -> WorkspaceRestoreResult {
+        let previousSnapshot = currentSnapshot
+
         do {
             try securityScopedAccess.validateAccess(to: url)
             let bookmarkData = try securityScopedAccess.makeBookmark(for: url)
-            let bookmark = StoredWorkspaceBookmark(
+            let pendingBookmark = StoredWorkspaceBookmark(
                 workspaceName: url.lastPathComponent,
                 lastKnownPath: url.path,
                 bookmarkData: bookmarkData
             )
-            try await bookmarkStore.saveBookmark(bookmark)
 
-            let snapshot = try await loadSnapshot(
+            // Workspace selection is transactional: a newly chosen folder only becomes persisted
+            // restore state after its first usable snapshot succeeds.
+            let snapshot = try await makeSnapshot(
                 rootURL: url,
-                displayName: bookmark.workspaceName
+                displayName: pendingBookmark.workspaceName,
+                workspaceID: pendingBookmark.workspaceID,
+                recentFileLookupPaths: [url.path]
             )
+            try await bookmarkStore.saveBookmark(pendingBookmark)
+            currentSnapshot = snapshot
             return .ready(snapshot)
         } catch let error as AppError {
-            currentSnapshot = nil
+            currentSnapshot = previousSnapshot
             switch error {
             case .workspaceAccessInvalid:
                 return .failed(
@@ -142,7 +151,7 @@ actor LiveWorkspaceManager: WorkspaceManager {
                 return failedRestoreResult(message: error.localizedDescription)
             }
         } catch {
-            currentSnapshot = nil
+            currentSnapshot = previousSnapshot
             return .failed(
                 UserFacingError(
                     title: "Can’t Open Folder",
@@ -157,7 +166,9 @@ actor LiveWorkspaceManager: WorkspaceManager {
         if let currentSnapshot {
             return try await loadSnapshot(
                 rootURL: currentSnapshot.rootURL,
-                displayName: currentSnapshot.displayName
+                displayName: currentSnapshot.displayName,
+                workspaceID: currentSnapshot.workspaceID,
+                recentFileLookupPaths: currentSnapshot.recentFileLookupPaths
             )
         }
 
@@ -169,7 +180,9 @@ actor LiveWorkspaceManager: WorkspaceManager {
 
             return try await loadSnapshot(
                 rootURL: resolvedWorkspace.url,
-                displayName: resolvedWorkspace.displayName
+                displayName: resolvedWorkspace.displayName,
+                workspaceID: resolvedWorkspace.workspaceID,
+                recentFileLookupPaths: resolvedWorkspace.recentFileLookupPaths
             )
         }
 
@@ -242,7 +255,9 @@ actor LiveWorkspaceManager: WorkspaceManager {
 
         let snapshot = try await loadSnapshot(
             rootURL: workspaceContext.rootURL,
-            displayName: workspaceContext.displayName
+            displayName: workspaceContext.displayName,
+            workspaceID: workspaceContext.workspaceID,
+            recentFileLookupPaths: workspaceContext.recentFileLookupPaths
         )
         return WorkspaceMutationResult(snapshot: snapshot, outcome: outcome)
     }
@@ -333,7 +348,9 @@ actor LiveWorkspaceManager: WorkspaceManager {
 
         let snapshot = try await loadSnapshot(
             rootURL: workspaceContext.rootURL,
-            displayName: workspaceContext.displayName
+            displayName: workspaceContext.displayName,
+            workspaceID: workspaceContext.workspaceID,
+            recentFileLookupPaths: workspaceContext.recentFileLookupPaths
         )
         return WorkspaceMutationResult(snapshot: snapshot, outcome: outcome)
     }
@@ -378,7 +395,9 @@ actor LiveWorkspaceManager: WorkspaceManager {
 
         let snapshot = try await loadSnapshot(
             rootURL: workspaceContext.rootURL,
-            displayName: workspaceContext.displayName
+            displayName: workspaceContext.displayName,
+            workspaceID: workspaceContext.workspaceID,
+            recentFileLookupPaths: workspaceContext.recentFileLookupPaths
         )
         return WorkspaceMutationResult(snapshot: snapshot, outcome: outcome)
     }
@@ -397,26 +416,56 @@ actor LiveWorkspaceManager: WorkspaceManager {
         currentSnapshot = nil
     }
 
-    private func loadSnapshot(rootURL: URL, displayName: String) async throws -> WorkspaceSnapshot {
+    private func loadSnapshot(
+        rootURL: URL,
+        displayName: String,
+        workspaceID: String,
+        recentFileLookupPaths: [String]
+    ) async throws -> WorkspaceSnapshot {
         refreshGeneration += 1
         let generation = refreshGeneration
-        let securityScopedAccess = self.securityScopedAccess
-        let workspaceEnumerator = self.workspaceEnumerator
-
-        let snapshot = try await Task.detached(priority: .userInitiated) {
-            try securityScopedAccess.withAccess(to: rootURL) { securedRootURL in
-                try workspaceEnumerator.makeSnapshot(
-                    rootURL: securedRootURL,
-                    displayName: displayName
-                )
-            }
-        }.value
+        let snapshot = try await makeSnapshot(
+            rootURL: rootURL,
+            displayName: displayName,
+            workspaceID: workspaceID,
+            recentFileLookupPaths: recentFileLookupPaths
+        )
 
         if generation == refreshGeneration {
             currentSnapshot = snapshot
         }
 
         return snapshot
+    }
+
+    private func makeSnapshot(
+        rootURL: URL,
+        displayName: String,
+        workspaceID: String,
+        recentFileLookupPaths: [String]
+    ) async throws -> WorkspaceSnapshot {
+        let securityScopedAccess = self.securityScopedAccess
+        let workspaceEnumerator = self.workspaceEnumerator
+
+        let enumeratedSnapshot = try await Self.runStructuredBackgroundOperation(priority: .userInitiated) {
+            try Task.checkCancellation()
+            return try securityScopedAccess.withAccess(to: rootURL) { securedRootURL in
+                try Task.checkCancellation()
+                return try workspaceEnumerator.makeSnapshot(
+                    rootURL: securedRootURL,
+                    displayName: displayName
+                )
+            }
+        }
+
+        return WorkspaceSnapshot(
+            workspaceID: workspaceID,
+            recentFileLookupPaths: recentFileLookupPaths,
+            rootURL: enumeratedSnapshot.rootURL,
+            displayName: enumeratedSnapshot.displayName,
+            rootNodes: enumeratedSnapshot.rootNodes,
+            lastUpdated: enumeratedSnapshot.lastUpdated
+        )
     }
 
     private func invalidRestoreResult(
@@ -445,9 +494,19 @@ actor LiveWorkspaceManager: WorkspaceManager {
         )
     }
 
-    private func currentWorkspaceContext() async throws -> (rootURL: URL, displayName: String) {
+    private func currentWorkspaceContext() async throws -> (
+        rootURL: URL,
+        displayName: String,
+        workspaceID: String,
+        recentFileLookupPaths: [String]
+    ) {
         if let currentSnapshot {
-            return (currentSnapshot.rootURL, currentSnapshot.displayName)
+            return (
+                currentSnapshot.rootURL,
+                currentSnapshot.displayName,
+                currentSnapshot.workspaceID,
+                currentSnapshot.recentFileLookupPaths
+            )
         }
 
         guard let bookmark = try await bookmarkStore.loadBookmark() else {
@@ -459,7 +518,12 @@ actor LiveWorkspaceManager: WorkspaceManager {
             throw AppError.workspaceAccessInvalid(displayName: resolvedWorkspace.displayName)
         }
 
-        return (resolvedWorkspace.url, resolvedWorkspace.displayName)
+        return (
+            resolvedWorkspace.url,
+            resolvedWorkspace.displayName,
+            resolvedWorkspace.workspaceID,
+            resolvedWorkspace.recentFileLookupPaths
+        )
     }
 
     private func performMutation(
@@ -468,11 +532,11 @@ actor LiveWorkspaceManager: WorkspaceManager {
     ) async throws -> WorkspaceMutationOutcome {
         let securityScopedAccess = self.securityScopedAccess
 
-        return try await Task.detached(priority: .userInitiated) {
+        return try await Self.runDetachedMutationOperation(priority: .userInitiated) {
             try securityScopedAccess.withAccess(to: rootURL) { securedRootURL in
                 try mutation(securedRootURL)
             }
-        }.value
+        }
     }
 
     /// Resolves the persisted workspace bookmark and refreshes stale bookmark data before the caller
@@ -488,6 +552,8 @@ actor LiveWorkspaceManager: WorkspaceManager {
             return ResolvedWorkspaceReference(
                 url: resolvedBookmark.url,
                 displayName: bookmark.workspaceName,
+                workspaceID: bookmark.workspaceID,
+                recentFileLookupPaths: [bookmark.lastKnownPath, resolvedBookmark.url.path],
                 isAccessible: false
             )
         }
@@ -497,13 +563,16 @@ actor LiveWorkspaceManager: WorkspaceManager {
             let refreshedBookmark = StoredWorkspaceBookmark(
                 workspaceName: resolvedBookmark.displayName,
                 lastKnownPath: resolvedBookmark.url.path,
-                bookmarkData: refreshedBookmarkData
+                bookmarkData: refreshedBookmarkData,
+                workspaceID: bookmark.workspaceID
             )
             try await bookmarkStore.saveBookmark(refreshedBookmark)
 
             return ResolvedWorkspaceReference(
                 url: resolvedBookmark.url,
                 displayName: refreshedBookmark.workspaceName,
+                workspaceID: refreshedBookmark.workspaceID,
+                recentFileLookupPaths: [bookmark.lastKnownPath, resolvedBookmark.url.path],
                 isAccessible: true
             )
         }
@@ -511,6 +580,8 @@ actor LiveWorkspaceManager: WorkspaceManager {
         return ResolvedWorkspaceReference(
             url: resolvedBookmark.url,
             displayName: bookmark.workspaceName,
+            workspaceID: bookmark.workspaceID,
+            recentFileLookupPaths: [bookmark.lastKnownPath, resolvedBookmark.url.path],
             isAccessible: true
         )
     }
@@ -679,6 +750,44 @@ actor LiveWorkspaceManager: WorkspaceManager {
 
         return candidateURL
     }
+
+    /// Runs snapshot enumeration as a structured child task so caller cancellation reaches the
+    /// underlying file/provider read work instead of leaving it detached in the background.
+    nonisolated private static func runStructuredBackgroundOperation<Value: Sendable>(
+        priority: TaskPriority,
+        operation: @escaping @Sendable () throws -> Value
+    ) async throws -> Value {
+        try await withThrowingTaskGroup(of: Value.self) { group in
+            group.addTask(priority: priority) {
+                try Task.checkCancellation()
+                let value = try operation()
+                try Task.checkCancellation()
+                return value
+            }
+
+            defer {
+                group.cancelAll()
+            }
+
+            guard let value = try await group.next() else {
+                throw CancellationError()
+            }
+
+            return value
+        }
+    }
+
+    /// Workspace mutations are intentionally detached from caller cancellation once they start.
+    /// Create/rename/delete are user-initiated write operations against the real workspace, and a
+    /// transient view-task cancellation should not interrupt them after coordination begins.
+    nonisolated private static func runDetachedMutationOperation<Value: Sendable>(
+        priority: TaskPriority,
+        operation: @escaping @Sendable () throws -> Value
+    ) async throws -> Value {
+        try await Task.detached(priority: priority) {
+            try operation()
+        }.value
+    }
 }
 
 private struct LiveWorkspaceFileCoordinator: WorkspaceFileCoordinating {
@@ -772,6 +881,8 @@ private struct LiveWorkspaceFileCoordinator: WorkspaceFileCoordinating {
 private struct ResolvedWorkspaceReference: Sendable {
     let url: URL
     let displayName: String
+    let workspaceID: String
+    let recentFileLookupPaths: [String]
     let isAccessible: Bool
 }
 

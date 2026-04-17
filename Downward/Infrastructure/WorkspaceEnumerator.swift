@@ -4,14 +4,32 @@ protocol WorkspaceEnumerating: Sendable {
     nonisolated func makeSnapshot(rootURL: URL, displayName: String) throws -> WorkspaceSnapshot
 }
 
+struct WorkspaceEnumerationDiagnostics: Equatable, Sendable {
+    nonisolated let skippedDescendantPaths: [String]
+}
+
 /// Walks the workspace recursively, keeping all real folders while filtering files down to supported types.
 struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
+    private let logger: DebugLogger?
+    private let onDiagnostics: (@Sendable (WorkspaceEnumerationDiagnostics) -> Void)?
+
+    nonisolated init(
+        logger: DebugLogger? = nil,
+        onDiagnostics: (@Sendable (WorkspaceEnumerationDiagnostics) -> Void)? = nil
+    ) {
+        self.logger = logger
+        self.onDiagnostics = onDiagnostics
+    }
+
     nonisolated func makeSnapshot(rootURL: URL, displayName: String) throws -> WorkspaceSnapshot {
+        var skippedDescendantPaths: [String] = []
         let rootNodes = try makeNodes(
             in: rootURL,
             within: rootURL,
-            allowsPartialFailure: false
+            allowsPartialFailure: false,
+            skippedDescendantPaths: &skippedDescendantPaths
         ) ?? []
+        emitDiagnosticsIfNeeded(skippedDescendantPaths)
 
         return WorkspaceSnapshot(
             rootURL: rootURL,
@@ -29,7 +47,8 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
     nonisolated private func makeNodes(
         in directoryURL: URL,
         within workspaceRootURL: URL,
-        allowsPartialFailure: Bool
+        allowsPartialFailure: Bool,
+        skippedDescendantPaths: inout [String]
     ) throws -> [WorkspaceNode]? {
         try Task.checkCancellation()
 
@@ -60,6 +79,9 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
                 throw error
             }
 
+            skippedDescendantPaths.append(
+                Self.diagnosticPath(for: directoryURL, within: workspaceRootURL)
+            )
             return nil
         }
 
@@ -77,6 +99,9 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
                     throw error
                 }
 
+                skippedDescendantPaths.append(
+                    Self.diagnosticPath(for: childURL, within: workspaceRootURL)
+                )
                 continue
             }
             let displayName = resourceValues.localizedName ?? resourceValues.name ?? childURL.lastPathComponent
@@ -94,7 +119,8 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
                 guard let children = try makeNodes(
                     in: childURL,
                     within: workspaceRootURL,
-                    allowsPartialFailure: true
+                    allowsPartialFailure: true,
+                    skippedDescendantPaths: &skippedDescendantPaths
                 ) else {
                     continue
                 }
@@ -156,6 +182,32 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
 
     nonisolated private static func shouldSkipDescendantFailure(_ error: Error) -> Bool {
         (error is CancellationError) == false
+    }
+
+    nonisolated private func emitDiagnosticsIfNeeded(_ skippedDescendantPaths: [String]) {
+        guard skippedDescendantPaths.isEmpty == false else {
+            return
+        }
+
+        let diagnostics = WorkspaceEnumerationDiagnostics(
+            skippedDescendantPaths: skippedDescendantPaths
+        )
+        onDiagnostics?(diagnostics)
+
+        let previewPaths = skippedDescendantPaths.prefix(3).joined(separator: ", ")
+        let suffix = skippedDescendantPaths.count > 3 ? ", ..." : ""
+        logger?.log(
+            category: "Workspace",
+            "Partial enumeration skipped \(skippedDescendantPaths.count) descendant(s): \(previewPaths)\(suffix)"
+        )
+    }
+
+    nonisolated private static func diagnosticPath(
+        for url: URL,
+        within workspaceRootURL: URL
+    ) -> String {
+        WorkspaceRelativePath.make(for: url, within: workspaceRootURL)
+            ?? url.lastPathComponent
     }
 }
 
