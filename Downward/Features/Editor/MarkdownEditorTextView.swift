@@ -87,6 +87,7 @@ extension MarkdownEditorTextView {
         ) {
             let previousConfiguration = self.configuration
             let previousIdentity = previousConfiguration?.documentIdentity
+            let liveText = textView.text ?? ""
             textView.isEditable = configuration.isEditable
             textView.isSelectable = true
             textView.accessibilityLabel = "Document Text"
@@ -95,6 +96,23 @@ extension MarkdownEditorTextView {
             if previousIdentity != configuration.documentIdentity {
                 textView.selectedRange = NSRange(location: 0, length: 0)
                 lastRevealedLineRange = nil
+            }
+
+            if
+                force == false,
+                textView.isFirstResponder,
+                previousIdentity == configuration.documentIdentity,
+                textView.markedTextRange == nil,
+                liveText != configuration.text
+            {
+                self.configuration = Configuration(
+                    text: liveText,
+                    documentIdentity: configuration.documentIdentity,
+                    font: configuration.font,
+                    syntaxMode: configuration.syntaxMode,
+                    isEditable: configuration.isEditable
+                )
+                return
             }
 
             guard force || needsRefresh(previousConfiguration: previousConfiguration, in: textView, for: configuration) else {
@@ -119,16 +137,12 @@ extension MarkdownEditorTextView {
                 return
             }
 
-            let updatedConfiguration = Configuration(
+            self.configuration = Configuration(
                 text: updatedText,
                 documentIdentity: configuration.documentIdentity,
                 font: configuration.font,
                 syntaxMode: configuration.syntaxMode,
                 isEditable: configuration.isEditable
-            )
-            applyRenderedText(
-                to: textView,
-                using: updatedConfiguration
             )
         }
 
@@ -136,7 +150,8 @@ extension MarkdownEditorTextView {
             guard
                 isApplyingProgrammaticChange == false,
                 let configuration,
-                configuration.syntaxMode == .hiddenOutsideCurrentLine
+                configuration.syntaxMode == .hiddenOutsideCurrentLine,
+                textView.markedTextRange == nil
             else {
                 return
             }
@@ -149,7 +164,16 @@ extension MarkdownEditorTextView {
                 return
             }
 
-            applyRenderedText(to: textView, using: configuration)
+            let currentText = textView.text ?? configuration.text
+            let updatedConfiguration = Configuration(
+                text: currentText,
+                documentIdentity: configuration.documentIdentity,
+                font: configuration.font,
+                syntaxMode: configuration.syntaxMode,
+                isEditable: configuration.isEditable
+            )
+            self.configuration = updatedConfiguration
+            applyRenderedText(to: textView, using: updatedConfiguration)
         }
 
         private func needsRefresh(
