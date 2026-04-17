@@ -1296,6 +1296,42 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testDeletePreviouslyOpenedButUnselectedFileDoesNotShowDeletedPopup() async {
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.openDocument = PreviewSampleData.cleanDocument
+        session.path = []
+        session.regularDetailSelection = .placeholder
+
+        let deletedSnapshot = makeWorkspaceSnapshotRemovingRootFile(
+            url: PreviewSampleData.cleanDocument.url
+        )
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: deletedSnapshot,
+                deleteOutcome: .deletedFile(
+                    url: PreviewSampleData.cleanDocument.url,
+                    displayName: PreviewSampleData.cleanDocument.displayName
+                )
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.deleteFile(at: PreviewSampleData.cleanDocument.url)
+
+        XCTAssertEqual(session.workspaceSnapshot, deletedSnapshot)
+        XCTAssertNil(session.openDocument)
+        XCTAssertNil(session.workspaceAlertError)
+        XCTAssertEqual(session.path, [])
+        XCTAssertEqual(session.regularDetailSelection, .placeholder)
+    }
+
+    @MainActor
     func testStaleObservedRevalidationAfterRenameDoesNotReattachOldDocumentState() async {
         let originalDocument = PreviewSampleData.dirtyDocument
         let renamedURL = PreviewSampleData.year2026URL.appending(path: "2026-04-13 Renamed.md")

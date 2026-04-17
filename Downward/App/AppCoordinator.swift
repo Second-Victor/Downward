@@ -997,6 +997,7 @@ final class AppCoordinator {
             let hadVisibleDeletedEditor = session.visibleEditorURL == url
                 || session.visibleEditorRelativePath == deletedRelativePath
             let shouldClearDeletedEditorPresentation = hadVisibleDeletedEditor || deletedOpenDocument
+            let shouldShowDeletedDocumentAlert = hadVisibleDeletedEditor || deletedPendingPresentation
 
             if deletedPendingPresentation {
                 session.pendingEditorPresentation = nil
@@ -1020,7 +1021,7 @@ final class AppCoordinator {
                 await clearRestorableDocumentSession()
             }
 
-            if shouldClearDeletedEditorPresentation || deletedPendingPresentation {
+            if shouldShowDeletedDocumentAlert {
                 session.workspaceAlertError = UserFacingError(
                     title: "Document Deleted",
                     message: "\(displayName) was deleted from the workspace.",
