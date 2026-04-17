@@ -216,10 +216,17 @@ actor LiveWorkspaceManager: WorkspaceManager {
                 for: normalizedName,
                 in: parentURL
             )
-            let destinationRelativePath = try Self.createOrRenameTargetRelativePath(
-                for: requestedDestinationURL,
-                within: securedRootURL
-            )
+            let parentRelativePath: String? = if WorkspaceIdentity.normalizedPath(for: parentURL)
+                == WorkspaceIdentity.normalizedPath(for: securedRootURL) {
+                nil
+            } else {
+                try Self.relativePath(for: parentURL, within: securedRootURL)
+            }
+            let destinationRelativePath = if let parentRelativePath, parentRelativePath.isEmpty == false {
+                "\(parentRelativePath)/\(requestedDestinationURL.lastPathComponent)"
+            } else {
+                requestedDestinationURL.lastPathComponent
+            }
 
             // Creation targets use the same workspace-boundary policy as existing descendants:
             // the validated parent container must remain real and in-root, and the candidate file
@@ -591,7 +598,7 @@ actor LiveWorkspaceManager: WorkspaceManager {
         within rootURL: URL,
         securedRootURL: URL
     ) throws -> URL {
-        if url == rootURL {
+        if WorkspaceIdentity.normalizedPath(for: url) == WorkspaceIdentity.normalizedPath(for: rootURL) {
             return securedRootURL
         }
 
@@ -620,29 +627,6 @@ actor LiveWorkspaceManager: WorkspaceManager {
         }
 
         return relativePath
-    }
-
-    nonisolated private static func createOrRenameTargetRelativePath(
-        for url: URL,
-        within rootURL: URL
-    ) throws -> String {
-        let urlComponents = url.standardizedFileURL.pathComponents
-        let rootComponents = rootURL.standardizedFileURL.pathComponents
-
-        guard
-            urlComponents.count > rootComponents.count,
-            urlComponents.starts(with: rootComponents)
-        else {
-            throw AppError.fileOperationFailed(
-                action: "Workspace File Operation",
-                name: url.lastPathComponent,
-                details: "The file is outside the current workspace."
-            )
-        }
-
-        return urlComponents
-            .dropFirst(rootComponents.count)
-            .joined(separator: "/")
     }
 
     nonisolated private static func renamedRelativePath(

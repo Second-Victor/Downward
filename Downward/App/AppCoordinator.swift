@@ -318,6 +318,10 @@ final class AppCoordinator {
             }
             return .success(document)
         } catch let error as AppError {
+            if let recentOpenError = recentFileOpenError(from: error, documentURL: url) {
+                return .failure(recentOpenError)
+            }
+
             if case let .workspaceAccessInvalid(displayName) = error {
                 let reconnectError = transitionToWorkspaceReconnectState(
                     displayName: session.currentWorkspaceName ?? displayName,
@@ -591,7 +595,8 @@ final class AppCoordinator {
 
     func presentEditor(
         relativePath: String,
-        preferredURL: URL? = nil
+        preferredURL: URL? = nil,
+        source: AppSession.EditorPresentationSource = .workspace
     ) {
         guard let routeURL = editorRouteURL(for: relativePath, preferredURL: preferredURL) else {
             return
@@ -601,7 +606,8 @@ final class AppCoordinator {
         session.editorAlertError = nil
         session.pendingEditorPresentation = .init(
             routeURL: routeURL,
-            relativePath: relativePath
+            relativePath: relativePath,
+            source: source
         )
         applyPresentedNavigationState(
             WorkspaceNavigationPolicy.stateForPresentedEditor(
@@ -977,26 +983,44 @@ final class AppCoordinator {
                 await saveRestorableDocumentSession(for: openDocument)
             }
         case let .deletedFile(url, displayName):
-            if let relativePath = WorkspaceRelativePath.make(for: url, within: mutationResult.snapshot.rootURL) {
+            let deletedRelativePath = previousSnapshot?.relativePath(for: url)
+            if let relativePath = deletedRelativePath {
                 recentFilesStore.removeItem(
                     using: mutationResult.snapshot,
                     relativePath: relativePath
                 )
             }
 
-            if session.openDocument?.url == url {
-                session.openDocument = nil
-                session.editorLoadError = nil
-                session.editorAlertError = nil
+            let deletedPendingPresentation = session.pendingEditorPresentation?.routeURL == url
+                || session.pendingEditorPresentation?.relativePath == deletedRelativePath
+            let deletedOpenDocument = session.openDocument?.url == url
+            let hadVisibleDeletedEditor = session.visibleEditorURL == url
+                || session.visibleEditorRelativePath == deletedRelativePath
+            let shouldClearDeletedEditorPresentation = hadVisibleDeletedEditor || deletedOpenDocument
+
+            if deletedPendingPresentation {
+                session.pendingEditorPresentation = nil
+            }
+
+            if shouldClearDeletedEditorPresentation {
                 session.applyNavigationState(
                     WorkspaceNavigationPolicy.removingEditorPresentation(
                         from: session.navigationState,
-                        workspaceRootURL: session.workspaceSnapshot?.rootURL,
-                        matchingRelativePath: nil,
+                        workspaceRootURL: previousSnapshot?.rootURL ?? session.workspaceSnapshot?.rootURL,
+                        matchingRelativePath: deletedRelativePath,
                         matchingURL: url
                     )
                 )
+                session.editorLoadError = nil
+                session.editorAlertError = nil
+            }
+
+            if deletedOpenDocument {
+                session.openDocument = nil
                 await clearRestorableDocumentSession()
+            }
+
+            if shouldClearDeletedEditorPresentation || deletedPendingPresentation {
                 session.workspaceAlertError = UserFacingError(
                     title: "Document Deleted",
                     message: "\(displayName) was deleted from the workspace.",
@@ -1182,6 +1206,39 @@ final class AppCoordinator {
         }
 
         return WorkspaceRelativePath.resolve(relativePath, within: workspaceRootURL)
+    }
+
+    /// Stale recent-file taps should clean up the entry immediately while keeping final file access
+    /// inside the existing document/workspace boundary checks.
+    private func recentFileOpenError(
+        from error: AppError,
+        documentURL: URL
+    ) -> UserFacingError? {
+        guard case .documentUnavailable = error else {
+            return nil
+        }
+
+        guard
+            let pendingPresentation = session.pendingEditorPresentation,
+            pendingPresentation.source == .recentFile,
+            pendingPresentation.routeURL == documentURL
+                || presentedEditorRelativePath(for: documentURL) == pendingPresentation.relativePath,
+            let snapshot = session.workspaceSnapshot
+        else {
+            return nil
+        }
+
+        recentFilesStore.removeItem(
+            using: snapshot,
+            relativePath: pendingPresentation.relativePath
+        )
+
+        let documentName = documentURL.lastPathComponent
+        return UserFacingError(
+            title: "Recent File Unavailable",
+            message: "\(documentName) is no longer available in this workspace.",
+            recoverySuggestion: "It was removed from Recent Files. Choose another file from the browser."
+        )
     }
 
     /// Browser/search/recent-file loads should resolve through the UI's trusted relative-path

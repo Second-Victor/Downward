@@ -474,6 +474,31 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
     }
 
     @MainActor
+    func testCreateFileAcceptsWorkspaceRootAliasURL() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+        let fileCoordinator = RecordingWorkspaceFileCoordinator()
+
+        let manager = makeLiveWorkspaceManager(
+            for: workspaceURL,
+            fileCoordinator: fileCoordinator
+        )
+        _ = await manager.selectWorkspace(at: workspaceURL)
+
+        let rootAliasURL = URL(filePath: "\(workspaceURL.path)/.")
+        let mutationResult = try await manager.createFile(named: "Notes", in: rootAliasURL)
+
+        guard case let .createdFile(url, displayName) = mutationResult.outcome else {
+            return XCTFail("Expected createdFile result.")
+        }
+
+        XCTAssertEqual(displayName, "Notes.md")
+        XCTAssertEqual(url, workspaceURL.appending(path: "Notes.md"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertEqual(fileCoordinator.createdURLs, [url])
+    }
+
+    @MainActor
     func testRenameFileUpdatesSnapshot() async throws {
         let workspaceURL = try makeTemporaryWorkspace()
         defer { removeItemIfPresent(at: workspaceURL) }

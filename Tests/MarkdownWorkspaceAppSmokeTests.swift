@@ -1254,6 +1254,48 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testDeletePendingEditorPresentationClearsStaleRouteAndShowsMessage() async {
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.path = [.trustedEditor(
+            PreviewSampleData.cleanDocument.url,
+            PreviewSampleData.cleanDocument.relativePath
+        )]
+        session.pendingEditorPresentation = .init(
+            routeURL: PreviewSampleData.cleanDocument.url,
+            relativePath: PreviewSampleData.cleanDocument.relativePath
+        )
+
+        let deletedSnapshot = makeWorkspaceSnapshotRemovingRootFile(
+            url: PreviewSampleData.cleanDocument.url
+        )
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: deletedSnapshot,
+                deleteOutcome: .deletedFile(
+                    url: PreviewSampleData.cleanDocument.url,
+                    displayName: PreviewSampleData.cleanDocument.displayName
+                )
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.deleteFile(at: PreviewSampleData.cleanDocument.url)
+
+        XCTAssertEqual(session.workspaceSnapshot, deletedSnapshot)
+        XCTAssertNil(session.pendingEditorPresentation)
+        XCTAssertEqual(session.path, [])
+        XCTAssertNil(session.editorLoadError)
+        XCTAssertNil(session.editorAlertError)
+        XCTAssertEqual(session.workspaceAlertError?.title, "Document Deleted")
+    }
+
+    @MainActor
     func testStaleObservedRevalidationAfterRenameDoesNotReattachOldDocumentState() async {
         let originalDocument = PreviewSampleData.dirtyDocument
         let renamedURL = PreviewSampleData.year2026URL.appending(path: "2026-04-13 Renamed.md")
@@ -2248,10 +2290,10 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
-    func testRecentFileOpenedFromSecondarySurfaceReopensCorrectEditorDocument() async throws {
+    func testRecentFileOpenedFromSecondarySurfaceUsesTrustedRelativePathIdentity() async throws {
         let workspaceURL = try makeTemporaryWorkspace(named: "RecentFileWorkspace")
         defer { removeItemIfPresent(at: workspaceURL) }
-        let fileURL = try createFile(
+        let canonicalFileURL = try createFile(
             named: "Inbox.md",
             contents: PreviewSampleData.cleanDocument.text,
             in: workspaceURL
@@ -2262,7 +2304,7 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
             rootNodes: [
                 .file(
                     .init(
-                        url: fileURL,
+                        url: canonicalFileURL,
                         displayName: "Inbox.md",
                         subtitle: "Root document"
                     )
@@ -2271,7 +2313,7 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
             lastUpdated: PreviewSampleData.previewDate
         )
         let document = OpenDocument(
-            url: fileURL,
+            url: canonicalFileURL,
             workspaceRootURL: workspaceURL,
             relativePath: "Inbox.md",
             displayName: "Inbox.md",
@@ -2293,13 +2335,16 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         session.launchState = .workspaceReady
         session.workspaceAccessState = .ready(displayName: snapshot.displayName)
         session.workspaceSnapshot = snapshot
+        let documentManager = RelativePathOnlyDocumentManager(
+            documentsByRelativePath: [document.relativePath: document]
+        )
         let coordinator = AppCoordinator(
             session: session,
             workspaceManager: StubWorkspaceManager(
                 bookmarkStore: StubBookmarkStore(),
                 readySnapshot: snapshot
             ),
-            documentManager: StubDocumentManager(sampleDocuments: [fileURL: document]),
+            documentManager: documentManager,
             recentFilesStore: recentFilesStore,
             errorReporter: DefaultErrorReporter(logger: DebugLogger()),
             folderPickerBridge: StubFolderPickerBridge(),
@@ -2323,20 +2368,138 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
 
         workspaceViewModel.openRecentFile(item)
         XCTAssertFalse(workspaceViewModel.isShowingRecentFiles)
+        XCTAssertEqual(session.path, [.trustedEditor(canonicalFileURL, document.relativePath)])
 
         let resolvedURL = try XCTUnwrap(session.path.last?.editorURL)
         editorViewModel.handleAppear(for: resolvedURL)
 
         try await waitUntil {
-            session.openDocument?.url == resolvedURL
+            session.openDocument?.relativePath == document.relativePath
         }
 
+        let openedRelativePaths = await documentManager.recordedOpenedRelativePaths()
+        let attemptedURLBasedOpenURLs = await documentManager.recordedURLBasedOpenAttempts()
+
+        XCTAssertEqual(session.openDocument?.url, canonicalFileURL)
         XCTAssertEqual(session.openDocument?.relativePath, document.relativePath)
         XCTAssertEqual(
             session.path,
-            [.trustedEditor(resolvedURL, document.relativePath)]
+            [.trustedEditor(canonicalFileURL, document.relativePath)]
         )
+        XCTAssertEqual(openedRelativePaths, [document.relativePath])
+        XCTAssertTrue(attemptedURLBasedOpenURLs.isEmpty)
         XCTAssertNil(session.editorLoadError)
+    }
+
+    @MainActor
+    func testStaleRecentFileOpenRemovesEntryAndShowsRecentSpecificError() async throws {
+        let workspaceURL = try makeTemporaryWorkspace(named: "StaleRecentWorkspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let snapshot = WorkspaceSnapshot(
+            rootURL: workspaceURL,
+            displayName: "Stale Recent Workspace",
+            rootNodes: [],
+            lastUpdated: PreviewSampleData.previewDate
+        )
+        let staleItem = RecentFileItem(
+            workspaceID: snapshot.workspaceID,
+            workspaceRootPath: workspaceURL.path,
+            relativePath: "Missing.md",
+            displayName: "Missing.md",
+            lastOpenedAt: PreviewSampleData.previewDate
+        )
+        let recentFilesStore = RecentFilesStore(initialItems: [staleItem])
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceAccessState = .ready(displayName: snapshot.displayName)
+        session.workspaceSnapshot = snapshot
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: snapshot
+            ),
+            documentManager: RelativePathOnlyDocumentManager(documentsByRelativePath: [:]),
+            recentFilesStore: recentFilesStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+        let workspaceViewModel = WorkspaceViewModel(
+            session: session,
+            coordinator: coordinator,
+            recentFilesStore: recentFilesStore
+        )
+        let editorViewModel = EditorViewModel(
+            session: session,
+            coordinator: coordinator,
+            editorAppearanceStore: EditorAppearanceStore(),
+            autosaveDelay: .milliseconds(20)
+        )
+
+        let item = try XCTUnwrap(workspaceViewModel.recentFiles.first)
+        workspaceViewModel.openRecentFile(item)
+
+        let routedURL = try XCTUnwrap(session.path.last?.editorURL)
+        editorViewModel.handleAppear(for: routedURL)
+
+        try await waitUntil {
+            session.editorLoadError?.title == "Recent File Unavailable"
+        }
+
+        XCTAssertTrue(recentFilesStore.items.isEmpty)
+        XCTAssertEqual(session.editorLoadError?.title, "Recent File Unavailable")
+        XCTAssertEqual(
+            session.editorLoadError?.recoverySuggestion,
+            "It was removed from Recent Files. Choose another file from the browser."
+        )
+    }
+
+    @MainActor
+    func testRemovingRecentFileFromSheetOnlyRemovesCurrentWorkspaceEntry() {
+        let snapshot = PreviewSampleData.nestedWorkspace
+        let currentWorkspaceItem = RecentFileItem(
+            workspaceID: snapshot.workspaceID,
+            workspaceRootPath: snapshot.rootURL.path,
+            relativePath: "References/README.md",
+            displayName: "README.md",
+            lastOpenedAt: PreviewSampleData.previewDate
+        )
+        let otherWorkspaceItem = RecentFileItem(
+            workspaceRootPath: "/preview/OtherWorkspace",
+            relativePath: "Elsewhere.md",
+            displayName: "Elsewhere.md",
+            lastOpenedAt: PreviewSampleData.previewDate.addingTimeInterval(-60)
+        )
+        let recentFilesStore = RecentFilesStore(
+            initialItems: [currentWorkspaceItem, otherWorkspaceItem]
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceAccessState = .ready(displayName: snapshot.displayName)
+        session.workspaceSnapshot = snapshot
+        let workspaceViewModel = WorkspaceViewModel(
+            session: session,
+            coordinator: AppCoordinator(
+                session: session,
+                workspaceManager: StubWorkspaceManager(
+                    bookmarkStore: StubBookmarkStore(),
+                    readySnapshot: snapshot
+                ),
+                documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+                recentFilesStore: recentFilesStore,
+                errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+                folderPickerBridge: StubFolderPickerBridge(),
+                logger: DebugLogger()
+            ),
+            recentFilesStore: recentFilesStore
+        )
+
+        workspaceViewModel.removeRecentFiles(at: IndexSet(integer: 0))
+
+        XCTAssertTrue(workspaceViewModel.recentFiles.isEmpty)
+        XCTAssertEqual(recentFilesStore.items.map(\.displayName), ["Elsewhere.md"])
     }
 
     @MainActor

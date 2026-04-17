@@ -87,10 +87,6 @@ final class WorkspaceViewModel {
         pendingDeleteFile?.displayName ?? "Delete File"
     }
 
-    var currentWorkspaceRootURL: URL {
-        session.workspaceSnapshot?.rootURL ?? URL(filePath: "/")
-    }
-
     var searchQueryDescription: String {
         searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -143,10 +139,30 @@ final class WorkspaceViewModel {
     }
 
     func openRecentFile(_ item: RecentFileItem) {
+        guard let snapshot = session.workspaceSnapshot else {
+            return
+        }
+
         isShowingRecentFiles = false
-        let preferredURL = session.workspaceSnapshot?.fileURL(forRelativePath: item.relativePath)
-            ?? item.url(in: currentWorkspaceRootURL)
-        openDocument(relativePath: item.relativePath, preferredURL: preferredURL)
+        coordinator.presentEditor(
+            relativePath: item.relativePath,
+            preferredURL: item.preferredRouteURL(in: snapshot),
+            source: .recentFile
+        )
+    }
+
+    func removeRecentFiles(at offsets: IndexSet) {
+        guard let snapshot = session.workspaceSnapshot else {
+            return
+        }
+
+        let itemsToRemove = offsets.compactMap { index in
+            recentFiles.indices.contains(index) ? recentFiles[index] : nil
+        }
+
+        for item in itemsToRemove {
+            recentFilesStore.removeItem(using: snapshot, relativePath: item.relativePath)
+        }
     }
 
     func toggleFolderExpansion(atRelativePath relativePath: String) {

@@ -236,6 +236,50 @@ final class RecentFilesStoreTests: XCTestCase {
 
         XCTAssertEqual(store.recentItems(for: movedWorkspaceSnapshot).map(\.displayName), ["Inbox.md"])
     }
+
+    @MainActor
+    func testRecentFileItemProvidesParentPathContextForDuplicateFilenames() {
+        let referencesItem = RecentFileItem(
+            workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+            relativePath: "References/README.md",
+            displayName: "README.md",
+            lastOpenedAt: PreviewSampleData.previewDate
+        )
+        let archiveItem = RecentFileItem(
+            workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+            relativePath: "Archive/README.md",
+            displayName: "README.md",
+            lastOpenedAt: PreviewSampleData.previewDate.addingTimeInterval(-60)
+        )
+        let rootItem = RecentFileItem(
+            workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+            relativePath: "Inbox.md",
+            displayName: "Inbox.md",
+            lastOpenedAt: PreviewSampleData.previewDate.addingTimeInterval(-120)
+        )
+
+        XCTAssertEqual(referencesItem.pathContextText, "References")
+        XCTAssertEqual(archiveItem.pathContextText, "Archive")
+        XCTAssertNotEqual(referencesItem.pathContextText, archiveItem.pathContextText)
+        XCTAssertEqual(rootItem.pathContextText, "Workspace root")
+    }
+
+    @MainActor
+    func testRecentFilePreferredRouteURLFallsBackToRelativeResolutionWhenSnapshotNoLongerContainsFile() {
+        let item = RecentFileItem(
+            workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+            relativePath: "Archive/Missing.md",
+            displayName: "Missing.md",
+            lastOpenedAt: PreviewSampleData.previewDate
+        )
+
+        let preferredRouteURL = item.preferredRouteURL(in: PreviewSampleData.nestedWorkspace)
+
+        XCTAssertEqual(
+            preferredRouteURL,
+            PreviewSampleData.workspaceRootURL.appending(path: "Archive/Missing.md")
+        )
+    }
 }
 
 private struct LegacyRecentFileItemPayload: Codable {

@@ -108,6 +108,42 @@ struct WorkspaceScreen: View {
     }
 }
 
+#Preview("Recent Files") {
+    NavigationStack {
+        WorkspaceScreen(
+            viewModel: {
+                let container = AppContainer.preview(
+                    launchState: .workspaceReady,
+                    accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+                    snapshot: PreviewSampleData.nestedWorkspace,
+                    recentFiles: [
+                        RecentFileItem(
+                            workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                            relativePath: "References/README.md",
+                            displayName: "README.md",
+                            lastOpenedAt: PreviewSampleData.previewDate
+                        ),
+                        RecentFileItem(
+                            workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                            relativePath: "Archive/README.md",
+                            displayName: "README.md",
+                            lastOpenedAt: PreviewSampleData.previewDate.addingTimeInterval(-3_600)
+                        ),
+                        RecentFileItem(
+                            workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                            relativePath: "Projects/Client A/2026/Q2/Launch Prep/Meeting Notes/README.md",
+                            displayName: "README.md",
+                            lastOpenedAt: PreviewSampleData.previewDate.addingTimeInterval(-7_200)
+                        ),
+                    ]
+                )
+                return container.workspaceViewModel
+            }(),
+            navigationMode: .stackPath
+        )
+    }
+}
+
 #Preview("Loading") {
     NavigationStack {
         WorkspaceScreen(

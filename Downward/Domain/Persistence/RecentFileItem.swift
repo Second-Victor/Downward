@@ -26,6 +26,37 @@ struct RecentFileItem: Codable, Equatable, Hashable, Identifiable, Sendable {
         "\(workspaceID)::\(relativePath)"
     }
 
+    nonisolated var fullRelativePathText: String {
+        relativePath
+    }
+
+    nonisolated var isAtWorkspaceRoot: Bool {
+        relativePath.split(separator: "/", omittingEmptySubsequences: true).count <= 1
+    }
+
+    /// Recent-file rows show the parent folder path so duplicate filenames stay easy to distinguish.
+    nonisolated var pathContextText: String {
+        guard isAtWorkspaceRoot == false else {
+            return "Workspace root"
+        }
+
+        return relativePath
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .dropLast()
+            .joined(separator: "/")
+    }
+
+    nonisolated var pathContextSymbolName: String {
+        isAtWorkspaceRoot ? "tray.full" : "folder"
+    }
+
+    /// Route URLs are secondary presentation metadata only; recent-file identity still comes from
+    /// the trusted workspace-relative path carried alongside the route.
+    nonisolated func preferredRouteURL(in snapshot: WorkspaceSnapshot) -> URL {
+        snapshot.fileURL(forRelativePath: relativePath)
+            ?? WorkspaceRelativePath.resolve(relativePath, within: snapshot.rootURL)
+    }
+
     nonisolated func url(in workspaceRootURL: URL) -> URL? {
         WorkspaceRelativePath.resolveExisting(relativePath, within: workspaceRootURL)
     }

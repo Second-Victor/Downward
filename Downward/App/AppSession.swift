@@ -17,9 +17,25 @@ enum WorkspaceNavigationLayout: Equatable {
 @MainActor
 @Observable
 final class AppSession {
+    enum EditorPresentationSource: Equatable {
+        case workspace
+        case recentFile
+    }
+
     struct PendingEditorPresentation: Equatable {
         let routeURL: URL
         let relativePath: String
+        let source: EditorPresentationSource
+
+        init(
+            routeURL: URL,
+            relativePath: String,
+            source: EditorPresentationSource = .workspace
+        ) {
+            self.routeURL = routeURL
+            self.relativePath = relativePath
+            self.source = source
+        }
     }
 
     var launchState: RootLaunchState = .noWorkspaceSelected

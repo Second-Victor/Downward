@@ -19,8 +19,8 @@ struct WorkspaceFolderScreen: View {
                     message: "This workspace does not contain any supported files yet."
                 )
             } else {
-                List {
-                    Section {
+                if navigationMode == .splitSidebar {
+                    List {
                         WorkspaceTreeRows(
                             viewModel: viewModel,
                             nodes: viewModel.nodes,
@@ -29,10 +29,26 @@ struct WorkspaceFolderScreen: View {
                             navigationMode: navigationMode
                         )
                     }
-                }
-                .listStyle(.insetGrouped)
-                .refreshable {
-                    await viewModel.refreshFromPullToRefresh()
+                    .listStyle(.sidebar)
+                    .refreshable {
+                        await viewModel.refreshFromPullToRefresh()
+                    }
+                } else {
+                    List {
+                        Section {
+                            WorkspaceTreeRows(
+                                viewModel: viewModel,
+                                nodes: viewModel.nodes,
+                                parentRelativePath: nil,
+                                depth: 0,
+                                navigationMode: navigationMode
+                            )
+                        }
+                    }
+                    .listStyle(.insetGrouped)
+                    .refreshable {
+                        await viewModel.refreshFromPullToRefresh()
+                    }
                 }
             }
         }
@@ -282,7 +298,7 @@ private struct WorkspaceTreeRow: View {
             .contextMenu {
                 fileContextMenu
             }
-            .swipeActions {
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 fileSwipeActions
             }
         } else {
@@ -301,7 +317,7 @@ private struct WorkspaceTreeRow: View {
             .contextMenu {
                 fileContextMenu
             }
-            .swipeActions {
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 fileSwipeActions
             }
         }
@@ -335,11 +351,12 @@ private struct WorkspaceTreeRow: View {
         }
         .tint(.accentColor)
 
-        Button("Delete", systemImage: "trash", role: .destructive) {
+        Button("Delete", systemImage: "trash") {
             if case let .file(file) = node {
                 viewModel.presentDelete(for: file)
             }
         }
+        .tint(.red)
     }
 }
 
