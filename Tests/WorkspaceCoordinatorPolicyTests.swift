@@ -32,6 +32,24 @@ final class WorkspaceCoordinatorPolicyTests: XCTestCase {
         XCTAssertEqual(updatedState.regularDetailSelection, .placeholder)
     }
 
+    func testPresentedEditorInCompactModeCarriesTrustedRelativeIdentity() {
+        let updatedState = WorkspaceNavigationPolicy.stateForPresentedEditor(
+            relativePath: PreviewSampleData.cleanDocument.relativePath,
+            routeURL: PreviewSampleData.cleanDocument.url,
+            layout: .compact,
+            existingNavigationState: .placeholder
+        )
+
+        XCTAssertEqual(
+            updatedState.path,
+            [.trustedEditor(
+                PreviewSampleData.cleanDocument.url,
+                PreviewSampleData.cleanDocument.relativePath
+            )]
+        )
+        XCTAssertEqual(updatedState.regularDetailSelection, .placeholder)
+    }
+
     func testReplacingEditorPresentationUpdatesMatchingRouteAndSelection() {
         let renamedURL = PreviewSampleData.workspaceRootURL.appending(path: "Inbox Renamed.md")
         let initialState = WorkspaceNavigationState(

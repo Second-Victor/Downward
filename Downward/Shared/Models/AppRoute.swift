@@ -2,19 +2,30 @@ import Foundation
 
 enum AppRoute: Hashable, Sendable {
     case editor(URL)
+    case trustedEditor(URL, String)
     case settings
 
     var isEditor: Bool {
-        if case .editor = self {
+        switch self {
+        case .editor, .trustedEditor:
             return true
+        case .settings:
+            return false
         }
-
-        return false
     }
 
     var editorURL: URL? {
-        if case let .editor(url) = self {
+        switch self {
+        case let .editor(url), let .trustedEditor(url, _):
             return url
+        case .settings:
+            return nil
+        }
+    }
+
+    var editorRelativePath: String? {
+        if case let .trustedEditor(_, relativePath) = self {
+            return relativePath
         }
 
         return nil
@@ -25,6 +36,13 @@ enum AppRoute: Hashable, Sendable {
             return self
         }
 
-        return .editor(newURL)
+        switch self {
+        case .editor:
+            return .editor(newURL)
+        case let .trustedEditor(_, relativePath):
+            return .trustedEditor(newURL, relativePath)
+        case .settings:
+            return .settings
+        }
     }
 }

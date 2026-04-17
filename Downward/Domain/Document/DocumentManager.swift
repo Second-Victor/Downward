@@ -2,9 +2,10 @@ import Foundation
 
 /// Loads text documents and maps them into the in-memory editor model.
 protocol DocumentManager: Sendable {
-    /// Opens a document by resolving its path relative to the active workspace root.
+    /// Compatibility/non-browser entry point when the caller only has a file URL.
+    /// Browser/search/recent-file flows should prefer `openDocument(atRelativePath:in:)`.
     func openDocument(at url: URL, in workspaceRootURL: URL) async throws -> OpenDocument
-    /// Opens a document using trusted workspace-relative identity when the caller already knows it.
+    /// Primary browser/search/recent-file entry point once trusted workspace-relative identity is known.
     func openDocument(atRelativePath relativePath: String, in workspaceRootURL: URL) async throws -> OpenDocument
     func reloadDocument(from document: OpenDocument) async throws -> OpenDocument
     /// Revalidates the active document using the same policy as live observation:
@@ -24,6 +25,8 @@ protocol DocumentManager: Sendable {
 }
 
 extension DocumentManager {
+    /// Default compatibility path for simple test doubles. Production browser/search callers should
+    /// still prefer the explicit relative-path API instead of relying on this lexical resolution.
     func openDocument(
         atRelativePath relativePath: String,
         in workspaceRootURL: URL

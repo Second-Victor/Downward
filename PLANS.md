@@ -1,293 +1,162 @@
 # PLANS.md
 
-## Goal of the next stage
+## Current stage
 
-The hardening stage described in this document is now largely complete.
-The next stage of Downward should build on that foundation rather than reopening the same trust/state passes.
+Downward has completed its main **correctness and hardening stage**.
 
-The codebase is already beyond prototype stage.
-The right plan now is:
+The project should now move in a different mode:
 
-1. preserve the hardened file-safety, restore, and cancellation boundaries,
-2. keep scaling limits explicit before larger browser/search/editor work lands,
-3. use the stronger base for richer product work without re-centralizing responsibility.
+- preserve the file-safety and state-consistency boundaries already earned,
+- grow the product in small, deliberate passes,
+- avoid reopening the old emergency-hardening loop unless a new regression proves it is necessary.
 
 ---
 
-## Guiding principle
+## What changed since the last plan
 
-Treat the next roadmap as **expansion on top of hardened boundaries**.
+The repo is no longer primarily about:
 
-Downward still edits real user files in a user-selected folder.
-That means new feature work must preserve the recent hardening around workspace trust, snapshot application, cancellation, restore, and editor ownership.
+- fixing workspace containment,
+- fixing refresh-vs-mutation winner rules,
+- fixing cancellation on read-side I/O,
+- repairing compact vs regular navigation,
+- repairing browser/search open identity.
 
----
+Those areas now form the **current foundation**.
 
-## Phase 0 — Trust and state correctness
+The new plan should therefore optimize for:
 
-Status: completed foundation work.
-
-### P0.1 Harden the workspace containment boundary
-
-**Why first**
-
-This is the only finding that directly threatens the app’s core trust model.
-The app must not be able to follow redirected descendants outside the chosen workspace.
-
-**Deliverables**
-
-- define redirected-descendant policy,
-- skip or explicitly reject symbolic links / other escape paths,
-- enforce containment in enumeration, open/save, and file mutations,
-- add tests for symlinked files and folders.
-
-**Exit condition**
-
-The app can clearly say: “Only files truly inside the chosen workspace are surfaced and mutated.”
-
-### P0.2 Unify snapshot winner policy across refreshes and mutations
-
-**Why now**
-
-The app already solved refresh-vs-refresh.
-It still needs one coherent rule for refresh-vs-mutation.
-That is the next biggest source-of-truth issue.
-
-**Deliverables**
-
-- one winning workspace state application boundary,
-- no older refresh can overwrite post-mutation browser state,
-- browser/document/recent-file reconciliation always runs against the winning snapshot,
-- UI does not allow accidental mutation/refresh interleaving without a defined policy.
-
-**Exit condition**
-
-All workspace state replacements are ordered and intentional.
-
-### P0.3 Remove `Task.detached` from cancelable read-side I/O
-
-**Why now**
-
-The UI already avoids many stale-apply bugs.
-The next problem is wasted background work and weak cancellation semantics.
-
-**Deliverables**
-
-- refresh/open/revalidate work inherits cancellation cleanly,
-- generation guards remain, but cancellation now also stops unnecessary work sooner,
-- tests prove cancellation behavior where practical.
-
-**Exit condition**
-
-Canceled loads/refreshes are cheap no-ops, not silently continuing background file work.
+1. **safe feature velocity**,
+2. **pressure-point discipline**,
+3. **explicit scaling limits**,
+4. **keeping the docs and tests truthful as the product grows**.
 
 ---
 
-## Phase 1 — Ownership hardening
+## Phase 1 — Protect the current foundation
 
-Status: completed foundation work.
+### 1.1 Lock in browser/search open identity
 
-### P1.1 Reduce coordinator pressure without rewriting the architecture
+The most recent serious regression was the file-open break caused by mixed URL identity and trusted relative identity.
 
-**Why now**
+Before broader feature work, add one explicit regression pass so the following stays impossible to break casually:
 
-`AppCoordinator` is still the main policy sink.
-If feature work continues before this pressure is reduced, every new behavior will keep piling into one file.
+- tree row open,
+- search result open,
+- regular-detail pending presentation,
+- trusted relative-path document loading.
 
-**Deliverables**
+### 1.2 Keep the “allowed `Task.detached`” rule explicit
 
-- extract smaller helpers/controllers around:
-  - workspace state application,
-  - document presentation/restore reconciliation,
-  - maybe error routing,
-- preserve today’s behavior and tests,
-- make it easier to change one domain without touching all others.
+The repo now appears to reserve detached tasks for write/mutation work that should outlive transient caller cancellation.
+That is a good rule.
+It should remain visible in code comments and tests.
 
-**Exit condition**
+### 1.3 Keep docs active, not historical
 
-`AppCoordinator` remains the top orchestrator, but not the implementation home for every policy rule.
-
-### P1.2 Scope error ownership by surface
-
-**Why now**
-
-Global error slots will become harder to reason about as the app gains richer search/settings/editor flows.
-
-**Deliverables**
-
-- explicit launch/reconnect errors,
-- workspace/browser alert channel,
-- editor-local failure channel,
-- fewer unrelated flows writing to the same slot.
-
-**Exit condition**
-
-Error lifetime is explainable without reading half the app.
-
-### P1.3 Make fallback observation truly degraded mode
-
-**Why now**
-
-The current fallback behavior is acceptable for today, but it is not the right steady-state architecture.
-Fixing it now will keep editor trust simpler before more editor features arrive.
-
-**Deliverables**
-
-- explicit trigger or policy for fallback mode,
-- lighter ongoing polling burden,
-- lightweight diagnostics around which observation mode is active.
-
-**Exit condition**
-
-File presenter callbacks are primary; fallback is obviously secondary.
-
-### P1.4 Make new-workspace selection persistence transactional
-
-**Why now**
-
-Restore/reconnect behavior is too important to leave selection persistence half-ordered.
-
-**Deliverables**
-
-- successful first snapshot before bookmark becomes current persisted workspace,
-- or rollback behavior on failed selection,
-- tests covering failed-selection persistence.
-
-**Exit condition**
-
-Failed selections do not silently become tomorrow’s restore target.
+Do not let `TASKS.md` and `PLANS.md` turn back into a ledger of already-completed emergency fixes.
+They should keep steering the next real work.
 
 ---
 
-## Phase 2 — Scalability groundwork
+## Phase 2 — Resume product work safely
 
-Status: early groundwork is complete; larger-scale follow-up remains future-facing.
+### 2.1 Settings and editor polish
 
-Important framing:
+The codebase is stable enough for more settings and editor improvements.
+These are good next feature areas because they add visible value without forcing an immediate redesign.
 
-- the current whole-snapshot workspace model is still the correct base for today’s product because it keeps refresh, restore, reconnect, and mutation reconciliation simple and trustworthy,
-- Phase 2 is not about replacing that model early,
-- it is about documenting and preparing for the point where very large trees or richer search would need a more scalable browser/search layer than “replace the accepted snapshot and rescan it.”
+Conditions:
 
-### P2.1 Stabilize workspace identity beyond absolute path strings
+- no regression in autosave calmness,
+- no regression in conflict presentation,
+- no new global state routing through `AppCoordinator` unless it truly belongs there.
 
-**Why**
+### 2.2 Browser polish and workflow improvements
 
-Recent files currently depend on absolute workspace path.
-That is too weak for bookmark-based restore/reconnect over time.
+The inline tree model is now the right product direction.
+Future browser work should focus on:
 
-**Deliverables**
+- faster workflow,
+- better metadata and row affordances,
+- stronger recents/search integration,
+- without regressing trusted relative-path identity.
 
-- more stable workspace identity for recent files and related persistence,
-- clear migration behavior for existing stored items.
+### 2.3 Search improvements, still within the simple model
 
-### P2.2 Separate search presentation from the tree row model
-
-**Why**
-
-The app currently reuses one row style for tree and search, and path disambiguation suffered.
-The browser and search result surfaces now have different needs.
-
-**Deliverables**
-
-- browser row optimized for inline tree browsing,
-- search row optimized for filename + path disambiguation,
-- tests/previews that reflect the difference.
-
-### P2.3 Move search off the hot render path
-
-**Why**
-
-Whole-tree synchronous search is fine today, but not a scalable base.
-
-**Deliverables**
-
-- cached/debounced search state in the view model,
-- a documented threshold for when a proper index or other derived search structure becomes necessary,
-- no regression in simple filename/path search.
-
-### P2.4 Document the single-document model and its future escape hatch
-
-**Why**
-
-This project is still intentionally single-document.
-That should remain explicit before anyone tries to bolt on multi-pane behavior.
-
-**Deliverables**
-
-- architecture docs clearly state the limit,
-- any future multi-pane proposal starts with an explicit ownership redesign instead of incidental changes.
-
-### P2.5 Document the whole-snapshot browser/search scaling boundary
-
-**Why**
-
-Whole-snapshot replacement is clean and appropriate for the current app.
-It is also the place future contributors are most likely to accidentally overextend once they start thinking about larger workspaces, richer search, or more incremental browser behavior.
-
-**Deliverables**
-
-- docs explicitly state why the current snapshot model is the right tradeoff today,
-- docs explicitly state which future features would require a more scalable browser/search model,
-- no speculative fake index/diff architecture is introduced ahead of actual need.
+Filename/path search is good enough today.
+Add improvements only while the current whole-snapshot model still feels natural.
+When that stops being true, treat that as a design milestone, not an incidental refactor.
 
 ---
 
-## Phase 3 — Cleanup and contributor ergonomics
+## Phase 3 — Manage the known pressure points
 
-Status: baseline cleanup is complete; future work here should stay incremental.
+### 3.1 Coordinator discipline
 
-### P3.1 Remove dead or half-migrated APIs
+`AppCoordinator` is still a large file.
+Do not rewrite it now.
+Instead, use this decision rule:
 
-Targets include:
+- if a new rule is specific to navigation state, prefer `WorkspaceNavigationPolicy`,
+- if a new rule is specific to applying/reconciling workspace state, prefer `WorkspaceSessionPolicy`,
+- if a new rule is editor-local, prefer `EditorViewModel` or document-layer ownership,
+- only keep logic inline in the coordinator when it is truly orchestration.
 
-- unused lifecycle observer state,
-- old browser helper APIs that no longer drive live UI,
-- dead row/model helpers,
-- preview-only leftovers that imply obsolete navigation patterns.
+### 3.2 Document-session discipline
 
-### P3.2 Align previews with live product behavior
+`PlainTextDocumentSession` is still dense.
+Future work should protect it by keeping non-file-session concerns out of it.
 
-Previews should reflect:
+A split should happen only when a real seam is obvious, such as:
 
-- inline tree browsing,
-- current row metadata,
-- search result disambiguation,
-- actual compact vs regular navigation assumptions.
+- observation policy,
+- coordinated read/write helpers,
+- conflict mapping,
+- diagnostics.
 
-### P3.3 Add diagnostics where the app currently “fails quietly” by design
+### 3.3 View-model discipline
 
-Especially around:
-
-- partial enumeration skips,
-- fallback observation mode,
-- workspace reconnect causes.
-
----
-
-## What should still wait for explicit design
-
-The following should not become casual incremental work without an explicit design pass:
-
-- multi-pane or multi-window editor experiments,
-- content search or other indexed search behavior,
-- very large-workspace browser work that assumes whole-snapshot replacement will scale indefinitely,
-- optimistic/incremental snapshot UI work.
-
-The current base is good enough to evolve, but these still need intentional design boundaries first.
+`WorkspaceViewModel` and `EditorViewModel` are both meaningful product seams now.
+Use them for presentation behavior, not as dumping grounds for new domain logic.
 
 ---
 
-## Recommended execution order from here
+## Phase 4 — Be explicit about scale limits
 
-1. keep new feature work inside the current single-document and whole-snapshot boundaries
-2. tighten preview/sample-data realism whenever UI surfaces change materially
-3. design browser/search scaling intentionally before content search or very large-workspace work
-4. revisit the coordinator/document ownership boundaries only when a concrete feature genuinely needs it
+## Whole-snapshot model
+
+The current workspace model is still:
+
+- one `WorkspaceSnapshot`,
+- whole-tree replacement on refresh/mutation application,
+- direct filename/path search over the current snapshot,
+- one live editor document/session at a time.
+
+That is a valid model for the current product.
+It is also the key scaling boundary.
+
+### What should trigger a design revisit
+
+Treat the following as signals that the app is approaching the edge of the current model:
+
+- content search,
+- very large workspaces with slow snapshot churn,
+- multi-pane or multi-window editing,
+- richer live browser synchronization,
+- more advanced recent-file/session restoration behavior.
+
+When one of those becomes a real near-term feature, plan a design pass first.
+Do not try to stretch the current model silently.
 
 ---
 
-## Exit criteria for this roadmap stage
+## Practical next sequence
 
-This roadmap stage is now materially complete.
-The next meaningful exit criteria should be tied to whichever future feature boundary is chosen next, not to re-proving the hardening work that already landed.
+1. Add one explicit regression pass for browser/search/document open identity.
+2. Start the next user-visible feature pass in settings or editor polish.
+3. Keep browser polish relative-path-first.
+4. Refuse opportunistic complexity inside the largest files.
+5. Revisit architecture only when a real feature forces a boundary change.
+
+That is the right balance for the current repo: **protect what was hardened, then ship visible value carefully.**

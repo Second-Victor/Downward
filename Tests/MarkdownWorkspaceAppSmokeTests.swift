@@ -1790,7 +1790,7 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         workspaceViewModel.searchQuery = "read"
         let result = try XCTUnwrap(workspaceViewModel.searchResults.first)
 
-        container.session.path = [.editor(result.url)]
+        container.session.path = [.trustedEditor(result.url, result.relativePath)]
         editorViewModel.handleAppear(for: result.url)
 
         try await waitUntil {
@@ -1799,7 +1799,7 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
 
         XCTAssertEqual(container.session.openDocument?.displayName, result.displayName)
         XCTAssertEqual(container.session.openDocument?.relativePath, result.relativePath)
-        XCTAssertEqual(container.session.path, [.editor(result.url)])
+        XCTAssertEqual(container.session.path, [.trustedEditor(result.url, result.relativePath)])
         XCTAssertNil(container.session.editorLoadError)
     }
 
@@ -1836,7 +1836,10 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
             autosaveDelay: .milliseconds(20)
         )
 
-        workspaceViewModel.openDocument(PreviewSampleData.cleanDocument.url)
+        workspaceViewModel.openDocument(
+            relativePath: PreviewSampleData.cleanDocument.relativePath,
+            preferredURL: PreviewSampleData.cleanDocument.url
+        )
         let routedURL = try XCTUnwrap(session.path.last?.editorURL)
         editorViewModel.handleAppear(for: routedURL)
 
@@ -1887,7 +1890,10 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
             autosaveDelay: .milliseconds(20)
         )
 
-        workspaceViewModel.openDocument(nestedDocument.url)
+        workspaceViewModel.openDocument(
+            relativePath: nestedDocument.relativePath,
+            preferredURL: nestedDocument.url
+        )
         let routedURL = try XCTUnwrap(session.path.last?.editorURL)
         editorViewModel.handleAppear(for: routedURL)
 
@@ -1955,6 +1961,92 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         XCTAssertEqual(session.openDocument?.displayName, result.displayName)
         XCTAssertEqual(openedRelativePaths, [result.relativePath])
         XCTAssertTrue(attemptedURLBasedOpenURLs.isEmpty)
+        XCTAssertNil(session.editorLoadError)
+    }
+
+    @MainActor
+    func testTrustedRelativeBrowserOpenDoesNotBecomeNoOpBeforeDocumentLoad() {
+        let container = AppContainer.preview(
+            launchState: .workspaceReady,
+            accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+            snapshot: PreviewSampleData.nestedWorkspace
+        )
+
+        container.workspaceViewModel.openDocument(
+            relativePath: PreviewSampleData.cleanDocument.relativePath,
+            preferredURL: PreviewSampleData.cleanDocument.url
+        )
+
+        XCTAssertEqual(
+            container.session.path,
+            [.trustedEditor(
+                PreviewSampleData.cleanDocument.url,
+                PreviewSampleData.cleanDocument.relativePath
+            )]
+        )
+        XCTAssertEqual(
+            container.session.visibleEditorRelativePath,
+            PreviewSampleData.cleanDocument.relativePath
+        )
+    }
+
+    @MainActor
+    func testTrustedCompactRouteShowsOpenedDocumentWhenResolvedURLDiffersFromRouteURL() async throws {
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        let preferredRouteURL = URL(
+            filePath: "\(PreviewSampleData.workspaceRootURL.path)/References/../Inbox.md"
+        )
+        XCTAssertNotEqual(preferredRouteURL, PreviewSampleData.cleanDocument.url)
+
+        let documentManager = RelativePathOnlyDocumentManager(
+            documentsByRelativePath: [
+                PreviewSampleData.cleanDocument.relativePath: PreviewSampleData.cleanDocument,
+            ]
+        )
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: PreviewSampleData.nestedWorkspace
+            ),
+            documentManager: documentManager,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+        let workspaceViewModel = WorkspaceViewModel(
+            session: session,
+            coordinator: coordinator,
+            recentFilesStore: RecentFilesStore(initialItems: [])
+        )
+        let editorViewModel = EditorViewModel(
+            session: session,
+            coordinator: coordinator,
+            editorAppearanceStore: EditorAppearanceStore(),
+            autosaveDelay: .milliseconds(20)
+        )
+
+        workspaceViewModel.openDocument(
+            relativePath: PreviewSampleData.cleanDocument.relativePath,
+            preferredURL: preferredRouteURL
+        )
+
+        let routedURL = try XCTUnwrap(session.path.last?.editorURL)
+        XCTAssertEqual(routedURL, preferredRouteURL)
+
+        editorViewModel.handleAppear(for: routedURL)
+
+        try await waitUntil {
+            editorViewModel.currentRouteDocument?.relativePath == PreviewSampleData.cleanDocument.relativePath
+        }
+
+        XCTAssertEqual(session.openDocument?.url, PreviewSampleData.cleanDocument.url)
+        XCTAssertEqual(
+            editorViewModel.currentRouteDocument?.relativePath,
+            PreviewSampleData.cleanDocument.relativePath
+        )
         XCTAssertNil(session.editorLoadError)
     }
 
@@ -2080,11 +2172,17 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         )
         let workspaceViewModel = container.workspaceViewModel
 
-        workspaceViewModel.openDocument(PreviewSampleData.cleanDocument.url)
+        workspaceViewModel.openDocument(
+            relativePath: PreviewSampleData.cleanDocument.relativePath,
+            preferredURL: PreviewSampleData.cleanDocument.url
+        )
 
         XCTAssertEqual(
             container.session.path,
-            [.editor(PreviewSampleData.cleanDocument.url)]
+            [.trustedEditor(
+                PreviewSampleData.cleanDocument.url,
+                PreviewSampleData.cleanDocument.relativePath
+            )]
         )
     }
 
@@ -2234,7 +2332,10 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         }
 
         XCTAssertEqual(session.openDocument?.relativePath, document.relativePath)
-        XCTAssertEqual(session.path, [.editor(resolvedURL)])
+        XCTAssertEqual(
+            session.path,
+            [.trustedEditor(resolvedURL, document.relativePath)]
+        )
         XCTAssertNil(session.editorLoadError)
     }
 

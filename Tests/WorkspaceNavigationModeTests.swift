@@ -16,14 +16,20 @@ final class WorkspaceNavigationModeTests: XCTestCase {
     }
 
     @MainActor
-    func testWorkspaceViewModelProgrammaticFileOpenUsesOnlyEditorRoute() {
+    func testWorkspaceViewModelRelativePathOpenUsesTrustedEditorRoute() {
         let (session, coordinator, viewModel) = makeWorkspaceSystem()
 
-        viewModel.openDocument(PreviewSampleData.cleanDocument.url)
+        viewModel.openDocument(
+            relativePath: PreviewSampleData.cleanDocument.relativePath,
+            preferredURL: PreviewSampleData.cleanDocument.url
+        )
 
         XCTAssertEqual(
             session.path,
-            [.editor(PreviewSampleData.cleanDocument.url)]
+            [.trustedEditor(
+                PreviewSampleData.cleanDocument.url,
+                PreviewSampleData.cleanDocument.relativePath
+            )]
         )
         XCTAssertEqual(session.regularDetailSelection, .placeholder)
 
@@ -195,7 +201,13 @@ final class WorkspaceNavigationModeTests: XCTestCase {
 
         coordinator.updateNavigationLayout(.compact)
 
-        XCTAssertEqual(session.path, [.editor(PreviewSampleData.cleanDocument.url)])
+        XCTAssertEqual(
+            session.path,
+            [.trustedEditor(
+                PreviewSampleData.cleanDocument.url,
+                PreviewSampleData.cleanDocument.relativePath
+            )]
+        )
         XCTAssertEqual(session.regularDetailSelection, .placeholder)
     }
 
@@ -217,7 +229,13 @@ final class WorkspaceNavigationModeTests: XCTestCase {
 
         coordinator.updateNavigationLayout(.compact)
 
-        XCTAssertEqual(session.path, [.editor(PreviewSampleData.dirtyDocument.url)])
+        XCTAssertEqual(
+            session.path,
+            [.trustedEditor(
+                PreviewSampleData.dirtyDocument.url,
+                PreviewSampleData.dirtyDocument.relativePath
+            )]
+        )
     }
 
     @MainActor
@@ -234,7 +252,13 @@ final class WorkspaceNavigationModeTests: XCTestCase {
 
         coordinator.updateNavigationLayout(.compact)
 
-        XCTAssertEqual(session.path, [.editor(PreviewSampleData.cleanDocument.url)])
+        XCTAssertEqual(
+            session.path,
+            [.trustedEditor(
+                PreviewSampleData.cleanDocument.url,
+                PreviewSampleData.cleanDocument.relativePath
+            )]
+        )
     }
 
     @MainActor

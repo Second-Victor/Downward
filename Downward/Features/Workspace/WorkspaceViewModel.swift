@@ -141,10 +141,7 @@ final class WorkspaceViewModel {
         isShowingRecentFiles = false
         let preferredURL = session.workspaceSnapshot?.fileURL(forRelativePath: item.relativePath)
             ?? item.url(in: currentWorkspaceRootURL)
-        coordinator.presentEditor(
-            relativePath: item.relativePath,
-            preferredURL: preferredURL
-        )
+        openDocument(relativePath: item.relativePath, preferredURL: preferredURL)
     }
 
     func toggleFolderExpansion(atRelativePath relativePath: String) {
@@ -165,6 +162,8 @@ final class WorkspaceViewModel {
         toggleFolderExpansion(atRelativePath: relativePath)
     }
 
+    /// Browser/search/recent-file opens should come through trusted relative identity when the
+    /// caller already knows it. The preferred URL stays secondary route/display metadata only.
     func openDocument(
         relativePath: String,
         preferredURL: URL? = nil
@@ -175,6 +174,8 @@ final class WorkspaceViewModel {
         )
     }
 
+    /// Raw URL opens are a compatibility lane for callers that do not already have trusted
+    /// workspace-relative identity. Browser/search tree code should not use this path.
     func openDocument(_ url: URL) {
         if let relativePath = relativePath(forFile: url) {
             openDocument(relativePath: relativePath, preferredURL: url)
@@ -184,35 +185,7 @@ final class WorkspaceViewModel {
     }
 
     func openSearchResult(_ result: WorkspaceSearchResult) {
-        coordinator.presentEditor(
-            relativePath: result.relativePath,
-            preferredURL: result.url
-        )
-    }
-
-    func prepareNavigationLinkOpen(
-        relativePath: String,
-        preferredURL: URL? = nil
-    ) {
-        coordinator.prepareEditorPresentation(
-            relativePath: relativePath,
-            preferredURL: preferredURL
-        )
-    }
-
-    func prepareNavigationLinkOpen(for url: URL) {
-        guard let relativePath = relativePath(forFile: url) else {
-            return
-        }
-
-        prepareNavigationLinkOpen(relativePath: relativePath, preferredURL: url)
-    }
-
-    func prepareNavigationLinkOpen(for result: WorkspaceSearchResult) {
-        coordinator.prepareEditorPresentation(
-            relativePath: result.relativePath,
-            preferredURL: result.url
-        )
+        openDocument(relativePath: result.relativePath, preferredURL: result.url)
     }
 
     func isFolderExpanded(atRelativePath relativePath: String) -> Bool {

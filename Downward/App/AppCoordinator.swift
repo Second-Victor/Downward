@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import UniformTypeIdentifiers
 
 @MainActor
@@ -307,9 +308,9 @@ final class AppCoordinator {
 
         do {
             let document: OpenDocument
-            if let pendingPresentation = trustedPendingEditorPresentation(for: url) {
+            if let presentedRelativePath = presentedEditorRelativePath(for: url) {
                 document = try await documentManager.openDocument(
-                    atRelativePath: pendingPresentation.relativePath,
+                    atRelativePath: presentedRelativePath,
                     in: workspaceRootURL
                 )
             } else {
@@ -580,27 +581,11 @@ final class AppCoordinator {
 
     func presentSettings() {
         session.pendingEditorPresentation = nil
-        session.applyNavigationState(
+        applyPresentedNavigationState(
             WorkspaceNavigationPolicy.stateForPresentedSettings(
                 from: session.navigationState,
                 layout: session.navigationLayout
             )
-        )
-    }
-
-    func prepareEditorPresentation(
-        relativePath: String,
-        preferredURL: URL? = nil
-    ) {
-        guard let routeURL = editorRouteURL(for: relativePath, preferredURL: preferredURL) else {
-            return
-        }
-
-        session.editorLoadError = nil
-        session.editorAlertError = nil
-        session.pendingEditorPresentation = .init(
-            routeURL: routeURL,
-            relativePath: relativePath
         )
     }
 
@@ -618,7 +603,7 @@ final class AppCoordinator {
             routeURL: routeURL,
             relativePath: relativePath
         )
-        session.applyNavigationState(
+        applyPresentedNavigationState(
             WorkspaceNavigationPolicy.stateForPresentedEditor(
                 relativePath: relativePath,
                 routeURL: routeURL,
@@ -637,7 +622,7 @@ final class AppCoordinator {
         session.pendingEditorPresentation = nil
         session.editorLoadError = nil
         session.editorAlertError = nil
-        session.applyNavigationState(
+        applyPresentedNavigationState(
             WorkspaceNavigationPolicy.stateForPresentedEditor(
                 at: url,
                 layout: session.navigationLayout,
@@ -1151,6 +1136,18 @@ final class AppCoordinator {
         session.applyNavigationState(.placeholder)
     }
 
+    /// Compact-width editor/settings pushes are driven by direct path mutation, so wrap those
+    /// presentation updates in an animation transaction to preserve the expected push transition.
+    private func applyPresentedNavigationState(_ navigationState: WorkspaceNavigationState) {
+        if session.navigationLayout == .compact {
+            withAnimation {
+                session.applyNavigationState(navigationState)
+            }
+        } else {
+            session.applyNavigationState(navigationState)
+        }
+    }
+
     private func resolvedEditorURL(for relativePath: String) -> URL? {
         if let openDocument = session.openDocument, openDocument.relativePath == relativePath {
             return openDocument.url
@@ -1187,29 +1184,32 @@ final class AppCoordinator {
         return WorkspaceRelativePath.resolve(relativePath, within: workspaceRootURL)
     }
 
-    /// Uses trusted pending relative-path identity whenever the UI still says that logical file is
-    /// being opened, even if the rendered regular-detail URL was re-resolved differently.
-    private func trustedPendingEditorPresentation(
-        for documentURL: URL
-    ) -> AppSession.PendingEditorPresentation? {
-        guard let pendingPresentation = session.pendingEditorPresentation else {
+    /// Browser/search/recent-file loads should resolve through the UI's trusted relative-path
+    /// presentation state whenever that identity is available, regardless of whether the current
+    /// route/detail URL is a preferred alias or the snapshot-resolved live URL.
+    private func presentedEditorRelativePath(for documentURL: URL) -> String? {
+        switch session.navigationLayout {
+        case .compact:
+            guard let route = session.path.last, route.editorURL == documentURL else {
+                return nil
+            }
+
+            return route.editorRelativePath
+        case .regular:
+            guard case let .editor(relativePath) = session.regularDetailSelection else {
+                return nil
+            }
+
+            if session.regularWorkspaceDetail.editorURL == documentURL {
+                return relativePath
+            }
+
+            if session.pendingEditorPresentation?.relativePath == relativePath {
+                return relativePath
+            }
+
             return nil
         }
-
-        if pendingPresentation.routeURL == documentURL {
-            return pendingPresentation
-        }
-
-        guard session.navigationLayout == .regular else {
-            return nil
-        }
-
-        guard case let .editor(selectedRelativePath) = session.regularDetailSelection,
-              selectedRelativePath == pendingPresentation.relativePath else {
-            return nil
-        }
-
-        return pendingPresentation
     }
 
     private func applyWorkspaceSessionState(_ application: WorkspaceSessionStateApplication) {

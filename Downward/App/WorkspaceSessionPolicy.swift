@@ -215,7 +215,14 @@ enum WorkspaceSessionPolicy {
                     return reconciledPath
                 }
 
-                reconciledPath.append(route)
+                reconciledPath.append(.trustedEditor(documentURL, relativePath))
+            case let .trustedEditor(documentURL, relativePath):
+                guard containsFile(relativePath: relativePath, in: snapshot) else {
+                    return reconciledPath
+                }
+
+                let resolvedURL = snapshot.fileURL(forRelativePath: relativePath) ?? documentURL
+                reconciledPath.append(.trustedEditor(resolvedURL, relativePath))
             }
         }
 

@@ -1,31 +1,50 @@
 # TECH_DEBT.md
 
-## Non-blocking debt
+## Purpose
 
-These items are worth cleaning up, but they should follow the trust/state hardening work.
+This file tracks **intentional, non-blocking debt** in the current Downward codebase.
 
-## 1. Preview realism drift
+These items are visible so future contributors do not mistake them for either solved problems or emergency blockers.
 
-Some preview/sample data still reflects older browser or row assumptions.
-That makes visual iteration less trustworthy than it should be.
+---
 
-## 2. Coordinator pressure is reduced, but still real
+## 1. Coordinator pressure still exists
 
-`AppCoordinator` is no longer carrying every cross-domain rule inline, but it is still the main policy pressure point for future feature work.
-That is acceptable now.
-It should stay visible as a maintenance boundary.
+`AppCoordinator` is healthier than before, but it is still the main orchestration pressure point.
 
-## 3. Diagnostics are intentionally lightweight
+This is acceptable now.
+It becomes debt again only if future work keeps adding policy inline instead of extending existing seams.
 
-The app now emits contained diagnostics for some degraded conditions:
+---
 
-- partial enumeration skips,
-- fallback observation,
-- reconnect-related restore/access paths.
+## 2. `PlainTextDocumentSession` is still a dense ownership boundary
 
-If provider-related debugging grows, the next step should be more structured diagnostics rather than noisier ad hoc logs.
+The file is correct enough today, but it remains one of the most delicate places to modify.
 
-## 4. Whole-tree snapshot model is still the simple version
+This should be revisited only when a real seam becomes worth extracting.
 
-That is appropriate today.
-It should stay visible as a known limit so future contributors do not accidentally stack large-workspace features on top without acknowledging the tradeoff.
+---
+
+## 3. Whole-snapshot browser/search model is intentionally simple
+
+The app still uses:
+
+- one whole workspace snapshot,
+- simple filename/path search,
+- whole-snapshot replacement/reconciliation.
+
+This is a known scale limit, not an active bug.
+
+---
+
+## 4. URL-only open paths are compatibility paths, not the preferred product model
+
+The app now works best when browser/search/recent-file flows begin from trusted relative-path identity.
+Raw URL-based open paths still exist and may remain necessary in a few places, but they should stay secondary.
+
+---
+
+## 5. Preview/sample support needs periodic truth checks
+
+Preview/sample data is useful in this repo, but it can drift after navigation/browser/editor changes.
+This is worth small, regular cleanup rather than another large preview overhaul later.

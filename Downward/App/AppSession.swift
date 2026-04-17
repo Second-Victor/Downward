@@ -76,6 +76,10 @@ final class AppSession {
                 return .placeholder
             }
 
+            if let relativePath = lastRoute.editorRelativePath {
+                return .editor(relativePath)
+            }
+
             switch lastRoute {
             case .settings:
                 return .settings
@@ -89,6 +93,8 @@ final class AppSession {
                 }
 
                 return .editor(relativePath)
+            case .trustedEditor:
+                return .placeholder
             }
         case .regular:
             return regularDetailSelection

@@ -272,23 +272,38 @@ private struct WorkspaceTreeRow: View {
 
     @ViewBuilder
     private var fileRow: some View {
-        Button {
-            viewModel.openDocument(
-                relativePath: relativePath,
-                preferredURL: node.url
-            )
-        } label: {
-            WorkspaceRowView(
-                node: node,
-                hierarchyDepth: depth
-            )
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            fileContextMenu
-        }
-        .swipeActions {
-            fileSwipeActions
+        if navigationMode.usesValueNavigationLinks {
+            NavigationLink(value: AppRoute.trustedEditor(node.url, relativePath)) {
+                WorkspaceRowView(
+                    node: node,
+                    hierarchyDepth: depth
+                )
+            }
+            .contextMenu {
+                fileContextMenu
+            }
+            .swipeActions {
+                fileSwipeActions
+            }
+        } else {
+            Button {
+                viewModel.openDocument(
+                    relativePath: relativePath,
+                    preferredURL: node.url
+                )
+            } label: {
+                WorkspaceRowView(
+                    node: node,
+                    hierarchyDepth: depth
+                )
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
+                fileContextMenu
+            }
+            .swipeActions {
+                fileSwipeActions
+            }
         }
     }
 

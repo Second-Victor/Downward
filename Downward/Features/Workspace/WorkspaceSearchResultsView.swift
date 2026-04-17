@@ -20,12 +20,18 @@ struct WorkspaceSearchResultsView: View {
             }
         } else {
             List(viewModel.searchResults) { result in
-                Button {
-                    viewModel.openSearchResult(result)
-                } label: {
-                    WorkspaceSearchRowView(result: result)
+                if navigationMode.usesValueNavigationLinks {
+                    NavigationLink(value: AppRoute.trustedEditor(result.url, result.relativePath)) {
+                        WorkspaceSearchRowView(result: result)
+                    }
+                } else {
+                    Button {
+                        viewModel.openSearchResult(result)
+                    } label: {
+                        WorkspaceSearchRowView(result: result)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .listStyle(.insetGrouped)
             .refreshable {

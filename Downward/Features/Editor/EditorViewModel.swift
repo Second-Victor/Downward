@@ -44,11 +44,20 @@ final class EditorViewModel {
     /// Editor rendering is still single-document: a routed editor becomes editable only when it
     /// matches the one shared `AppSession.openDocument` slot for the app.
     var currentRouteDocument: OpenDocument? {
-        guard session.openDocument?.url == activeEditorURL else {
+        guard let openDocument = session.openDocument else {
             return nil
         }
 
-        return session.openDocument
+        if let activeEditorRelativePath,
+           openDocument.relativePath == activeEditorRelativePath {
+            return openDocument
+        }
+
+        guard openDocument.url == activeEditorURL else {
+            return nil
+        }
+
+        return openDocument
     }
 
     var loadError: UserFacingError? {
@@ -160,7 +169,7 @@ final class EditorViewModel {
         visibleEditorURLs.insert(documentURL)
         currentRouteURL = documentURL
 
-        if session.openDocument?.url == documentURL {
+        if currentRouteDocument != nil {
             session.editorLoadError = nil
             session.editorAlertError = nil
             if let currentRouteDocument {
@@ -512,6 +521,10 @@ final class EditorViewModel {
 
     private var activeEditorURL: URL? {
         session.visibleEditorURL ?? currentRouteURL
+    }
+
+    private var activeEditorRelativePath: String? {
+        session.visibleEditorRelativePath
     }
 
     private func startObservingDocumentChanges(for document: OpenDocument) {

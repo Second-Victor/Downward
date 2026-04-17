@@ -63,7 +63,7 @@ enum WorkspaceNavigationPolicy {
             if let editorIndex = updatedPath.lastIndex(where: \.isEditor) {
                 updatedPath = Array(updatedPath.prefix(upTo: editorIndex))
             }
-            updatedPath.append(.editor(routeURL))
+            updatedPath.append(.trustedEditor(routeURL, relativePath))
 
             return WorkspaceNavigationState(
                 path: updatedPath,
@@ -118,7 +118,7 @@ enum WorkspaceNavigationPolicy {
         switch layout {
         case .compact:
             return WorkspaceNavigationState(
-                path: [.editor(document.url)],
+                path: [.trustedEditor(document.url, document.relativePath)],
                 regularDetailSelection: .placeholder
             )
         case .regular:
@@ -159,7 +159,9 @@ enum WorkspaceNavigationPolicy {
                 return true
             }
 
-            return WorkspaceRelativePath.make(for: editorURL, within: workspaceRootURL) != targetRelativePath
+            let routeRelativePath = route.editorRelativePath
+                ?? WorkspaceRelativePath.make(for: editorURL, within: workspaceRootURL)
+            return routeRelativePath != targetRelativePath
         }
 
         let updatedSelection: RegularWorkspaceDetailSelection
@@ -241,7 +243,7 @@ enum WorkspaceNavigationPolicy {
                 return []
             }
 
-            return [.editor(url)]
+            return [.trustedEditor(url, relativePath)]
         }
     }
 

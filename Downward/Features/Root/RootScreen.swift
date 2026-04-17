@@ -167,7 +167,7 @@ private struct WorkspaceRouteDestination: View {
 
     var body: some View {
         switch route {
-        case let .editor(documentURL):
+        case let .editor(documentURL), let .trustedEditor(documentURL, _):
             EditorScreen(
                 viewModel: viewModel.editorViewModel,
                 documentURL: documentURL
