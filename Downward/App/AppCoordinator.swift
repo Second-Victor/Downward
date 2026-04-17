@@ -983,7 +983,9 @@ final class AppCoordinator {
                 await saveRestorableDocumentSession(for: openDocument)
             }
         case let .deletedFile(url, displayName):
+            let workspaceRootURL = previousSnapshot?.rootURL ?? mutationResult.snapshot.rootURL
             let deletedRelativePath = previousSnapshot?.relativePath(for: url)
+                ?? relativePath(for: url, within: workspaceRootURL)
             if let relativePath = deletedRelativePath {
                 recentFilesStore.removeItem(
                     using: mutationResult.snapshot,
@@ -991,13 +993,18 @@ final class AppCoordinator {
                 )
             }
 
-            let deletedPendingPresentation = session.pendingEditorPresentation?.routeURL == url
-                || session.pendingEditorPresentation?.relativePath == deletedRelativePath
-            let deletedOpenDocument = session.openDocument?.url == url
+            let deletedPendingPresentation = session.pendingEditorPresentation.map { pendingPresentation in
+                pendingPresentation.routeURL == url
+                    || deletedRelativePath.map { pendingPresentation.relativePath == $0 } == true
+            } ?? false
+            let deletedOpenDocument = session.openDocument.map { openDocument in
+                openDocument.url == url
+                    || deletedRelativePath.map { openDocument.relativePath == $0 } == true
+            } ?? false
             let hadVisibleDeletedEditor = session.visibleEditorURL == url
-                || session.visibleEditorRelativePath == deletedRelativePath
+                || deletedRelativePath.map { session.visibleEditorRelativePath == $0 } == true
             let shouldClearDeletedEditorPresentation = hadVisibleDeletedEditor || deletedOpenDocument
-            let shouldShowDeletedDocumentAlert = hadVisibleDeletedEditor || deletedPendingPresentation
+            let shouldShowDeletedDocumentAlert = hadVisibleDeletedEditor
 
             if deletedPendingPresentation {
                 session.pendingEditorPresentation = nil
@@ -1007,7 +1014,7 @@ final class AppCoordinator {
                 session.applyNavigationState(
                     WorkspaceNavigationPolicy.removingEditorPresentation(
                         from: session.navigationState,
-                        workspaceRootURL: previousSnapshot?.rootURL ?? session.workspaceSnapshot?.rootURL,
+                        workspaceRootURL: workspaceRootURL,
                         matchingRelativePath: deletedRelativePath,
                         matchingURL: url
                     )

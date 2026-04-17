@@ -1332,6 +1332,75 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testDeleteHiddenPendingPresentationDoesNotShowDeletedPopup() async {
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.path = [.settings]
+        session.pendingEditorPresentation = .init(
+            routeURL: PreviewSampleData.cleanDocument.url,
+            relativePath: PreviewSampleData.cleanDocument.relativePath
+        )
+
+        let deletedSnapshot = makeWorkspaceSnapshotRemovingRootFile(
+            url: PreviewSampleData.cleanDocument.url
+        )
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: deletedSnapshot,
+                deleteOutcome: .deletedFile(
+                    url: PreviewSampleData.cleanDocument.url,
+                    displayName: PreviewSampleData.cleanDocument.displayName
+                )
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.deleteFile(at: PreviewSampleData.cleanDocument.url)
+
+        XCTAssertEqual(session.workspaceSnapshot, deletedSnapshot)
+        XCTAssertNil(session.pendingEditorPresentation)
+        XCTAssertEqual(session.path, [.settings])
+        XCTAssertNil(session.workspaceAlertError)
+    }
+
+    @MainActor
+    func testDeleteUnmappedFileWithoutVisibleEditorDoesNotShowDeletedPopup() async {
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.path = []
+        session.regularDetailSelection = .placeholder
+
+        let unmappedURL = PreviewSampleData.workspaceRootURL.appending(path: "Ghost.md")
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: PreviewSampleData.nestedWorkspace,
+                deleteOutcome: .deletedFile(
+                    url: unmappedURL,
+                    displayName: "Ghost.md"
+                )
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.deleteFile(at: unmappedURL)
+
+        XCTAssertEqual(session.workspaceSnapshot, PreviewSampleData.nestedWorkspace)
+        XCTAssertNil(session.workspaceAlertError)
+        XCTAssertEqual(session.path, [])
+        XCTAssertEqual(session.regularDetailSelection, .placeholder)
+    }
+
+    @MainActor
     func testStaleObservedRevalidationAfterRenameDoesNotReattachOldDocumentState() async {
         let originalDocument = PreviewSampleData.dirtyDocument
         let renamedURL = PreviewSampleData.year2026URL.appending(path: "2026-04-13 Renamed.md")
