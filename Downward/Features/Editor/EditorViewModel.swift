@@ -146,6 +146,14 @@ final class EditorViewModel {
         editorAppearanceStore.editorFont
     }
 
+    var editorUIFont: UIFont {
+        editorAppearanceStore.editorUIFont
+    }
+
+    var markdownSyntaxMode: MarkdownSyntaxMode {
+        editorAppearanceStore.markdownSyntaxMode
+    }
+
     func handleTextChange(_ text: String) {
         guard let currentRouteDocument else {
             return

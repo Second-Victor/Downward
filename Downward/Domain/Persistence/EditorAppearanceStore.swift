@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import UIKit
 
 @MainActor
 @Observable
@@ -55,6 +56,14 @@ final class EditorAppearanceStore {
         resolver.font(for: effectivePreferences)
     }
 
+    var editorUIFont: UIFont {
+        resolver.uiFont(for: effectivePreferences)
+    }
+
+    var markdownSyntaxMode: MarkdownSyntaxMode {
+        effectivePreferences.markdownSyntaxMode
+    }
+
     var effectivePreferences: EditorAppearancePreferences {
         Self.normalize(preferences, using: resolver)
     }
@@ -76,6 +85,15 @@ final class EditorAppearanceStore {
         }
 
         preferences.fontSize = clampedSize
+        persist()
+    }
+
+    func setMarkdownSyntaxMode(_ mode: MarkdownSyntaxMode) {
+        guard preferences.markdownSyntaxMode != mode else {
+            return
+        }
+
+        preferences.markdownSyntaxMode = mode
         persist()
     }
 
@@ -108,7 +126,8 @@ final class EditorAppearanceStore {
     ) -> EditorAppearancePreferences {
         EditorAppearancePreferences(
             fontChoice: resolver.normalizedChoice(preferences.fontChoice),
-            fontSize: clampFontSize(preferences.fontSize)
+            fontSize: clampFontSize(preferences.fontSize),
+            markdownSyntaxMode: preferences.markdownSyntaxMode
         )
     }
 

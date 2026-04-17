@@ -39,4 +39,19 @@ struct EditorFontResolver: Sendable {
             return Font.custom(normalizedChoice.runtimeFontName ?? "", size: size)
         }
     }
+
+    func uiFont(for preferences: EditorAppearancePreferences) -> UIFont {
+        let normalizedChoice = normalizedChoice(preferences.fontChoice)
+        let size = preferences.fontSize
+
+        switch normalizedChoice {
+        case .default:
+            return UIFont.systemFont(ofSize: size)
+        case .systemMonospaced:
+            return UIFont.monospacedSystemFont(ofSize: size, weight: .regular)
+        case .menlo, .courier, .courierNew:
+            return UIFont(name: normalizedChoice.runtimeFontName ?? "", size: size)
+                ?? UIFont.systemFont(ofSize: size)
+        }
+    }
 }

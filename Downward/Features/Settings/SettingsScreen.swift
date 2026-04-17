@@ -28,6 +28,12 @@ struct SettingsScreen: View {
                     LabeledContent("Font Size", value: fontSizeText)
                 }
 
+                Picker("Markdown Display", selection: markdownSyntaxModeBinding) {
+                    ForEach(MarkdownSyntaxMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Example.md")
                         .font(.caption)
@@ -36,11 +42,17 @@ struct SettingsScreen: View {
                     Text("# Sample\nA short line of text.")
                         .font(editorAppearanceStore.editorFont)
                         .lineLimit(2)
+
+                    Text(editorAppearanceStore.markdownSyntaxMode.previewDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 4)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Editor font preview")
-                .accessibilityValue("\(editorAppearanceStore.selectedFontChoice.displayName), \(fontSizeText) points")
+                .accessibilityValue(
+                    "\(editorAppearanceStore.selectedFontChoice.displayName), \(fontSizeText) points, \(editorAppearanceStore.markdownSyntaxMode.displayName)"
+                )
             }
 
             Section("Actions") {
@@ -77,6 +89,13 @@ struct SettingsScreen: View {
         Binding(
             get: { editorAppearanceStore.fontSize },
             set: { editorAppearanceStore.setFontSize($0) }
+        )
+    }
+
+    private var markdownSyntaxModeBinding: Binding<MarkdownSyntaxMode> {
+        Binding(
+            get: { editorAppearanceStore.markdownSyntaxMode },
+            set: { editorAppearanceStore.setMarkdownSyntaxMode($0) }
         )
     }
 
@@ -158,7 +177,8 @@ struct SettingsScreen: View {
             editorAppearanceStore: EditorAppearanceStore(
                 initialPreferences: EditorAppearancePreferences(
                     fontChoice: .systemMonospaced,
-                    fontSize: 20
+                    fontSize: 20,
+                    markdownSyntaxMode: .hiddenOutsideCurrentLine
                 )
             ),
             reconnectWorkspaceAction: {},

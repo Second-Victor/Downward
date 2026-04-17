@@ -47,18 +47,15 @@ struct EditorScreen: View {
     private var editorContent: some View {
         if viewModel.currentRouteDocument != nil {
             ZStack(alignment: .topLeading) {
-                TextEditor(text: viewModel.textBinding)
-                    .font(viewModel.editorFont)
-                    .scrollContentBackground(.hidden)
-                    .background(
-                        EditorTextViewHostBridge(
-                            horizontalInset: EditorTextViewLayout.horizontalInset,
-                            documentIdentity: documentURL
-                        )
-                    )
+                MarkdownEditorTextView(
+                    text: viewModel.textBinding,
+                    documentIdentity: documentURL,
+                    font: viewModel.editorUIFont,
+                    syntaxMode: viewModel.markdownSyntaxMode,
+                    isEditable: viewModel.isResolvingConflict == false
+                        && viewModel.isShowingConflictResolution == false
+                )
                     .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
-                    .accessibilityLabel("Document Text")
-                    .accessibilityHint("Edits the current text document.")
 
                 if viewModel.showsEmptyDocumentPlaceholder {
                     Text("Start typing…")
@@ -155,6 +152,35 @@ private extension View {
                     snapshot: PreviewSampleData.nestedWorkspace,
                     document: PreviewSampleData.cleanDocument,
                     path: [.editor(PreviewSampleData.cleanDocument.url)]
+                )
+                return container.editorViewModel
+            }(),
+            documentURL: PreviewSampleData.cleanDocument.url
+        )
+    }
+}
+
+#Preview("Markdown Hidden Syntax") {
+    NavigationStack {
+        EditorScreen(
+            viewModel: {
+                var document = PreviewSampleData.cleanDocument
+                document.text = """
+                # Weekly Note
+
+                This has **bold**, _italic_, `code`, and a [link](https://example.com).
+                """
+                let container = AppContainer.preview(
+                    launchState: .workspaceReady,
+                    accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+                    snapshot: PreviewSampleData.nestedWorkspace,
+                    document: document,
+                    path: [.editor(document.url)],
+                    editorAppearancePreferences: EditorAppearancePreferences(
+                        fontChoice: .default,
+                        fontSize: 16,
+                        markdownSyntaxMode: .hiddenOutsideCurrentLine
+                    )
                 )
                 return container.editorViewModel
             }(),

@@ -21,6 +21,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
         )
         store.setFontChoice(.menlo)
         store.setFontSize(19)
+        store.setMarkdownSyntaxMode(.hiddenOutsideCurrentLine)
 
         let reloadedStore = EditorAppearanceStore(
             userDefaults: userDefaults,
@@ -30,7 +31,11 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         XCTAssertEqual(
             reloadedStore.effectivePreferences,
-            EditorAppearancePreferences(fontChoice: .menlo, fontSize: 19)
+            EditorAppearancePreferences(
+                fontChoice: .menlo,
+                fontSize: 19,
+                markdownSyntaxMode: .hiddenOutsideCurrentLine
+            )
         )
     }
 
@@ -69,7 +74,11 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         XCTAssertEqual(
             store.effectivePreferences,
-            EditorAppearancePreferences(fontChoice: .default, fontSize: 24)
+            EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 24,
+                markdownSyntaxMode: .visible
+            )
         )
 
         store.setFontSize(10)
