@@ -95,6 +95,11 @@ final class WorkspaceViewModel {
         searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    var searchResultsSummaryText: String {
+        let resultCount = searchResults.count
+        return resultCount == 1 ? "1 matching file" : "\(resultCount) matching files"
+    }
+
     func loadSnapshotIfNeeded() {
         guard hasLoadedInitialSnapshot == false else {
             syncExpandedFoldersToCurrentSnapshot()

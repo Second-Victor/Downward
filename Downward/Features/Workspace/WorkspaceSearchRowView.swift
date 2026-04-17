@@ -3,6 +3,7 @@ import SwiftUI
 struct WorkspaceSearchRowView: View {
     let result: WorkspaceSearchResult
 
+    private let verticalPadding: CGFloat = 2
     private let iconColumnWidth: CGFloat = 28
     private let iconToTitleSpacing: CGFloat = 10
     private let trailingSpacing: CGFloat = 12
@@ -20,10 +21,18 @@ struct WorkspaceSearchRowView: View {
                         .font(.body)
                         .lineLimit(1)
 
-                    Text(result.pathContextText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: result.pathContextSymbolName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+
+                        Text(result.pathContextText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                    }
                 }
             }
 
@@ -31,9 +40,10 @@ struct WorkspaceSearchRowView: View {
 
             trailingMetadata
         }
+        .padding(.vertical, verticalPadding)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(result.displayName), \(result.pathContextText)")
+        .accessibilityLabel("\(result.displayName), \(result.fullRelativePathText)")
         .accessibilityValue(accessibilityValue)
         .accessibilityHint("Opens this document from search results.")
     }
@@ -117,6 +127,27 @@ struct WorkspaceSearchRowView: View {
                 displayName: "Inbox.md",
                 relativePath: "Inbox.md",
                 modifiedAt: PreviewSampleData.previewDate.addingTimeInterval(-7_200)
+            )
+        )
+    }
+}
+
+#Preview("Long Path Context") {
+    List {
+        WorkspaceSearchRowView(
+            result: .init(
+                url: PreviewSampleData.workspaceRootURL.appending(path: "Projects/Client A/2026/Q2/Launch Prep/Meeting Notes/README.md"),
+                displayName: "README.md",
+                relativePath: "Projects/Client A/2026/Q2/Launch Prep/Meeting Notes/README.md",
+                modifiedAt: PreviewSampleData.previewDate.addingTimeInterval(-10_800)
+            )
+        )
+        WorkspaceSearchRowView(
+            result: .init(
+                url: PreviewSampleData.inboxDocumentURL,
+                displayName: "Inbox.md",
+                relativePath: "Inbox.md",
+                modifiedAt: PreviewSampleData.previewDate.addingTimeInterval(-14_400)
             )
         )
     }

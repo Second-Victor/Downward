@@ -10,8 +10,27 @@ struct WorkspaceSearchResult: Hashable, Identifiable, Sendable {
         relativePath
     }
 
-    /// Search results need explicit path context so duplicate filenames remain distinguishable.
+    nonisolated var fullRelativePathText: String {
+        relativePath
+    }
+
+    nonisolated var isAtWorkspaceRoot: Bool {
+        relativePath.split(separator: "/", omittingEmptySubsequences: true).count <= 1
+    }
+
+    /// Search results need concise folder context so duplicate filenames remain easy to scan.
     nonisolated var pathContextText: String {
-        relativePath == displayName ? "Workspace root" : relativePath
+        guard isAtWorkspaceRoot == false else {
+            return "Workspace root"
+        }
+
+        return relativePath
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .dropLast()
+            .joined(separator: "/")
+    }
+
+    nonisolated var pathContextSymbolName: String {
+        isAtWorkspaceRoot ? "tray.full" : "folder"
     }
 }

@@ -10,7 +10,7 @@ struct WorkspaceSearchResultsView: View {
                 ContentUnavailableView(
                     "No Matching Files",
                     systemImage: "magnifyingglass",
-                    description: Text("No Markdown or text files in this workspace match \"\(viewModel.searchQueryDescription)\".")
+                    description: Text("No Markdown or text files match \"\(viewModel.searchQueryDescription)\". Try a file name or a folder path.")
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.top, 48)
@@ -19,18 +19,25 @@ struct WorkspaceSearchResultsView: View {
                 await viewModel.refreshFromPullToRefresh()
             }
         } else {
-            List(viewModel.searchResults) { result in
-                if navigationMode.usesValueNavigationLinks {
-                    NavigationLink(value: AppRoute.trustedEditor(result.url, result.relativePath)) {
-                        WorkspaceSearchRowView(result: result)
+            List {
+                Section {
+                    ForEach(viewModel.searchResults) { result in
+                        if navigationMode.usesValueNavigationLinks {
+                            NavigationLink(value: AppRoute.trustedEditor(result.url, result.relativePath)) {
+                                WorkspaceSearchRowView(result: result)
+                            }
+                        } else {
+                            Button {
+                                viewModel.openSearchResult(result)
+                            } label: {
+                                WorkspaceSearchRowView(result: result)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                } else {
-                    Button {
-                        viewModel.openSearchResult(result)
-                    } label: {
-                        WorkspaceSearchRowView(result: result)
-                    }
-                    .buttonStyle(.plain)
+                } header: {
+                    Text(viewModel.searchResultsSummaryText)
+                        .textCase(nil)
                 }
             }
             .listStyle(.insetGrouped)
@@ -127,6 +134,87 @@ struct WorkspaceSearchResultsView: View {
                 )
                 let viewModel = container.workspaceViewModel
                 viewModel.searchQuery = "missing"
+                return viewModel
+            }(),
+            navigationMode: .stackPath
+        )
+    }
+}
+
+#Preview("Long Paths") {
+    NavigationStack {
+        WorkspaceSearchResultsView(
+            viewModel: {
+                let snapshot = WorkspaceSnapshot(
+                    rootURL: PreviewSampleData.workspaceRootURL,
+                    displayName: "Long Path Workspace",
+                    rootNodes: [
+                        .folder(
+                            .init(
+                                url: PreviewSampleData.workspaceRootURL.appending(path: "Projects"),
+                                displayName: "Projects",
+                                children: [
+                                    .folder(
+                                        .init(
+                                            url: PreviewSampleData.workspaceRootURL.appending(path: "Projects/Client A"),
+                                            displayName: "Client A",
+                                            children: [
+                                                .folder(
+                                                    .init(
+                                                        url: PreviewSampleData.workspaceRootURL.appending(path: "Projects/Client A/2026"),
+                                                        displayName: "2026",
+                                                        children: [
+                                                            .folder(
+                                                                .init(
+                                                                    url: PreviewSampleData.workspaceRootURL.appending(path: "Projects/Client A/2026/Q2"),
+                                                                    displayName: "Q2",
+                                                                    children: [
+                                                                        .folder(
+                                                                            .init(
+                                                                                url: PreviewSampleData.workspaceRootURL.appending(path: "Projects/Client A/2026/Q2/Launch Prep"),
+                                                                                displayName: "Launch Prep",
+                                                                                children: [
+                                                                                    .folder(
+                                                                                        .init(
+                                                                                            url: PreviewSampleData.workspaceRootURL.appending(path: "Projects/Client A/2026/Q2/Launch Prep/Meeting Notes"),
+                                                                                            displayName: "Meeting Notes",
+                                                                                            children: [
+                                                                                                .file(
+                                                                                                    .init(
+                                                                                                        url: PreviewSampleData.workspaceRootURL.appending(path: "Projects/Client A/2026/Q2/Launch Prep/Meeting Notes/README.md"),
+                                                                                                        displayName: "README.md",
+                                                                                                        subtitle: "Long path example",
+                                                                                                        modifiedAt: PreviewSampleData.previewDate
+                                                                                                    )
+                                                                                                ),
+                                                                                            ]
+                                                                                        )
+                                                                                    ),
+                                                                                ]
+                                                                            )
+                                                                        ),
+                                                                    ]
+                                                                )
+                                                            ),
+                                                        ]
+                                                    )
+                                                ),
+                                            ]
+                                        )
+                                    ),
+                                ]
+                            )
+                        ),
+                    ],
+                    lastUpdated: PreviewSampleData.previewDate
+                )
+                let container = AppContainer.preview(
+                    launchState: .workspaceReady,
+                    accessState: .ready(displayName: snapshot.displayName),
+                    snapshot: snapshot
+                )
+                let viewModel = container.workspaceViewModel
+                viewModel.searchQuery = "read"
                 return viewModel
             }(),
             navigationMode: .stackPath

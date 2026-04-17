@@ -94,51 +94,43 @@ final class WorkspaceSearchTests: XCTestCase {
 
     @MainActor
     func testSearchResultsKeepDuplicateFilenamesDisambiguatedByPathContext() {
-        let snapshot = WorkspaceSnapshot(
-            rootURL: PreviewSampleData.workspaceRootURL,
-            displayName: "Duplicate Workspace",
-            rootNodes: [
-                .folder(
-                    .init(
-                        url: PreviewSampleData.referencesURL,
-                        displayName: "References",
-                        children: [
-                            .file(
-                                .init(
-                                    url: PreviewSampleData.readmeDocumentURL,
-                                    displayName: "README.md",
-                                    subtitle: "References/README.md"
-                                )
-                            ),
-                        ]
-                    )
-                ),
-                .folder(
-                    .init(
-                        url: PreviewSampleData.archiveURL,
-                        displayName: "Archive",
-                        children: [
-                            .file(
-                                .init(
-                                    url: PreviewSampleData.archiveURL.appending(path: "README.md"),
-                                    displayName: "README.md",
-                                    subtitle: "Archive/README.md"
-                                )
-                            ),
-                        ]
-                    )
-                ),
-            ],
-            lastUpdated: PreviewSampleData.previewDate
+        let referencesResult = WorkspaceSearchResult(
+            url: PreviewSampleData.readmeDocumentURL,
+            displayName: "README.md",
+            relativePath: "References/README.md",
+            modifiedAt: PreviewSampleData.previewDate
+        )
+        let archiveResult = WorkspaceSearchResult(
+            url: PreviewSampleData.archiveURL.appending(path: "README.md"),
+            displayName: "README.md",
+            relativePath: "Archive/README.md",
+            modifiedAt: PreviewSampleData.previewDate.addingTimeInterval(-3_600)
         )
 
-        let results = WorkspaceSearchEngine.results(
-            in: snapshot,
-            matching: "readme"
+        XCTAssertEqual(referencesResult.pathContextText, "References")
+        XCTAssertEqual(archiveResult.pathContextText, "Archive")
+    }
+
+    @MainActor
+    func testSearchPathContextUsesParentFoldersAndWorkspaceRootLabel() {
+        let nestedResult = WorkspaceSearchResult(
+            url: PreviewSampleData.readmeDocumentURL,
+            displayName: "README.md",
+            relativePath: "Projects/Client A/2026/Q2/Launch Prep/Meeting Notes/README.md",
+            modifiedAt: PreviewSampleData.previewDate
+        )
+        let rootResult = WorkspaceSearchResult(
+            url: PreviewSampleData.inboxDocumentURL,
+            displayName: "Inbox.md",
+            relativePath: "Inbox.md",
+            modifiedAt: PreviewSampleData.previewDate
         )
 
-        XCTAssertEqual(results.map(\.displayName), ["README.md", "README.md"])
-        XCTAssertEqual(results.map(\.pathContextText), ["References/README.md", "Archive/README.md"])
+        XCTAssertEqual(
+            nestedResult.pathContextText,
+            "Projects/Client A/2026/Q2/Launch Prep/Meeting Notes"
+        )
+        XCTAssertEqual(rootResult.pathContextText, "Workspace root")
     }
 
     @MainActor

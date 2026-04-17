@@ -10,6 +10,7 @@ struct WorkspaceRowView: View {
     var hierarchyDepth: Int = 0
     var folderDisclosureState: FolderDisclosureState? = nil
     private let indentUnit: CGFloat = 12
+    private let verticalPadding: CGFloat = 2
     private let iconColumnWidth: CGFloat = 28
     private let iconToTitleSpacing: CGFloat = 10
     private let trailingSpacing: CGFloat = 12
@@ -36,6 +37,7 @@ struct WorkspaceRowView: View {
 
             trailingContent
         }
+        .padding(.vertical, verticalPadding)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
