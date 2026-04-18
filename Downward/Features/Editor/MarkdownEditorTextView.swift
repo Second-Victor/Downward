@@ -25,9 +25,9 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         textView.isOpaque = false
         textView.delegate = context.coordinator
         textView.textContainerInset = UIEdgeInsets(
-            top: EditorTextViewLayout.placeholderTopPadding,
+            top: EditorTextViewLayout.contentTopInset,
             left: EditorTextViewLayout.horizontalInset,
-            bottom: 12,
+            bottom: EditorTextViewLayout.bottomInset,
             right: EditorTextViewLayout.horizontalInset
         )
         textView.textContainer.lineFragmentPadding = 0

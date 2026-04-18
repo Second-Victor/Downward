@@ -62,7 +62,7 @@ struct EditorScreen: View {
                     Text("Start typing…")
                         .font(viewModel.editorFont)
                         .foregroundStyle(.secondary)
-                        .padding(.top, EditorTextViewLayout.placeholderTopPadding)
+                        .padding(.top, EditorTextViewLayout.contentTopInset)
                         .padding(.leading, EditorTextViewLayout.horizontalInset)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
