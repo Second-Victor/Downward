@@ -14,7 +14,13 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
+        let textStorage = NSTextStorage()
+        let layoutManager = MarkdownCodeBackgroundLayoutManager()
+        let textContainer = NSTextContainer(size: .zero)
+        textStorage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(textContainer)
+
+        let textView = UITextView(frame: .zero, textContainer: textContainer)
         textView.backgroundColor = .clear
         textView.delegate = context.coordinator
         textView.textContainerInset = UIEdgeInsets(

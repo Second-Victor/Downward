@@ -2,285 +2,310 @@
 
 ## Purpose
 
-This file is the **active forward backlog** for Downward.
+This file is the **active engineering backlog** for Downward.
 
-The big hardening sprint is done. The project no longer needs a “save the architecture” phase.
-What it needs now is disciplined, incremental work that:
+The repo is no longer in an emergency correctness phase. The workspace trust model, editor restore flow, file mutation flow, recent files, pull-to-refresh, and editor appearance settings are all present and materially stronger than they were.
 
-1. preserves the file-safety and editor-state guarantees already earned,
-2. avoids re-centralizing behavior in the biggest pressure-point files,
-3. prepares the app for richer browser, editor, and settings features.
+The next work should therefore focus on four things:
 
-This file should drive the next coding passes.
+1. keeping the current file-safety and editor-state guarantees intact,
+2. reducing the few maintainability hotspots that are still easy to regress,
+3. making the existing test suite easier to trust and evolve,
+4. only then resuming user-visible polish in small, safe passes.
+
+This backlog is intentionally shaped by the current codebase, not by older plans.
 
 ---
 
-## Release-safety guardrails
+## Current release guardrails
 
-These are not open tasks. They are current invariants that future work must not regress.
+These are not open tasks. They are current invariants that future work must preserve.
 
-- Browser/search-driven file open must prefer **trusted workspace-relative identity** over raw URL re-derivation.
-- The app must not surface or mutate redirected descendants outside the chosen workspace.
-- Refreshes and mutations must remain ordered by one explicit workspace-snapshot winner policy.
-- Document load/revalidate reads must stay cancellation-aware.
-- Write/mutation detachment, where it remains, must stay an explicit exception with comments and tests.
+- Browser, search, and recent-file opens must stay **relative-path-first** whenever the UI already knows the trusted workspace-relative path.
+- The final file-system boundary must still validate access against the chosen workspace before opening, saving, renaming, or deleting.
+- Redirected descendants must not quietly re-enter the browser or document pipeline.
+- Refreshes and mutations must continue to reconcile under one explicit snapshot-winner policy.
+- Read-side file work must remain cancellation-aware.
+- Detached tasks should remain an explicit exception for write or mutation work that should outlive transient caller cancellation.
 - The app still owns **one active live document session at a time**.
+- Settings, recents, and browser polish must not grow by pushing unrelated logic into Views.
 
 ---
 
-## Highest-priority next work
+## Highest-priority work
 
-## 1. Add one focused browser/editor regression pass around open identity
+## 1. Break up the giant smoke-test file without reducing coverage
 
 **Problem**
 
-The recent “Document Unavailable” regression showed that browser rows, search results, pending editor presentation, and regular iPad detail rendering can drift if they stop agreeing on the same file identity.
+`Tests/MarkdownWorkspaceAppSmokeTests.swift` is now extremely large and carries too many unrelated behaviors in one place.
 
 **Why it matters**
 
-This is the most important recently-fixed failure. It should not regress quietly.
+The coverage is valuable, but one oversized suite becomes harder to navigate, slower to diagnose, and easier to avoid updating carefully.
 
 **What success looks like**
 
-- tests explicitly prove tree open, search open, and regular-detail editor loading all use the same trusted relative-path identity,
-- route URL differences no longer matter when the logical relative path is the same,
-- the repo has one short documented explanation of this identity rule.
+- the current end-to-end style coverage is preserved,
+- the suite is split into smaller feature-oriented files,
+- the remaining smoke tests focus on true cross-feature flows,
+- failures become easier to localize.
+
+**Suggested split directions**
+
+- restore and reconnect flows,
+- browser/search/recent-file open flows,
+- create/rename/delete reconciliation,
+- editor load and route presentation,
+- settings and workspace shell behavior.
 
 **Likely affected areas/files**
 
-- `Downward/Features/Workspace/WorkspaceFolderScreen.swift`
-- `Downward/Features/Workspace/WorkspaceViewModel.swift`
-- `Downward/App/AppCoordinator.swift`
-- `Downward/App/AppSession.swift`
 - `Tests/MarkdownWorkspaceAppSmokeTests.swift`
-- `Tests/WorkspaceNavigationModeTests.swift`
-- `Tests/DocumentManagerTests.swift`
+- new focused test files in `Tests/`
 
 ---
 
-## 2. Keep shrinking pressure inside `AppCoordinator` without changing the architecture
+## 2. Remove repeated whole-tree relative-path lookup from hot paths
 
 **Problem**
 
-`AppCoordinator.swift` is still the main place where cross-domain behavior naturally wants to accumulate.
+Some current code still resolves relative paths by repeatedly walking the entire snapshot tree:
+
+- `WorkspaceSearchEngine` traverses files, then asks `snapshot.relativePath(for:)` for each matching file,
+- `RecentFilesStore.pruneInvalidItems(using:)` flattens file URLs, then asks the snapshot to re-resolve each path.
+
+That is acceptable at current scale, but it is unnecessary repeated work and becomes the clearest near-term performance ceiling.
 
 **Why it matters**
 
-The coordinator is healthy enough today, but it is still the file most likely to get worse as new features land.
+This is the most concrete technical limit visible in the current code. It is not a correctness bug today, but it is the next place where larger workspaces will start to feel expensive.
 
 **What success looks like**
 
-- new behavior lands in existing policy seams before it lands inline in the coordinator,
-- 1–2 additional dense policy clusters are extracted only if they are truly shared and stable,
-- the coordinator remains the orchestrator rather than a grab-bag implementation file.
+- traversal code carries the already-known relative path while walking the tree,
+- search results no longer need a second lookup for every match,
+- recent-file pruning can build its valid relative-path set in one pass,
+- the behavior stays exactly the same from the user’s point of view.
+
+**Likely affected areas/files**
+
+- `Downward/Features/Workspace/WorkspaceSearchEngine.swift`
+- `Downward/Domain/Persistence/RecentFilesStore.swift`
+- `Downward/Domain/Workspace/WorkspaceSnapshotPathResolver.swift`
+- maybe a small shared snapshot traversal helper if it stays narrow
+
+---
+
+## 3. Consolidate relative-path derivation seams before they drift again
+
+**Problem**
+
+The project now has the right identity model, but relative-path derivation still exists in several places with slightly different responsibilities:
+
+- `WorkspaceTreeRows` builds paths structurally for browser presentation,
+- `WorkspaceSnapshotPathResolver` resolves paths from the in-memory tree,
+- `WorkspaceManager` and `DocumentManager` use the stricter file-system validation path,
+- `AppCoordinator` still contains route/document helper logic around path and URL reconciliation.
+
+**Why it matters**
+
+The recent file-open regression was exactly the kind of bug that happens when several layers all “almost” agree on identity.
+
+**What success looks like**
+
+- the code documents which layer owns which kind of path derivation,
+- duplicate logic is reduced where it is safe to reduce it,
+- browser/search/recent-file flows remain obviously relative-path-first,
+- future contributors have one clear place to start when touching file identity.
+
+**Likely affected areas/files**
+
+- `Downward/Domain/Workspace/WorkspaceSnapshotPathResolver.swift`
+- `Downward/Features/Workspace/WorkspaceFolderScreen.swift`
+- `Downward/Features/Workspace/WorkspaceViewModel.swift`
+- `Downward/App/AppCoordinator.swift`
+- `Downward/Domain/Document/DocumentManager.swift`
+
+---
+
+## 4. Keep `AppCoordinator` from re-accumulating feature logic
+
+**Problem**
+
+`AppCoordinator.swift` is still the main orchestration pressure point in the repo.
+
+**Why it matters**
+
+The file is workable now, but it is still the easiest place for future product work to add “just one more rule” until the coordinator becomes the architecture again.
+
+**What success looks like**
+
+- new navigation transforms continue to land in `WorkspaceNavigationPolicy`,
+- new workspace-state application rules continue to land in `WorkspaceSessionPolicy`,
+- editor-local behavior stays in `EditorViewModel` or the document layer,
+- the coordinator remains an orchestrator rather than a catch-all implementation file.
 
 **Likely affected areas/files**
 
 - `Downward/App/AppCoordinator.swift`
 - `Downward/App/WorkspaceNavigationPolicy.swift`
 - `Downward/App/WorkspaceSessionPolicy.swift`
-- small supporting helper types only if clearly justified
 
 ---
 
-## 3. Split the next layer of `PlainTextDocumentSession` only when feature work demands it
+## 5. Protect `PlainTextDocumentSession` from feature creep
 
 **Problem**
 
-`PlainTextDocumentSession.swift` still owns a large amount of behavior.
+`PlainTextDocumentSession.swift` is still a dense and sensitive boundary.
 
 **Why it matters**
 
-The file is currently correct enough, but it remains the most delicate place to change when editor behavior grows.
+This is one of the easiest places to accidentally destabilize autosave, external-change handling, or conflict presentation.
 
 **What success looks like**
 
-- future work identifies a real seam before adding complexity,
-- likely candidates stay narrow, such as observation policy, coordinated read/write helpers, or conflict mapping,
-- no speculative file-splitting happens without a concrete benefit.
+- new editor UX does not automatically land in the live file-session type,
+- session code continues to focus on open/reload/revalidate/save/observation responsibilities,
+- any future split happens only when a real seam is obvious,
+- tests continue to pin the current save and revalidation contract.
 
 **Likely affected areas/files**
 
 - `Downward/Domain/Document/PlainTextDocumentSession.swift`
-- `Downward/Features/Editor/EditorViewModel.swift`
 - `Downward/Domain/Document/DocumentManager.swift`
-
----
-
-## Product groundwork
-
-## 4. Expand settings safely
-
-**Problem**
-
-The app now has a stable enough foundation for more editor/browser preferences, but settings growth can easily leak into unrelated files if not kept disciplined.
-
-**Why it matters**
-
-This is one of the easiest feature areas to grow next, and it should not become a side-channel for architecture drift.
-
-**What success looks like**
-
-- new settings remain owned by dedicated persistence and view-model seams,
-- settings changes do not require coordinator sprawl,
-- settings previews and tests stay current.
-
-**Likely affected areas/files**
-
-- `Downward/Features/Settings/SettingsScreen.swift`
-- `Downward/Domain/Persistence/EditorAppearanceStore.swift`
 - `Downward/Features/Editor/EditorViewModel.swift`
-- `Downward/App/AppContainer.swift`
-
----
-
-## 5. Add richer editor UX without changing the save/conflict contract
-
-**Problem**
-
-The app is now ready for richer editor work, but editor improvements are the easiest place to accidentally reintroduce noisy conflict behavior or stale-state bugs.
-
-**Why it matters**
-
-This is likely where the product will gain the most visible value next.
-
-**What success looks like**
-
-- new editor features stay on top of the existing live document/session model,
-- autosave remains calm,
-- conflict UI stays exceptional,
-- document switching and background/foreground behavior remain coherent.
-
-**Likely affected areas/files**
-
-- `Downward/Features/Editor/EditorViewModel.swift`
-- `Downward/Features/Editor/EditorScreen.swift`
-- `Downward/Domain/Document/PlainTextDocumentSession.swift`
 - `Tests/EditorAutosaveTests.swift`
 - `Tests/EditorConflictTests.swift`
+- `Tests/DocumentManagerTests.swift`
 
 ---
 
-## 6. Improve browser polish without regressing identity correctness
+## Product-ready next work after the above
+
+## 6. Add editor polish on top of the existing save contract
 
 **Problem**
 
-The sidebar tree is now structurally correct, but future browser polish could accidentally reintroduce URL-first logic or stale expansion/selection assumptions.
+The app is finally stable enough for more visible editor improvements, but the editor is still the part of the product most likely to regress quietly.
 
 **Why it matters**
 
-The browser is now one of the main product surfaces.
+This is the best place to add user-visible value once the maintainability tasks above are handled.
 
 **What success looks like**
 
-- row/UI work remains presentation-only,
-- expansion state keeps using relative identity,
-- browser/search/recent-file opens stay aligned with the current trusted identity model.
+- new editor polish stays above the existing document session model,
+- autosave remains quiet,
+- conflict UI remains exceptional,
+- background/foreground and rapid file-switch behavior stay coherent.
+
+**Good candidates**
+
+- better save-state affordances,
+- better empty-document / metadata presentation,
+- keyboard and workflow polish,
+- lightweight editing conveniences that do not require a new document architecture.
+
+**Likely affected areas/files**
+
+- `Downward/Features/Editor/EditorScreen.swift`
+- `Downward/Features/Editor/EditorViewModel.swift`
+- `Downward/Features/Editor/EditorOverlayChrome.swift`
+- targeted tests in `Tests/`
+
+---
+
+## 7. Add browser polish without changing the identity model
+
+**Problem**
+
+The browser is structurally sound, but it is still a prime place for accidental identity regressions and over-eager UI logic.
+
+**Why it matters**
+
+The browser is one of the main product surfaces and should now get incremental polish rather than architectural churn.
+
+**What success looks like**
+
+- row and section polish remain presentation-only,
+- search results, recents, and tree rows remain aligned around relative identity,
+- no new URL-first shortcuts creep into browser-driven opens.
+
+**Good candidates**
+
+- improved metadata display,
+- stronger duplicate-filename scanning affordances,
+- better empty-state and recents ergonomics,
+- lightweight workflow shortcuts that do not create a second navigation model.
 
 **Likely affected areas/files**
 
 - `Downward/Features/Workspace/WorkspaceFolderScreen.swift`
 - `Downward/Features/Workspace/WorkspaceRowView.swift`
 - `Downward/Features/Workspace/WorkspaceSearchRowView.swift`
+- `Downward/Features/Workspace/RecentFilesSheet.swift`
 - `Downward/Features/Workspace/WorkspaceViewModel.swift`
 
 ---
 
-## Medium-priority architecture cleanup
+## Medium-priority cleanup
 
-## 7. Consolidate route/document identity documentation in code comments
-
-**Problem**
-
-The code now has a sound route/relative-path model, but the rationale is spread across several files.
-
-**Why it matters**
-
-This is exactly the kind of thing future contributors can accidentally break if the rule is only obvious after reading multiple patches.
-
-**What success looks like**
-
-- a short, consistent explanation exists in the few files that actually own the rule,
-- future route/open changes have an obvious place to start.
-
-**Likely affected areas/files**
-
-- `Downward/App/AppCoordinator.swift`
-- `Downward/App/AppSession.swift`
-- `Downward/Features/Workspace/WorkspaceFolderScreen.swift`
-- `Downward/Domain/Document/DocumentManager.swift`
-
----
-
-## 8. Keep search intentionally simple until there is a real scale trigger
+## 8. Keep settings truthful to the shipped feature set
 
 **Problem**
 
-The current search model is appropriate, but it has a known ceiling.
+Settings work is no longer “future work”; it is already part of the product. The docs and tests should treat it that way.
 
 **Why it matters**
 
-Future content search or very large workspaces should begin with an explicit scaling discussion, not by accreting more work inside `WorkspaceViewModel`.
+The current settings surface now includes font family, font size, and markdown display behavior. That should not drift into an under-documented side feature.
 
 **What success looks like**
 
-- filename/path search remains clean and responsive,
-- content search or large-workspace work starts from a design note rather than opportunistic changes,
-- docs keep the current limit visible.
+- docs stop describing editor appearance options as pending,
+- tests stay current with normalization and persistence behavior,
+- future settings additions remain isolated to the appearance store and settings surface.
 
 **Likely affected areas/files**
 
-- `Downward/Features/Workspace/WorkspaceViewModel.swift`
-- `Downward/Features/Workspace/WorkspaceSearchEngine.swift`
+- `Downward/Domain/Persistence/EditorAppearanceStore.swift`
+- `Downward/Features/Settings/SettingsScreen.swift`
+- `Tests/EditorAppearanceStoreTests.swift`
 - `ARCHITECTURE.md`
-- `PLANS.md`
 
 ---
-
-## Low-priority cleanup
 
 ## 9. Keep previews and sample data aligned with the real product model
 
 **Problem**
 
-Preview/sample support tends to drift after navigation, browser, and row-layout changes.
+Preview/sample support is useful here, but it can drift after navigation or identity changes.
 
 **Why it matters**
 
-Stale previews reduce confidence during future UI work.
+The repo relies on previews to iterate on SwiftUI screens. Drift here makes visual regressions harder to spot early.
 
 **What success looks like**
 
-- previews reflect the current browser/search/editor product,
-- sample data supports duplicate filenames, nested folders, and empty/document-missing cases,
-- preview-only helpers do not imply dead live behavior.
+- preview/sample data still reflects current relative-path-first navigation assumptions,
+- browser, editor, and settings previews continue to render believable states,
+- preview-only shortcuts do not teach the wrong architecture.
 
 **Likely affected areas/files**
 
 - `Downward/Shared/PreviewSupport/PreviewSampleData.swift`
-- SwiftUI preview blocks in workspace/editor/root screens
+- feature `#Preview` blocks where needed
 
 ---
 
-## 10. Revisit large-file organization only when it improves real velocity
+## Explicit non-goals right now
 
-**Problem**
+These are not the right next tasks for the current repo unless product direction changes.
 
-Several files remain large, but not every large file needs immediate splitting.
-
-**Why it matters**
-
-Premature splitting can create abstraction noise with little benefit.
-
-**What success looks like**
-
-- future splits happen because a real policy seam is ready,
-- the repo stays navigable,
-- no “cleanup for cleanup’s sake” churn is introduced.
-
-**Likely affected areas/files**
-
-- `Downward/App/AppCoordinator.swift`
-- `Downward/Domain/Workspace/WorkspaceManager.swift`
-- `Downward/Domain/Document/PlainTextDocumentSession.swift`
-- `Downward/Features/Workspace/WorkspaceViewModel.swift`
+- Do **not** reopen the old workspace-correctness rescue phase without a new concrete regression.
+- Do **not** redesign the app around multiple simultaneous live documents yet.
+- Do **not** add content search until there is an explicit indexing/design pass.
+- Do **not** replace the current browser with a second folder-drill-down navigation model.
+- Do **not** treat editor font settings, recent files, or pull-to-refresh as unfinished foundation work; they already exist and should now be maintained, not re-planned.

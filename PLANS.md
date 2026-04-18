@@ -2,161 +2,189 @@
 
 ## Current stage
 
-Downward has completed its main **correctness and hardening stage**.
+Downward is in a **stable, feature-capable hardening-afterglow stage**.
 
-The project should now move in a different mode:
+The codebase no longer looks like a rescue project. It now has:
 
-- preserve the file-safety and state-consistency boundaries already earned,
-- grow the product in small, deliberate passes,
-- avoid reopening the old emergency-hardening loop unless a new regression proves it is necessary.
+- a strict workspace trust boundary,
+- relative-path-first browser/search/recent-file identity,
+- a coherent restore and reconnect model,
+- create/rename/delete flows that reconcile browser and editor state,
+- editor appearance settings that already ship,
+- recent files and pull-to-refresh already integrated into the product.
 
----
+That changes the planning posture.
 
-## What changed since the last plan
+The next plan should optimize for:
 
-The repo is no longer primarily about:
-
-- fixing workspace containment,
-- fixing refresh-vs-mutation winner rules,
-- fixing cancellation on read-side I/O,
-- repairing compact vs regular navigation,
-- repairing browser/search open identity.
-
-Those areas now form the **current foundation**.
-
-The new plan should therefore optimize for:
-
-1. **safe feature velocity**,
-2. **pressure-point discipline**,
-3. **explicit scaling limits**,
-4. **keeping the docs and tests truthful as the product grows**.
+1. **maintainability before more complexity**,
+2. **scale honesty without premature redesign**,
+3. **safe user-visible polish**,
+4. **keeping docs and tests aligned with the code that actually ships**.
 
 ---
 
-## Phase 1 — Protect the current foundation
+## What the review says now
 
-### 1.1 Lock in browser/search open identity
+### Strong foundation
 
-The most recent serious regression was the file-open break caused by mixed URL identity and trusted relative identity.
+The codebase is in good shape to continue building on.
 
-Before broader feature work, add one explicit regression pass so the following stays impossible to break casually:
+The strongest parts of the current repo are:
 
-- tree row open,
-- search result open,
-- regular-detail pending presentation,
-- trusted relative-path document loading.
+- the workspace/document trust model,
+- the explicit navigation/session policy seams,
+- the breadth of the test suite,
+- the decision to keep browser-driven opens relative-path-first,
+- the discipline around save/revalidate behavior.
 
-### 1.2 Keep the “allowed `Task.detached`” rule explicit
+### Main risks are no longer correctness-first
 
-The repo now appears to reserve detached tasks for write/mutation work that should outlive transient caller cancellation.
-That is a good rule.
-It should remain visible in code comments and tests.
+The biggest remaining concerns are now:
 
-### 1.3 Keep docs active, not historical
+- very large pressure-point files,
+- one oversized smoke-test suite,
+- repeated whole-tree path resolution in some hot paths,
+- the risk of identity logic drifting back into multiple nearly-duplicate implementations,
+- the temptation to resume feature work by growing the largest files inline.
 
-Do not let `TASKS.md` and `PLANS.md` turn back into a ledger of already-completed emergency fixes.
-They should keep steering the next real work.
-
----
-
-## Phase 2 — Resume product work safely
-
-### 2.1 Settings and editor polish
-
-The codebase is stable enough for more settings and editor improvements.
-These are good next feature areas because they add visible value without forcing an immediate redesign.
-
-Conditions:
-
-- no regression in autosave calmness,
-- no regression in conflict presentation,
-- no new global state routing through `AppCoordinator` unless it truly belongs there.
-
-### 2.2 Browser polish and workflow improvements
-
-The inline tree model is now the right product direction.
-Future browser work should focus on:
-
-- faster workflow,
-- better metadata and row affordances,
-- stronger recents/search integration,
-- without regressing trusted relative-path identity.
-
-### 2.3 Search improvements, still within the simple model
-
-Filename/path search is good enough today.
-Add improvements only while the current whole-snapshot model still feels natural.
-When that stops being true, treat that as a design milestone, not an incidental refactor.
+That is a far healthier set of risks than the repo had before.
 
 ---
 
-## Phase 3 — Manage the known pressure points
+## Phase 1 — Strengthen maintainability without changing product behavior
 
-### 3.1 Coordinator discipline
+### 1.1 Split the smoke-test suite into focused suites
 
-`AppCoordinator` is still a large file.
-Do not rewrite it now.
-Instead, use this decision rule:
+The current test coverage is a strength, but `MarkdownWorkspaceAppSmokeTests.swift` has become too large.
 
-- if a new rule is specific to navigation state, prefer `WorkspaceNavigationPolicy`,
-- if a new rule is specific to applying/reconciling workspace state, prefer `WorkspaceSessionPolicy`,
-- if a new rule is editor-local, prefer `EditorViewModel` or document-layer ownership,
-- only keep logic inline in the coordinator when it is truly orchestration.
+The plan should be to keep the same real behavior coverage while splitting it into smaller feature-oriented suites. The remaining true smoke tests should cover only the cross-feature flows that actually need end-to-end style protection.
 
-### 3.2 Document-session discipline
+### 1.2 Remove repeated whole-snapshot path lookup from search and recents
 
-`PlainTextDocumentSession` is still dense.
-Future work should protect it by keeping non-file-session concerns out of it.
+The clearest near-term scale issue in the current code is repeated recursive relative-path lookup over the same snapshot.
 
-A split should happen only when a real seam is obvious, such as:
+This should be tightened before larger workspaces or richer browser features make the cost more visible. The goal is not a redesign. The goal is to carry already-known relative paths during traversal instead of re-deriving them over and over.
 
-- observation policy,
-- coordinated read/write helpers,
-- conflict mapping,
-- diagnostics.
+### 1.3 Tighten the ownership story for relative-path derivation
 
-### 3.3 View-model discipline
+The architecture now has the right identity model, but the implementation still spreads path derivation across multiple layers.
 
-`WorkspaceViewModel` and `EditorViewModel` are both meaningful product seams now.
-Use them for presentation behavior, not as dumping grounds for new domain logic.
+The plan here is not to force everything into one utility type. It is to make the boundaries explicit:
+
+- strict file-system trust validation,
+- snapshot-backed path resolution,
+- browser presentation path construction,
+- route/document reconciliation.
+
+This is the most important maintainability protection against another open-identity regression.
 
 ---
 
-## Phase 4 — Be explicit about scale limits
+## Phase 2 — Resume visible product work carefully
 
-## Whole-snapshot model
+### 2.1 Editor polish should be the first major user-visible lane
 
-The current workspace model is still:
+The foundation is now strong enough that editor polish is a sensible next feature area.
 
-- one `WorkspaceSnapshot`,
-- whole-tree replacement on refresh/mutation application,
-- direct filename/path search over the current snapshot,
-- one live editor document/session at a time.
+Good editor work from this point forward should:
 
-That is a valid model for the current product.
-It is also the key scaling boundary.
+- stay above the current document session boundary,
+- preserve quiet autosave,
+- preserve calm revalidation,
+- preserve exceptional-only conflict UI.
 
-### What should trigger a design revisit
+This is where the product is most likely to gain visible value without forcing an architectural restart.
 
-Treat the following as signals that the app is approaching the edge of the current model:
+### 2.2 Browser polish should stay presentation-first
+
+The browser is now structurally correct enough to improve, but future work should stay disciplined.
+
+Improvements should focus on scanability, metadata, recents/search workflow, and faster browsing. They should not reintroduce URL-first open logic or a second competing browser architecture.
+
+### 2.3 Settings are now a maintained surface, not a planned feature
+
+Editor appearance settings already exist.
+
+That means future planning should treat settings as a real product surface that needs:
+
+- accurate docs,
+- normalization and persistence tests kept current,
+- disciplined additions through the existing store and settings screen.
+
+The plan should no longer describe font settings as unfinished roadmap work.
+
+---
+
+## Phase 3 — Keep pressure points healthy
+
+### 3.1 `AppCoordinator` should continue losing policy, not gaining it
+
+Do not rewrite `AppCoordinator` right now.
+
+Instead, keep using this decision rule:
+
+- navigation transforms belong in `WorkspaceNavigationPolicy`,
+- workspace-state application and refresh reconciliation belong in `WorkspaceSessionPolicy`,
+- editor-local behavior belongs in `EditorViewModel` or the document layer,
+- only cross-boundary orchestration belongs inline in the coordinator.
+
+### 3.2 `PlainTextDocumentSession` should stay narrow and file-session-specific
+
+The document session is still dense, but it is also doing important work correctly.
+
+Do not split it speculatively. Protect it by refusing to put non-session editor features into it. When a real seam becomes obvious, split only that seam.
+
+### 3.3 Keep giant files from becoming architecture again
+
+There are a few files where size is now the warning sign:
+
+- `AppCoordinator.swift`
+- `PlainTextDocumentSession.swift`
+- `WorkspaceManager.swift`
+- `WorkspaceViewModel.swift`
+- the smoke-test suite
+
+The plan is not to make everything tiny. It is to avoid a future where all interesting behavior once again funnels into the biggest file available.
+
+---
+
+## Phase 4 — Be honest about the current scale boundary
+
+## Current model that is still valid
+
+The app still intentionally uses:
+
+- one selected workspace,
+- one whole `WorkspaceSnapshot`,
+- one live editor document/session at a time,
+- filename/path search over the in-memory snapshot,
+- whole-snapshot refresh and mutation reconciliation.
+
+That is still a valid product model for Downward today.
+
+## What should trigger a real design pass
+
+Treat these as design-level triggers, not incidental feature additions:
 
 - content search,
-- very large workspaces with slow snapshot churn,
+- very large workspaces where search or pruning starts to feel expensive,
 - multi-pane or multi-window editing,
-- richer live browser synchronization,
-- more advanced recent-file/session restoration behavior.
+- multiple simultaneous live document sessions,
+- much richer restore/history behavior,
+- background synchronization features that need more than whole-snapshot replacement.
 
-When one of those becomes a real near-term feature, plan a design pass first.
-Do not try to stretch the current model silently.
+When one of those becomes a real near-term goal, do a design pass first. Do not stretch the current model silently.
 
 ---
 
 ## Practical next sequence
 
-1. Add one explicit regression pass for browser/search/document open identity.
-2. Start the next user-visible feature pass in settings or editor polish.
-3. Keep browser polish relative-path-first.
-4. Refuse opportunistic complexity inside the largest files.
-5. Revisit architecture only when a real feature forces a boundary change.
+1. Split the giant smoke-test file while preserving behavior coverage.
+2. Remove repeated whole-tree path lookup from search and recent-file pruning.
+3. Tighten and document the relative-path derivation seams.
+4. Resume user-visible editor polish.
+5. Continue browser polish without regressing relative-path-first identity.
+6. Keep docs and tests truthful as the product evolves.
 
-That is the right balance for the current repo: **protect what was hardened, then ship visible value carefully.**
+That is the right plan for the current codebase: **preserve the hard-won boundaries, improve maintainability where the code is starting to strain, then ship visible value carefully.**
