@@ -55,6 +55,7 @@ struct EditorScreen: View {
                     isEditable: viewModel.isResolvingConflict == false
                         && viewModel.isShowingConflictResolution == false
                 )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
 
                 if viewModel.showsEmptyDocumentPlaceholder {
@@ -67,6 +68,8 @@ struct EditorScreen: View {
                         .accessibilityHidden(true)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .ignoresSafeArea(.container, edges: [.top, .bottom])
         } else if let error = viewModel.loadError {
             ContentUnavailableView(
                 error.title,

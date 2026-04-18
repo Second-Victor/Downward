@@ -22,6 +22,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
 
         let textView = UITextView(frame: .zero, textContainer: textContainer)
         textView.backgroundColor = .clear
+        textView.isOpaque = false
         textView.delegate = context.coordinator
         textView.textContainerInset = UIEdgeInsets(
             top: EditorTextViewLayout.placeholderTopPadding,
@@ -33,6 +34,10 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         textView.adjustsFontForContentSizeCategory = true
         textView.isScrollEnabled = true
         textView.alwaysBounceVertical = true
+        textView.contentInsetAdjustmentBehavior = .never
+        textView.automaticallyAdjustsScrollIndicatorInsets = false
+        textView.contentInset = .zero
+        textView.scrollIndicatorInsets = .zero
         textView.keyboardDismissMode = .interactive
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         context.coordinator.apply(
