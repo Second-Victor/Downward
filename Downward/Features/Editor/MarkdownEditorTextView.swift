@@ -3,6 +3,7 @@ import UIKit
 
 struct MarkdownEditorTextView: UIViewRepresentable {
     @Binding var text: String
+    @Binding var topOverlayClearance: CGFloat
 
     let documentIdentity: URL
     let font: UIFont
@@ -10,7 +11,10 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     let isEditable: Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
+        Coordinator(
+            text: $text,
+            topOverlayClearance: $topOverlayClearance
+        )
     }
 
     func makeUIView(context: Context) -> UITextView {
@@ -20,7 +24,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         textStorage.addLayoutManager(layoutManager)
         layoutManager.addTextContainer(textContainer)
 
-        let textView = UITextView(frame: .zero, textContainer: textContainer)
+        let textView = EditorChromeAwareTextView(frame: .zero, textContainer: textContainer)
         textView.backgroundColor = .clear
         textView.isOpaque = false
         textView.delegate = context.coordinator
@@ -40,6 +44,9 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         textView.scrollIndicatorInsets = .zero
         textView.keyboardDismissMode = .interactive
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textView.onViewportChromeChange = { [weak coordinator = context.coordinator] textView in
+            coordinator?.updateViewportInsets(for: textView)
+        }
         context.coordinator.apply(
             configuration: .init(
                 text: text,
@@ -51,10 +58,17 @@ struct MarkdownEditorTextView: UIViewRepresentable {
             to: textView,
             force: true
         )
+        context.coordinator.updateViewportInsets(for: textView)
         return textView
     }
 
     func updateUIView(_ uiView: UITextView, context: Context) {
+        if let uiView = uiView as? EditorChromeAwareTextView {
+            uiView.onViewportChromeChange = { [weak coordinator = context.coordinator] textView in
+                coordinator?.updateViewportInsets(for: textView)
+            }
+        }
+
         context.coordinator.apply(
             configuration: .init(
                 text: text,
@@ -66,6 +80,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
             to: uiView,
             force: false
         )
+        context.coordinator.updateViewportInsets(for: uiView)
     }
 }
 
@@ -81,14 +96,19 @@ extension MarkdownEditorTextView {
     @MainActor
     final class Coordinator: NSObject, UITextViewDelegate {
         @Binding private var text: String
+        @Binding private var topOverlayClearance: CGFloat
 
         private let renderer = MarkdownStyledTextRenderer()
         private var configuration: Configuration?
         private var isApplyingProgrammaticChange = false
         private var lastRevealedLineRange: NSRange?
 
-        init(text: Binding<String>) {
+        init(
+            text: Binding<String>,
+            topOverlayClearance: Binding<CGFloat>
+        ) {
             _text = text
+            _topOverlayClearance = topOverlayClearance
         }
 
         func apply(
@@ -187,6 +207,33 @@ extension MarkdownEditorTextView {
             applyRenderedText(to: textView, using: updatedConfiguration)
         }
 
+        func updateViewportInsets(for textView: UITextView) {
+            let clearance = chromeOverlapTopInset(for: textView)
+
+            var updatedTextContainerInset = textView.textContainerInset
+            updatedTextContainerInset.top = EditorTextViewLayout.contentTopInset + clearance
+            updatedTextContainerInset.bottom = EditorTextViewLayout.bottomInset
+            updatedTextContainerInset.left = EditorTextViewLayout.horizontalInset
+            updatedTextContainerInset.right = EditorTextViewLayout.horizontalInset
+            if textView.textContainerInset != updatedTextContainerInset {
+                textView.textContainerInset = updatedTextContainerInset
+            }
+
+            if textView.contentInset != .zero {
+                textView.contentInset = .zero
+            }
+
+            var updatedScrollIndicatorInsets = textView.scrollIndicatorInsets
+            updatedScrollIndicatorInsets.top = clearance
+            if textView.scrollIndicatorInsets != updatedScrollIndicatorInsets {
+                textView.scrollIndicatorInsets = updatedScrollIndicatorInsets
+            }
+
+            if abs(topOverlayClearance - clearance) > 0.5 {
+                topOverlayClearance = clearance
+            }
+        }
+
         private func needsRefresh(
             previousConfiguration: Configuration?,
             in textView: UITextView,
@@ -233,6 +280,25 @@ extension MarkdownEditorTextView {
             self.configuration = configuration
         }
 
+        private func chromeOverlapTopInset(for textView: UITextView) -> CGFloat {
+            guard let window = textView.window else {
+                return 0
+            }
+
+            let textViewFrameInWindow = textView.convert(textView.bounds, to: window)
+
+            if
+                let navigationBar = textView.nearestViewController?.navigationController?.navigationBar,
+                navigationBar.isHidden == false,
+                navigationBar.window === window
+            {
+                let navigationBarFrameInWindow = navigationBar.convert(navigationBar.bounds, to: window)
+                return max(0, ceil(navigationBarFrameInWindow.maxY - textViewFrameInWindow.minY))
+            }
+
+            return max(0, ceil(window.safeAreaInsets.top - textViewFrameInWindow.minY))
+        }
+
         private func safeSelectedRange(
             for textView: UITextView,
             text: String
@@ -248,5 +314,40 @@ extension MarkdownEditorTextView {
             let length = min(max(range.length, 0), textLength - location)
             return NSRange(location: location, length: length)
         }
+    }
+}
+
+private final class EditorChromeAwareTextView: UITextView {
+    var onViewportChromeChange: ((UITextView) -> Void)?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        onViewportChromeChange?(self)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onViewportChromeChange?(self)
+    }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        onViewportChromeChange?(self)
+    }
+}
+
+private extension UIView {
+    var nearestViewController: UIViewController? {
+        var responder: UIResponder? = self
+
+        while let currentResponder = responder {
+            if let viewController = currentResponder as? UIViewController {
+                return viewController
+            }
+
+            responder = currentResponder.next
+        }
+
+        return nil
     }
 }

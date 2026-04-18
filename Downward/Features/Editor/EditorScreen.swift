@@ -4,6 +4,8 @@ struct EditorScreen: View {
     let viewModel: EditorViewModel
     let documentURL: URL
 
+    @State private var topOverlayClearance: CGFloat = 0
+
     var body: some View {
         editorContent
             .background(.background)
@@ -49,6 +51,7 @@ struct EditorScreen: View {
             ZStack(alignment: .topLeading) {
                 MarkdownEditorTextView(
                     text: viewModel.textBinding,
+                    topOverlayClearance: $topOverlayClearance,
                     documentIdentity: documentURL,
                     font: viewModel.editorUIFont,
                     syntaxMode: viewModel.markdownSyntaxMode,
@@ -62,7 +65,7 @@ struct EditorScreen: View {
                     Text("Start typing…")
                         .font(viewModel.editorFont)
                         .foregroundStyle(.secondary)
-                        .padding(.top, EditorTextViewLayout.contentTopInset)
+                        .padding(.top, topOverlayClearance + EditorTextViewLayout.contentTopInset)
                         .padding(.leading, EditorTextViewLayout.horizontalInset)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)

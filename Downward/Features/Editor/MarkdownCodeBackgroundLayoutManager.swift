@@ -14,13 +14,13 @@ extension NSAttributedString.Key {
 final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager {
     private let horizontalPadding: CGFloat = 4
     private let verticalPadding: CGFloat = 1
-    private let cornerRadius: CGFloat = 6
+    private let cornerRadius: CGFloat = 4
     private let blockquoteBarWidth: CGFloat = 6
     private let blockquoteBarSpacing: CGFloat = 0
     private let blockquoteBarInset: CGFloat = 0
     private let blockquoteBarCornerRadius: CGFloat = 2
     private let blockquoteBackgroundInset = UIEdgeInsets(top: 2, left: 2, bottom: 2, right: 2)
-    private let blockquoteBackgroundCornerRadius: CGFloat = 6
+    private let blockquoteBackgroundCornerRadius: CGFloat = 4
 
     nonisolated override init() {
         super.init()

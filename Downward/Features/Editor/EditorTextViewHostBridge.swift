@@ -3,7 +3,7 @@ import UIKit
 
 enum EditorTextViewLayout {
     static let horizontalInset: CGFloat = 12
-    static let contentTopInset: CGFloat = 124
+    static let contentTopInset: CGFloat = 24
     static let bottomInset: CGFloat = 12
 }
 
