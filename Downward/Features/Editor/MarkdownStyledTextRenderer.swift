@@ -119,6 +119,7 @@ struct MarkdownStyledTextRenderer {
         styleBlockquotes(
             in: attributed,
             text: nsText,
+            lineRanges: lineRanges,
             baseFont: configuration.baseFont,
             syntaxMode: configuration.syntaxMode,
             revealedRange: configuration.revealedRange,
@@ -424,42 +425,63 @@ struct MarkdownStyledTextRenderer {
     private func styleBlockquotes(
         in attributed: NSMutableAttributedString,
         text: NSString,
+        lineRanges: [NSRange],
         baseFont: UIFont,
         syntaxMode: MarkdownSyntaxMode,
         revealedRange: NSRange?,
         protectedRanges: [NSRange]
     ) {
-        let regex = regex(for: #"^(>[ \t]?)(.+)$"#, options: [.anchorsMatchLines])
-        let fullRange = NSRange(location: 0, length: text.length)
-        regex.enumerateMatches(in: text as String, options: [], range: fullRange) { match, _, _ in
-            guard
-                let match,
-                match.numberOfRanges == 3
-            else {
-                return
+        let regex = regex(for: #"^([ \t]{0,3})((?:>[ \t]?)+)(.*)$"#)
+        var currentGroupID: Int?
+        var nextGroupID = 0
+
+        for lineRange in lineRanges {
+            let trimmedRange = trimmedLineRange(from: lineRange, in: text)
+            guard trimmedRange.length > 0 else {
+                currentGroupID = nil
+                continue
             }
 
-            let fullMatch = match.range(at: 0)
+            let line = text.substring(with: trimmedRange)
+            let matchRange = NSRange(location: 0, length: (line as NSString).length)
+            guard let match = regex.firstMatch(in: line, options: [], range: matchRange) else {
+                currentGroupID = nil
+                continue
+            }
+
+            let fullMatch = NSRange(location: lineRange.location, length: trimmedRange.length)
             guard protectedRanges.contains(where: { NSIntersectionRange($0, fullMatch).length > 0 }) == false else {
-                return
+                currentGroupID = nil
+                continue
             }
 
-            let markerRange = match.range(at: 1)
-            let contentRange = match.range(at: 2)
-            attributed.addAttributes(
-                [
-                    .font: transformedFont(baseFont, adding: .traitItalic) ?? UIFont.italicSystemFont(ofSize: baseFont.pointSize),
-                    .foregroundColor: UIColor.secondaryLabel
-                ],
-                range: contentRange
-            )
+            if currentGroupID == nil {
+                nextGroupID += 1
+                currentGroupID = nextGroupID
+            }
+
+            let leadingWhitespaceRange = shift(match.range(at: 1), by: lineRange.location)
+            let markerRange = shift(match.range(at: 2), by: lineRange.location)
+            let depth = text.substring(with: markerRange).reduce(into: 0) { count, character in
+                if character == ">" {
+                    count += 1
+                }
+            }
+            guard depth > 0, let groupID = currentGroupID else {
+                currentGroupID = nil
+                continue
+            }
+
+            attributed.addAttribute(.markdownBlockquoteDepth, value: depth, range: lineRange)
+            attributed.addAttribute(.markdownBlockquoteGroupID, value: groupID, range: lineRange)
             attributed.addAttribute(.foregroundColor, value: UIColor.tertiaryLabel, range: markerRange)
 
             let paragraphStyle = NSMutableParagraphStyle()
-            let markerWidth = text.substring(with: markerRange).measuredWidth(using: baseFont)
-            paragraphStyle.firstLineHeadIndent = 0
-            paragraphStyle.headIndent = markerWidth + 6
-            attributed.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullMatch)
+            let leadingWidth = text.substring(with: leadingWhitespaceRange).measuredWidth(using: baseFont)
+            let headIndent = leadingWidth + CGFloat(depth) * 12 + 6
+            paragraphStyle.firstLineHeadIndent = headIndent
+            paragraphStyle.headIndent = headIndent
+            attributed.addAttribute(.paragraphStyle, value: paragraphStyle, range: lineRange)
 
             hideSyntaxIfNeeded(
                 markerRange,
@@ -1397,6 +1419,10 @@ private func transformedFont(
     }
 
     return UIFont(descriptor: descriptor, size: size ?? font.pointSize)
+}
+
+private func shift(_ range: NSRange, by offset: Int) -> NSRange {
+    NSRange(location: range.location + offset, length: range.length)
 }
 
 private extension String {

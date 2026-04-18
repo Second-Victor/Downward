@@ -146,6 +146,65 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
     }
 
     @MainActor
+    func testBlockquoteKeepsBodyTextReadableAndMarksQuoteDepth() {
+        let text = "> Dorothy followed her through many of the beautiful rooms in her castle."
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .visible,
+                revealedRange: nil
+            )
+        )
+
+        let nsString = rendered.string as NSString
+        let markerRange = nsString.range(of: ">")
+        let contentRange = nsString.range(of: "Dorothy followed")
+        let markerColor = rendered.attribute(.foregroundColor, at: markerRange.location, effectiveRange: nil) as? UIColor
+        let contentFont = rendered.attribute(.font, at: contentRange.location, effectiveRange: nil) as? UIFont
+        let quoteDepth = rendered.attribute(.markdownBlockquoteDepth, at: contentRange.location, effectiveRange: nil) as? Int
+        let quoteGroupID = rendered.attribute(.markdownBlockquoteGroupID, at: contentRange.location, effectiveRange: nil) as? Int
+
+        XCTAssertEqual(markerColor, .tertiaryLabel)
+        XCTAssertFalse(contentFont?.fontDescriptor.symbolicTraits.contains(.traitItalic) == true)
+        XCTAssertEqual(quoteDepth, 1)
+        XCTAssertNotNil(quoteGroupID)
+    }
+
+    @MainActor
+    func testNestedBlockquotesPreserveDepthOnBlankAndNestedLines() {
+        let text = """
+        > Outer paragraph
+        >
+        >> Nested paragraph
+        """
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .hiddenOutsideCurrentLine,
+                revealedRange: nil
+            )
+        )
+
+        let nsString = rendered.string as NSString
+        let blankQuoteLineMarkerRange = nsString.range(of: ">\n")
+        let nestedContentRange = nsString.range(of: "Nested paragraph")
+        let outerContentRange = nsString.range(of: "Outer paragraph")
+        let firstMarkerRange = nsString.range(of: ">")
+        let blankQuoteDepth = rendered.attribute(.markdownBlockquoteDepth, at: blankQuoteLineMarkerRange.location, effectiveRange: nil) as? Int
+        let nestedQuoteDepth = rendered.attribute(.markdownBlockquoteDepth, at: nestedContentRange.location, effectiveRange: nil) as? Int
+        let outerGroupID = rendered.attribute(.markdownBlockquoteGroupID, at: outerContentRange.location, effectiveRange: nil) as? Int
+        let nestedGroupID = rendered.attribute(.markdownBlockquoteGroupID, at: nestedContentRange.location, effectiveRange: nil) as? Int
+        let hiddenMarkerColor = rendered.attribute(.foregroundColor, at: firstMarkerRange.location, effectiveRange: nil) as? UIColor
+
+        XCTAssertEqual(blankQuoteDepth, 1)
+        XCTAssertEqual(nestedQuoteDepth, 2)
+        XCTAssertEqual(outerGroupID, nestedGroupID)
+        XCTAssertEqual(hiddenMarkerColor, .clear)
+    }
+
+    @MainActor
     func testSetextHeadingStylesContentAndCanHideUnderlineSyntax() {
         let text = """
         Heading level 2
