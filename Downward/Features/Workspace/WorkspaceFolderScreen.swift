@@ -66,35 +66,40 @@ struct WorkspaceFolderScreen: View {
             }
 
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button("New File", systemImage: "plus") {
-                    viewModel.presentCreateFile(in: nil)
+                Menu("Add", systemImage: "plus") {
+                    Button("New File", systemImage: "doc.badge.plus") {
+                        viewModel.presentCreateFile(in: nil)
+                    }
+                    Button("New Folder", systemImage: "folder.badge.plus") {
+                        viewModel.presentCreateFolder(in: nil)
+                    }
                 }
                 .disabled(viewModel.isBusy)
-                .accessibilityLabel("New Text File")
-                .accessibilityHint("Creates a Markdown or text file in the workspace root.")
+                .accessibilityLabel("Add Item")
+                .accessibilityHint("Creates a new file or folder in the workspace root.")
             }
         }
-        .alert("New Text File", isPresented: createPromptBinding) {
-            TextField("File Name", text: createFileNameBinding)
+        .alert(viewModel.createPromptTitle, isPresented: createPromptBinding) {
+            TextField(viewModel.createPromptFieldTitle, text: createItemNameBinding)
 
-            Button("Create") {
-                viewModel.createFile()
+            Button(viewModel.createPromptActionTitle) {
+                viewModel.createItem()
             }
-            .disabled(viewModel.createFileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(viewModel.createItemName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             Button("Cancel", role: .cancel) {
-                viewModel.cancelCreateFile()
+                viewModel.cancelCreateItem()
             }
         } message: {
-            Text("Create a new Markdown or text file.")
+            Text(viewModel.createPromptMessage)
         }
-        .alert("Rename File", isPresented: renamePromptBinding) {
-            TextField("File Name", text: renameFileNameBinding)
+        .alert(viewModel.renamePromptTitle, isPresented: renamePromptBinding) {
+            TextField(viewModel.renamePromptFieldTitle, text: renameItemNameBinding)
 
             Button("Rename") {
-                viewModel.renameFile()
+                viewModel.renameItem()
             }
-            .disabled(viewModel.renameFileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(viewModel.renameItemName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             Button("Cancel", role: .cancel) {
                 viewModel.cancelRename()
@@ -103,37 +108,37 @@ struct WorkspaceFolderScreen: View {
             Text("Rename \(viewModel.pendingRenameTitle).")
         }
         .confirmationDialog(
-            "Delete File",
+            viewModel.deletePromptTitle,
             isPresented: deletePromptBinding,
             titleVisibility: .visible
         ) {
             Button("Delete \(viewModel.pendingDeleteTitle)", role: .destructive) {
-                viewModel.deleteFile()
+                viewModel.deleteItem()
             }
 
             Button("Cancel", role: .cancel) {
                 viewModel.cancelDelete()
             }
         } message: {
-            Text("This removes the file from the workspace.")
+            Text(viewModel.deletePromptMessage)
         }
     }
 
     private var createPromptBinding: Binding<Bool> {
         Binding(
-            get: { viewModel.isShowingCreateFilePrompt },
+            get: { viewModel.isShowingCreatePrompt },
             set: { isPresented in
                 if isPresented == false {
-                    viewModel.cancelCreateFile()
+                    viewModel.cancelCreateItem()
                 }
             }
         )
     }
 
-    private var createFileNameBinding: Binding<String> {
+    private var createItemNameBinding: Binding<String> {
         Binding(
-            get: { viewModel.createFileName },
-            set: { viewModel.createFileName = $0 }
+            get: { viewModel.createItemName },
+            set: { viewModel.createItemName = $0 }
         )
     }
 
@@ -148,10 +153,10 @@ struct WorkspaceFolderScreen: View {
         )
     }
 
-    private var renameFileNameBinding: Binding<String> {
+    private var renameItemNameBinding: Binding<String> {
         Binding(
-            get: { viewModel.renameFileName },
-            set: { viewModel.renameFileName = $0 }
+            get: { viewModel.renameItemName },
+            set: { viewModel.renameItemName = $0 }
         )
     }
 
@@ -257,8 +262,33 @@ private struct WorkspaceTreeRow: View {
                 Button("New File", systemImage: "plus") {
                     viewModel.presentCreateFile(in: folder.url)
                 }
+                .disabled(viewModel.areRowActionsDisabled)
                 .accessibilityLabel("New File in \(node.displayName)")
                 .accessibilityHint("Creates a Markdown or text file inside this folder.")
+
+                Button("New Folder", systemImage: "folder.badge.plus") {
+                    viewModel.presentCreateFolder(in: folder.url)
+                }
+                .disabled(viewModel.areRowActionsDisabled)
+                .accessibilityLabel("New Folder in \(node.displayName)")
+                .accessibilityHint("Creates a folder inside this folder.")
+
+                Button("Rename", systemImage: "pencil") {
+                    viewModel.presentRename(for: node)
+                }
+                .disabled(viewModel.areRowActionsDisabled)
+                .accessibilityLabel("Rename \(node.displayName)")
+                .accessibilityHint("Changes the folder name.")
+
+                Button("Delete", systemImage: "trash", role: .destructive) {
+                    viewModel.presentDelete(for: node)
+                }
+                .disabled(viewModel.areRowActionsDisabled)
+                .accessibilityLabel("Delete \(node.displayName)")
+                .accessibilityHint("Deletes this folder and its contents from the workspace.")
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                folderSwipeActions
             }
         case .file:
             fileRow
@@ -305,18 +335,20 @@ private struct WorkspaceTreeRow: View {
     @ViewBuilder
     private var fileContextMenu: some View {
         Button("Rename", systemImage: "pencil") {
-            if case let .file(file) = node {
-                viewModel.presentRename(for: file)
+            if case .file = node {
+                viewModel.presentRename(for: node)
             }
         }
+        .disabled(viewModel.areRowActionsDisabled)
         .accessibilityLabel("Rename \(node.displayName)")
         .accessibilityHint("Changes the file name.")
 
         Button("Delete", systemImage: "trash", role: .destructive) {
-            if case let .file(file) = node {
-                viewModel.presentDelete(for: file)
+            if case .file = node {
+                viewModel.presentDelete(for: node)
             }
         }
+        .disabled(viewModel.areRowActionsDisabled)
         .accessibilityLabel("Delete \(node.displayName)")
         .accessibilityHint("Deletes this file from the workspace.")
     }
@@ -324,17 +356,38 @@ private struct WorkspaceTreeRow: View {
     @ViewBuilder
     private var fileSwipeActions: some View {
         Button("Rename", systemImage: "pencil") {
-            if case let .file(file) = node {
-                viewModel.presentRename(for: file)
+            if case .file = node {
+                viewModel.presentRename(for: node)
             }
         }
+        .disabled(viewModel.areRowActionsDisabled)
         .tint(.accentColor)
 
         Button("Delete", systemImage: "trash") {
-            if case let .file(file) = node {
-                viewModel.presentDelete(for: file)
+            if case .file = node {
+                viewModel.presentDelete(for: node)
             }
         }
+        .disabled(viewModel.areRowActionsDisabled)
+        .tint(.red)
+    }
+
+    @ViewBuilder
+    private var folderSwipeActions: some View {
+        Button("Rename", systemImage: "pencil") {
+            if case .folder = node {
+                viewModel.presentRename(for: node)
+            }
+        }
+        .disabled(viewModel.areRowActionsDisabled)
+        .tint(.accentColor)
+
+        Button("Delete", systemImage: "trash") {
+            if case .folder = node {
+                viewModel.presentDelete(for: node)
+            }
+        }
+        .disabled(viewModel.areRowActionsDisabled)
         .tint(.red)
     }
 }

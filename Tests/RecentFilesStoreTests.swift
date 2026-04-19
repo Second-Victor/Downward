@@ -182,6 +182,44 @@ final class RecentFilesStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRecentFilesStoreRenamesAndRemovesFolderDescendantsSafely() {
+        let store = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceID: PreviewSampleData.nestedWorkspace.workspaceID,
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: PreviewSampleData.dirtyDocument.relativePath,
+                    displayName: PreviewSampleData.dirtyDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+                RecentFileItem(
+                    workspaceID: PreviewSampleData.nestedWorkspace.workspaceID,
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: PreviewSampleData.cleanDocument.relativePath,
+                    displayName: PreviewSampleData.cleanDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate.addingTimeInterval(-60)
+                ),
+            ]
+        )
+
+        store.renameItemsInFolder(
+            using: PreviewSampleData.nestedWorkspace,
+            oldFolderRelativePath: "Journal",
+            newFolderRelativePath: "Archive"
+        )
+
+        XCTAssertEqual(store.items.map(\.relativePath), ["Archive/2026/2026-04-13.md", "Inbox.md"])
+        XCTAssertEqual(store.items.map(\.displayName), ["2026-04-13.md", "Inbox.md"])
+
+        store.removeItemsInFolder(
+            using: PreviewSampleData.nestedWorkspace,
+            folderRelativePath: "Archive"
+        )
+
+        XCTAssertEqual(store.items.map(\.relativePath), ["Inbox.md"])
+    }
+
+    @MainActor
     func testRecentFilesStoreAdoptsLegacyWorkspacePathItemsIntoStableWorkspaceID() {
         let store = RecentFilesStore(
             initialItems: [

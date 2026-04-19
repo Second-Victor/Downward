@@ -14,13 +14,21 @@ struct WorkspaceMutationResult: Equatable, Sendable {
 
 enum WorkspaceMutationOutcome: Equatable, Sendable {
     case createdFile(url: URL, displayName: String)
+    case createdFolder(url: URL, displayName: String)
     case renamedFile(
         oldURL: URL,
         newURL: URL,
         displayName: String,
         relativePath: String
     )
+    case renamedFolder(
+        oldURL: URL,
+        newURL: URL,
+        displayName: String,
+        relativePath: String
+    )
     case deletedFile(url: URL, displayName: String)
+    case deletedFolder(url: URL, displayName: String)
 }
 
 /// Owns workspace selection and restore boundaries while keeping raw bookmark work out of views.
@@ -29,6 +37,7 @@ protocol WorkspaceManager: Sendable {
     func selectWorkspace(at url: URL) async -> WorkspaceRestoreResult
     func refreshCurrentWorkspace() async throws -> WorkspaceSnapshot
     func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult
+    func createFolder(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult
     func renameFile(at url: URL, to proposedName: String) async throws -> WorkspaceMutationResult
     func deleteFile(at url: URL) async throws -> WorkspaceMutationResult
     func clearWorkspaceSelection() async throws
@@ -194,52 +203,15 @@ actor LiveWorkspaceManager: WorkspaceManager {
         let fileCoordinator = self.fileCoordinator
 
         let outcome = try await performMutation(in: workspaceContext.rootURL) { securedRootURL in
-            let parentURL = try folderURL.map {
-                try Self.resolveWorkspaceItemURL(
-                    from: $0,
-                    within: workspaceContext.rootURL,
-                    securedRootURL: securedRootURL
-                )
-            } ?? securedRootURL
-            let resourceValues = try parentURL.resourceValues(forKeys: [.isDirectoryKey])
-
-            guard resourceValues.isDirectory == true else {
-                throw AppError.fileOperationFailed(
-                    action: "Create File",
-                    name: proposedName.isEmpty ? "Untitled.md" : proposedName,
-                    details: "The selected folder is no longer available."
-                )
-            }
-
             let normalizedName = try Self.normalizedCreatedFileName(from: proposedName)
-            let requestedDestinationURL = Self.uniqueAvailableFileURL(
-                for: normalizedName,
-                in: parentURL
-            )
-            let parentRelativePath: String? = if WorkspaceIdentity.normalizedPath(for: parentURL)
-                == WorkspaceIdentity.normalizedPath(for: securedRootURL) {
-                nil
-            } else {
-                try Self.relativePath(for: parentURL, within: securedRootURL)
-            }
-            let destinationRelativePath = if let parentRelativePath, parentRelativePath.isEmpty == false {
-                "\(parentRelativePath)/\(requestedDestinationURL.lastPathComponent)"
-            } else {
-                requestedDestinationURL.lastPathComponent
-            }
-
-            // Creation targets use the same workspace-boundary policy as existing descendants:
-            // the validated parent container must remain real and in-root, and the candidate file
-            // path must still reconstruct under that container without crossing a redirecting ancestor.
-            guard let destinationURL = WorkspaceRelativePath.resolveCandidate(
-                destinationRelativePath,
-                within: securedRootURL
-            ) else {
-                throw AppError.fileOperationFailed(
-                    action: "Create File",
-                    name: normalizedName,
-                    details: "The selected folder is no longer available."
-                )
+            let destinationURL = try Self.validatedCreationDestinationURL(
+                named: normalizedName,
+                action: "Create File",
+                parentURL: folderURL,
+                within: workspaceContext.rootURL,
+                securedRootURL: securedRootURL
+            ) { parentURL in
+                Self.uniqueAvailableFileURL(for: normalizedName, in: parentURL)
             }
 
             do {
@@ -269,6 +241,52 @@ actor LiveWorkspaceManager: WorkspaceManager {
         return WorkspaceMutationResult(snapshot: snapshot, outcome: outcome)
     }
 
+    func createFolder(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+        let workspaceContext = try await currentWorkspaceContext()
+        let fileCoordinator = self.fileCoordinator
+
+        let outcome = try await performMutation(in: workspaceContext.rootURL) { securedRootURL in
+            let normalizedName = try Self.normalizedCreatedFolderName(from: proposedName)
+            let destinationURL = try Self.validatedCreationDestinationURL(
+                named: normalizedName,
+                action: "Create Folder",
+                parentURL: folderURL,
+                within: workspaceContext.rootURL,
+                securedRootURL: securedRootURL
+            ) { parentURL in
+                Self.uniqueAvailableDirectoryURL(for: normalizedName, in: parentURL)
+            }
+
+            do {
+                try fileCoordinator.coordinateCreation(at: destinationURL) { coordinatedURL in
+                    try FileManager.default.createDirectory(
+                        at: coordinatedURL,
+                        withIntermediateDirectories: false
+                    )
+                }
+            } catch {
+                throw AppError.fileOperationFailed(
+                    action: "Create Folder",
+                    name: normalizedName,
+                    details: "The folder could not be created."
+                )
+            }
+
+            return .createdFolder(
+                url: destinationURL.standardizedFileURL,
+                displayName: destinationURL.lastPathComponent
+            )
+        }
+
+        let snapshot = try await loadSnapshot(
+            rootURL: workspaceContext.rootURL,
+            displayName: workspaceContext.displayName,
+            workspaceID: workspaceContext.workspaceID,
+            recentFileLookupPaths: workspaceContext.recentFileLookupPaths
+        )
+        return WorkspaceMutationResult(snapshot: snapshot, outcome: outcome)
+    }
+
     func renameFile(at url: URL, to proposedName: String) async throws -> WorkspaceMutationResult {
         let workspaceContext = try await currentWorkspaceContext()
         let fileCoordinator = self.fileCoordinator
@@ -280,6 +298,66 @@ actor LiveWorkspaceManager: WorkspaceManager {
                 securedRootURL: securedRootURL
             )
             let sourceResourceValues = try sourceURL.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey])
+
+            if sourceResourceValues.isDirectory == true {
+                let normalizedSourceURL = sourceURL.standardizedFileURL
+                let normalizedName = try Self.normalizedRenamedFolderName(
+                    from: proposedName,
+                    originalURL: normalizedSourceURL
+                )
+                let sourceRelativePath = try Self.relativePath(for: normalizedSourceURL, within: securedRootURL)
+                let destinationRelativePath = Self.renamedRelativePath(
+                    from: sourceRelativePath,
+                    toLeafName: normalizedName
+                )
+                guard let destinationURL = WorkspaceRelativePath.resolveCandidate(
+                    destinationRelativePath,
+                    within: securedRootURL
+                ) else {
+                    throw AppError.fileOperationFailed(
+                        action: "Rename Folder",
+                        name: sourceURL.lastPathComponent,
+                        details: "The folder is outside the current workspace."
+                    )
+                }
+                let normalizedDestinationURL = destinationURL.standardizedFileURL
+
+                guard normalizedDestinationURL != normalizedSourceURL else {
+                    return .renamedFolder(
+                        oldURL: normalizedSourceURL,
+                        newURL: normalizedDestinationURL,
+                        displayName: normalizedDestinationURL.lastPathComponent,
+                        relativePath: destinationRelativePath
+                    )
+                }
+
+                do {
+                    try fileCoordinator.coordinateMove(from: normalizedSourceURL, to: normalizedDestinationURL) {
+                        coordinatedSourceURL,
+                        coordinatedDestinationURL in
+                        try Self.moveItemAllowingCaseOnlyRename(
+                            at: coordinatedSourceURL,
+                            to: coordinatedDestinationURL,
+                            action: "Rename Folder"
+                        )
+                    }
+                } catch let error as AppError {
+                    throw error
+                } catch {
+                    throw AppError.fileOperationFailed(
+                        action: "Rename Folder",
+                        name: sourceURL.lastPathComponent,
+                        details: "The folder could not be renamed."
+                    )
+                }
+
+                return .renamedFolder(
+                    oldURL: normalizedSourceURL,
+                    newURL: normalizedDestinationURL,
+                    displayName: normalizedDestinationURL.lastPathComponent,
+                    relativePath: destinationRelativePath
+                )
+            }
 
             guard sourceResourceValues.isRegularFile == true, sourceResourceValues.isDirectory != true else {
                 throw AppError.fileOperationFailed(
@@ -322,17 +400,10 @@ actor LiveWorkspaceManager: WorkspaceManager {
                 try fileCoordinator.coordinateMove(from: sourceURL, to: destinationURL) {
                     coordinatedSourceURL,
                     coordinatedDestinationURL in
-                    guard FileManager.default.fileExists(atPath: coordinatedDestinationURL.path) == false else {
-                        throw AppError.fileOperationFailed(
-                            action: "Rename File",
-                            name: coordinatedSourceURL.lastPathComponent,
-                            details: "\(coordinatedDestinationURL.lastPathComponent) already exists in this folder."
-                        )
-                    }
-
-                    try FileManager.default.moveItem(
+                    try Self.moveItemAllowingCaseOnlyRename(
                         at: coordinatedSourceURL,
-                        to: coordinatedDestinationURL
+                        to: coordinatedDestinationURL,
+                        action: "Rename File"
                     )
                 }
             } catch let error as AppError {
@@ -373,6 +444,26 @@ actor LiveWorkspaceManager: WorkspaceManager {
                 securedRootURL: securedRootURL
             )
             let resourceValues = try sourceURL.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey])
+
+            if resourceValues.isDirectory == true {
+                let normalizedSourceURL = sourceURL.standardizedFileURL
+                do {
+                    try fileCoordinator.coordinateDeletion(at: normalizedSourceURL) { coordinatedURL in
+                        try FileManager.default.removeItem(at: coordinatedURL)
+                    }
+                } catch {
+                    throw AppError.fileOperationFailed(
+                        action: "Delete Folder",
+                        name: sourceURL.lastPathComponent,
+                        details: "The folder could not be deleted."
+                    )
+                }
+
+                return .deletedFolder(
+                    url: normalizedSourceURL,
+                    displayName: normalizedSourceURL.lastPathComponent
+                )
+            }
 
             guard resourceValues.isRegularFile == true, resourceValues.isDirectory != true else {
                 throw AppError.fileOperationFailed(
@@ -652,6 +743,15 @@ actor LiveWorkspaceManager: WorkspaceManager {
         )
     }
 
+    nonisolated private static func normalizedCreatedFolderName(from proposedName: String) throws -> String {
+        try normalizedCreatedItemName(
+            from: proposedName,
+            defaultName: "Untitled Folder",
+            action: "Create Folder",
+            emptyNameDetails: "Enter a folder name to create."
+        )
+    }
+
     nonisolated private static func normalizedRenamedFileName(
         from proposedName: String,
         originalURL: URL
@@ -661,6 +761,18 @@ actor LiveWorkspaceManager: WorkspaceManager {
             defaultName: originalURL.lastPathComponent,
             preservedExtension: originalURL.pathExtension,
             emptyNameDetails: "Enter a new file name."
+        )
+    }
+
+    nonisolated private static func normalizedRenamedFolderName(
+        from proposedName: String,
+        originalURL: URL
+    ) throws -> String {
+        try normalizedCreatedItemName(
+            from: proposedName,
+            defaultName: originalURL.lastPathComponent,
+            action: "Rename Folder",
+            emptyNameDetails: "Enter a new folder name."
         )
     }
 
@@ -716,6 +828,128 @@ actor LiveWorkspaceManager: WorkspaceManager {
         return rawName
     }
 
+    nonisolated private static func moveItemAllowingCaseOnlyRename(
+        at sourceURL: URL,
+        to destinationURL: URL,
+        action: String
+    ) throws {
+        let fileManager = FileManager.default
+        let destinationExists = fileManager.fileExists(atPath: destinationURL.path)
+
+        guard destinationExists else {
+            try fileManager.moveItem(at: sourceURL, to: destinationURL)
+            return
+        }
+
+        guard try isSameFilesystemItem(sourceURL, destinationURL) else {
+            throw AppError.fileOperationFailed(
+                action: action,
+                name: sourceURL.lastPathComponent,
+                details: "\(destinationURL.lastPathComponent) already exists in this folder."
+            )
+        }
+
+        guard WorkspaceIdentity.normalizedPath(for: sourceURL) != WorkspaceIdentity.normalizedPath(for: destinationURL) else {
+            return
+        }
+
+        // Case-only renames on case-insensitive volumes need a temporary sibling hop to force
+        // the filesystem to materialize the new leaf name.
+        let temporaryURL = uniqueTemporaryRenameHopURL(
+            near: sourceURL,
+            basedOn: destinationURL.lastPathComponent
+        )
+
+        do {
+            try fileManager.moveItem(at: sourceURL, to: temporaryURL)
+            do {
+                try fileManager.moveItem(at: temporaryURL, to: destinationURL)
+            } catch {
+                try? fileManager.moveItem(at: temporaryURL, to: sourceURL)
+                throw error
+            }
+        } catch let error as AppError {
+            throw error
+        } catch {
+            let itemDescription = action == "Rename Folder" ? "folder" : "file"
+            throw AppError.fileOperationFailed(
+                action: action,
+                name: sourceURL.lastPathComponent,
+                details: "The \(itemDescription) could not be renamed."
+            )
+        }
+    }
+
+    nonisolated private static func isSameFilesystemItem(_ lhs: URL, _ rhs: URL) throws -> Bool {
+        let lhsValues = try lhs.resourceValues(forKeys: [.fileResourceIdentifierKey])
+        let rhsValues = try rhs.resourceValues(forKeys: [.fileResourceIdentifierKey])
+
+        if let lhsIdentifier = lhsValues.fileResourceIdentifier as? NSObject,
+           let rhsIdentifier = rhsValues.fileResourceIdentifier as? NSObject {
+            return lhsIdentifier.isEqual(rhsIdentifier)
+        }
+
+        return WorkspaceIdentity.normalizedPath(for: lhs) == WorkspaceIdentity.normalizedPath(for: rhs)
+    }
+
+    nonisolated private static func uniqueTemporaryRenameHopURL(
+        near sourceURL: URL,
+        basedOn destinationName: String
+    ) -> URL {
+        let fileManager = FileManager.default
+        let parentURL = sourceURL.deletingLastPathComponent()
+        let destinationStem = (destinationName as NSString).deletingPathExtension
+        let destinationExtension = (destinationName as NSString).pathExtension
+        let renameToken = UUID().uuidString
+        var duplicateIndex = 1
+
+        while true {
+            let candidateBaseName = ".rename-hop-\(destinationStem)-\(renameToken)-\(duplicateIndex)"
+            let candidateName = destinationExtension.isEmpty
+                ? candidateBaseName
+                : "\(candidateBaseName).\(destinationExtension)"
+            let candidateURL = parentURL.appending(path: candidateName)
+            if fileManager.fileExists(atPath: candidateURL.path) == false {
+                return candidateURL
+            }
+
+            duplicateIndex += 1
+        }
+    }
+
+    nonisolated private static func normalizedCreatedItemName(
+        from proposedName: String,
+        defaultName: String,
+        action: String,
+        emptyNameDetails: String
+    ) throws -> String {
+        let trimmedName = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawName = trimmedName.isEmpty ? defaultName : trimmedName
+
+        guard
+            rawName.isEmpty == false,
+            rawName != ".",
+            rawName != "..",
+            rawName.contains("/") == false
+        else {
+            throw AppError.fileOperationFailed(
+                action: action,
+                name: defaultName,
+                details: emptyNameDetails
+            )
+        }
+
+        if rawName.hasSuffix(".") {
+            throw AppError.fileOperationFailed(
+                action: action,
+                name: rawName,
+                details: "Choose a valid folder name."
+            )
+        }
+
+        return rawName
+    }
+
     nonisolated private static func uniqueAvailableFileURL(for requestedName: String, in directoryURL: URL) -> URL {
         let fileManager = FileManager.default
         let baseName = (requestedName as NSString).deletingPathExtension
@@ -733,6 +967,77 @@ actor LiveWorkspaceManager: WorkspaceManager {
         }
 
         return candidateURL
+    }
+
+    nonisolated private static func uniqueAvailableDirectoryURL(
+        for requestedName: String,
+        in directoryURL: URL
+    ) -> URL {
+        let fileManager = FileManager.default
+        var candidateURL = directoryURL.appending(path: requestedName)
+        var duplicateIndex = 2
+
+        while fileManager.fileExists(atPath: candidateURL.path) {
+            candidateURL = directoryURL.appending(path: "\(requestedName) \(duplicateIndex)")
+            duplicateIndex += 1
+        }
+
+        return candidateURL
+    }
+
+    /// Creation targets use the same workspace-boundary policy as existing descendants: the
+    /// validated parent container must remain real and in-root, and the candidate path must still
+    /// reconstruct under that container without crossing a redirecting ancestor.
+    nonisolated private static func validatedCreationDestinationURL(
+        named itemName: String,
+        action: String,
+        parentURL: URL?,
+        within rootURL: URL,
+        securedRootURL: URL,
+        candidateBuilder: (URL) -> URL
+    ) throws -> URL {
+        let parentURL = try parentURL.map {
+            try resolveWorkspaceItemURL(
+                from: $0,
+                within: rootURL,
+                securedRootURL: securedRootURL
+            )
+        } ?? securedRootURL
+        let resourceValues = try parentURL.resourceValues(forKeys: [.isDirectoryKey])
+
+        guard resourceValues.isDirectory == true else {
+            throw AppError.fileOperationFailed(
+                action: action,
+                name: itemName,
+                details: "The selected folder is no longer available."
+            )
+        }
+
+        let requestedDestinationURL = candidateBuilder(parentURL)
+        let parentRelativePath: String? = if WorkspaceIdentity.normalizedPath(for: parentURL)
+            == WorkspaceIdentity.normalizedPath(for: securedRootURL) {
+            nil
+        } else {
+            try relativePath(for: parentURL, within: securedRootURL)
+        }
+        let destinationRelativePath = if let parentRelativePath, parentRelativePath.isEmpty == false {
+            "\(parentRelativePath)/\(requestedDestinationURL.lastPathComponent)"
+        } else {
+            requestedDestinationURL.lastPathComponent
+        }
+
+        guard let destinationURL = WorkspaceRelativePath.resolveCandidate(
+            destinationRelativePath,
+            within: securedRootURL
+        ) else {
+            throw AppError.fileOperationFailed(
+                action: action,
+                name: itemName,
+                details: "The selected folder is no longer available."
+            )
+        }
+
+        return destinationURL
     }
 
     /// Runs snapshot enumeration as a structured child task so caller cancellation reaches the
@@ -920,6 +1225,18 @@ actor StubWorkspaceManager: WorkspaceManager {
         return WorkspaceMutationResult(
             snapshot: readySnapshot,
             outcome: .createdFile(url: fileURL, displayName: fileURL.lastPathComponent)
+        )
+    }
+
+    func createFolder(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+        let displayName = proposedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Untitled Folder"
+            : proposedName
+        let folderURL = (folderURL ?? readySnapshot.rootURL).appending(path: displayName)
+
+        return WorkspaceMutationResult(
+            snapshot: readySnapshot,
+            outcome: .createdFolder(url: folderURL, displayName: folderURL.lastPathComponent)
         )
     }
 

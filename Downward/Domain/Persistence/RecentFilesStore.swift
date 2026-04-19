@@ -102,11 +102,60 @@ final class RecentFilesStore {
         persist()
     }
 
+    func renameItemsInFolder(
+        using snapshot: WorkspaceSnapshot,
+        oldFolderRelativePath: String,
+        newFolderRelativePath: String
+    ) {
+        adoptWorkspaceIdentity(using: snapshot)
+        let updatedItems = items.map { item in
+            guard
+                Self.belongs(item, to: snapshot),
+                let rewrittenRelativePath = Self.replacingPathPrefix(
+                    item.relativePath,
+                    oldPrefix: oldFolderRelativePath,
+                    newPrefix: newFolderRelativePath
+                )
+            else {
+                return item
+            }
+
+            return RecentFileItem(
+                workspaceID: snapshot.workspaceID,
+                workspaceRootPath: Self.workspaceRootPath(for: snapshot.rootURL),
+                relativePath: rewrittenRelativePath,
+                displayName: rewrittenRelativePath.split(separator: "/").last.map(String.init) ?? item.displayName,
+                lastOpenedAt: item.lastOpenedAt
+            )
+        }
+
+        let normalizedItems = Self.normalizedItems(updatedItems, maximumCount: maximumCount)
+        guard normalizedItems != items else {
+            return
+        }
+
+        items = normalizedItems
+        persist()
+    }
+
     func removeItem(using snapshot: WorkspaceSnapshot, relativePath: String) {
         adoptWorkspaceIdentity(using: snapshot)
         let previousItems = items
         items.removeAll {
             Self.belongs($0, to: snapshot) && $0.relativePath == relativePath
+        }
+
+        if items != previousItems {
+            persist()
+        }
+    }
+
+    func removeItemsInFolder(using snapshot: WorkspaceSnapshot, folderRelativePath: String) {
+        adoptWorkspaceIdentity(using: snapshot)
+        let previousItems = items
+        items.removeAll {
+            Self.belongs($0, to: snapshot)
+                && Self.isSameOrDescendantPath($0.relativePath, of: folderRelativePath)
         }
 
         if items != previousItems {
@@ -216,5 +265,26 @@ final class RecentFilesStore {
                 return [file.url]
             }
         }
+    }
+
+    private static func isSameOrDescendantPath(_ path: String, of folderPath: String) -> Bool {
+        path == folderPath || path.hasPrefix("\(folderPath)/")
+    }
+
+    private static func replacingPathPrefix(
+        _ path: String,
+        oldPrefix: String,
+        newPrefix: String
+    ) -> String? {
+        guard isSameOrDescendantPath(path, of: oldPrefix) else {
+            return nil
+        }
+
+        if path == oldPrefix {
+            return newPrefix
+        }
+
+        let suffix = path.dropFirst(oldPrefix.count + 1)
+        return "\(newPrefix)/\(suffix)"
     }
 }

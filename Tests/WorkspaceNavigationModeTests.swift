@@ -138,6 +138,143 @@ final class WorkspaceNavigationModeTests: XCTestCase {
     }
 
     @MainActor
+    func testRenamedExpandedFolderStaysExpanded() async throws {
+        let renamedFolderURL = PreviewSampleData.workspaceRootURL.appending(path: "Logbook")
+        let renamedSnapshot = makeWorkspaceSnapshotReplacingJournalFolder(
+            withFolderURL: renamedFolderURL
+        )
+        let renameOutcome = WorkspaceMutationOutcome.renamedFolder(
+            oldURL: PreviewSampleData.journalURL,
+            newURL: renamedFolderURL,
+            displayName: "Logbook",
+            relativePath: "Logbook"
+        )
+        let (session, _, viewModel) = makeWorkspaceSystem(
+            workspaceManager: ViewModelRenameTestingWorkspaceManager(
+                refreshSnapshot: renamedSnapshot,
+                renameOutcome: renameOutcome
+            )
+        )
+        session.launchState = .workspaceReady
+        let journalNode = try XCTUnwrap(
+            session.workspaceSnapshot?.rootNodes.first(where: { $0.url == PreviewSampleData.journalURL })
+        )
+
+        viewModel.toggleFolderExpansion(at: PreviewSampleData.journalURL)
+        viewModel.presentRename(for: journalNode)
+        viewModel.renameItemName = "Logbook"
+        viewModel.renameItem()
+
+        try await waitUntil {
+            viewModel.isPerformingFileOperation == false
+        }
+
+        XCTAssertTrue(viewModel.isFolderExpanded(at: renamedFolderURL))
+        XCTAssertFalse(viewModel.isFolderExpanded(at: PreviewSampleData.journalURL))
+    }
+
+    @MainActor
+    func testExpandedDescendantsUnderRenamedAncestorStayExpanded() async throws {
+        let renamedFolderURL = PreviewSampleData.workspaceRootURL.appending(path: "Logbook")
+        let renamedYearURL = renamedFolderURL.appending(path: "2026")
+        let renamedSnapshot = makeWorkspaceSnapshotReplacingJournalFolder(
+            withFolderURL: renamedFolderURL
+        )
+        let renameOutcome = WorkspaceMutationOutcome.renamedFolder(
+            oldURL: PreviewSampleData.journalURL,
+            newURL: renamedFolderURL,
+            displayName: "Logbook",
+            relativePath: "Logbook"
+        )
+        let (session, _, viewModel) = makeWorkspaceSystem(
+            workspaceManager: ViewModelRenameTestingWorkspaceManager(
+                refreshSnapshot: renamedSnapshot,
+                renameOutcome: renameOutcome
+            )
+        )
+        session.launchState = .workspaceReady
+        let journalNode = try XCTUnwrap(
+            session.workspaceSnapshot?.rootNodes.first(where: { $0.url == PreviewSampleData.journalURL })
+        )
+
+        viewModel.expandFolderAndAncestors(at: PreviewSampleData.year2026URL)
+        viewModel.presentRename(for: journalNode)
+        viewModel.renameItemName = "Logbook"
+        viewModel.renameItem()
+
+        try await waitUntil {
+            viewModel.isPerformingFileOperation == false
+        }
+
+        XCTAssertTrue(viewModel.isFolderExpanded(at: renamedFolderURL))
+        XCTAssertTrue(viewModel.isFolderExpanded(at: renamedYearURL))
+        XCTAssertFalse(viewModel.isFolderExpanded(at: PreviewSampleData.journalURL))
+        XCTAssertFalse(viewModel.isFolderExpanded(at: PreviewSampleData.year2026URL))
+    }
+
+    @MainActor
+    func testSecondMutationRequestDuringInFlightMutationSurfacesBusyErrorInsteadOfSilentlyNoOping() async throws {
+        let (session, _, viewModel) = makeWorkspaceSystem(
+            workspaceManager: DelayedViewModelMutationWorkspaceManager(
+                refreshSnapshot: PreviewSampleData.nestedWorkspace,
+                createFileDelay: .milliseconds(200)
+            )
+        )
+        session.launchState = .workspaceReady
+
+        viewModel.presentCreateFile(in: nil)
+        viewModel.createItemName = "Scratch.md"
+        viewModel.createItem()
+
+        try await waitUntil {
+            viewModel.isPerformingFileOperation
+        }
+
+        viewModel.presentCreateFolder(in: nil)
+        viewModel.createItemName = "Scratch Folder"
+        viewModel.createItem()
+
+        XCTAssertEqual(session.workspaceAlertError?.title, "Operation in Progress")
+        XCTAssertEqual(
+            session.workspaceAlertError?.message,
+            "Finish the current workspace change before starting another one."
+        )
+
+        try await waitUntil {
+            viewModel.isPerformingFileOperation == false
+        }
+    }
+
+    @MainActor
+    func testRowActionsAreDisabledWhileBusy() async throws {
+        let (session, _, viewModel) = makeWorkspaceSystem(
+            workspaceManager: DelayedViewModelMutationWorkspaceManager(
+                refreshSnapshot: PreviewSampleData.nestedWorkspace,
+                createFileDelay: .milliseconds(200)
+            )
+        )
+        session.launchState = .workspaceReady
+
+        XCTAssertFalse(viewModel.areRowActionsDisabled)
+
+        viewModel.presentCreateFile(in: nil)
+        viewModel.createItemName = "Scratch.md"
+        viewModel.createItem()
+
+        try await waitUntil {
+            viewModel.isPerformingFileOperation
+        }
+
+        XCTAssertTrue(viewModel.areRowActionsDisabled)
+
+        try await waitUntil {
+            viewModel.isPerformingFileOperation == false
+        }
+
+        XCTAssertFalse(viewModel.areRowActionsDisabled)
+    }
+
+    @MainActor
     func testRegularWorkspaceDetailShowsSettingsFromExplicitSelection() {
         let (session, coordinator, _) = makeWorkspaceSystem()
         coordinator.updateNavigationLayout(.regular)
@@ -268,13 +405,15 @@ final class WorkspaceNavigationModeTests: XCTestCase {
     }
 
     @MainActor
-    private func makeWorkspaceSystem() -> (AppSession, AppCoordinator, WorkspaceViewModel) {
+    private func makeWorkspaceSystem(
+        workspaceManager: (any WorkspaceManager)? = nil
+    ) -> (AppSession, AppCoordinator, WorkspaceViewModel) {
         let session = AppSession()
         session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
         let recentFilesStore = RecentFilesStore(initialItems: [])
         let coordinator = AppCoordinator(
             session: session,
-            workspaceManager: StubWorkspaceManager(
+            workspaceManager: workspaceManager ?? StubWorkspaceManager(
                 bookmarkStore: StubBookmarkStore(),
                 readySnapshot: PreviewSampleData.nestedWorkspace
             ),
@@ -292,4 +431,225 @@ final class WorkspaceNavigationModeTests: XCTestCase {
 
         return (session, coordinator, viewModel)
     }
+
+    @MainActor
+    private func makeWorkspaceSnapshotReplacingJournalFolder(withFolderURL folderURL: URL) -> WorkspaceSnapshot {
+        let renamedYearURL = folderURL.appending(path: "2026")
+
+        return WorkspaceSnapshot(
+            rootURL: PreviewSampleData.workspaceRootURL,
+            displayName: PreviewSampleData.nestedWorkspace.displayName,
+            rootNodes: [
+                .folder(
+                    .init(
+                        url: folderURL,
+                        displayName: folderURL.lastPathComponent,
+                        children: [
+                            .folder(
+                                .init(
+                                    url: renamedYearURL,
+                                    displayName: "2026",
+                                    children: [
+                                        .file(
+                                            .init(
+                                                url: renamedYearURL.appending(path: "2026-04-13.md"),
+                                                displayName: "2026-04-13.md",
+                                                subtitle: "Daily note",
+                                                modifiedAt: PreviewSampleData.previewDate.addingTimeInterval(-600)
+                                            )
+                                        ),
+                                        .file(
+                                            .init(
+                                                url: renamedYearURL.appending(path: "Ideas.markdown"),
+                                                displayName: "Ideas.markdown",
+                                                subtitle: "Scratchpad",
+                                                modifiedAt: PreviewSampleData.previewDate.addingTimeInterval(-3_600)
+                                            )
+                                        ),
+                                    ]
+                                )
+                            ),
+                        ]
+                    )
+                ),
+                .folder(
+                    .init(
+                        url: PreviewSampleData.referencesURL,
+                        displayName: "References",
+                        children: [
+                            .file(
+                                .init(
+                                    url: PreviewSampleData.readmeDocumentURL,
+                                    displayName: "README.md",
+                                    subtitle: "Project overview",
+                                    modifiedAt: PreviewSampleData.previewDate.addingTimeInterval(-7_200)
+                                )
+                            ),
+                        ]
+                    )
+                ),
+                .folder(
+                    .init(
+                        url: PreviewSampleData.archiveURL,
+                        displayName: "Archive",
+                        children: []
+                    )
+                ),
+                .file(
+                    .init(
+                        url: PreviewSampleData.inboxDocumentURL,
+                        displayName: "Inbox.md",
+                        subtitle: "Root document",
+                        modifiedAt: PreviewSampleData.previewDate
+                    )
+                ),
+            ],
+            lastUpdated: PreviewSampleData.previewDate
+        )
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        pollInterval: Duration = .milliseconds(20),
+        condition: @escaping @MainActor () -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await condition() {
+                return
+            }
+
+            try await Task.sleep(for: pollInterval)
+        }
+
+        XCTFail("Timed out waiting for condition.")
+    }
+}
+
+private actor ViewModelRenameTestingWorkspaceManager: WorkspaceManager {
+    let refreshSnapshot: WorkspaceSnapshot
+    let renameOutcome: WorkspaceMutationOutcome
+
+    init(
+        refreshSnapshot: WorkspaceSnapshot,
+        renameOutcome: WorkspaceMutationOutcome
+    ) {
+        self.refreshSnapshot = refreshSnapshot
+        self.renameOutcome = renameOutcome
+    }
+
+    func restoreWorkspace() async -> WorkspaceRestoreResult {
+        .ready(refreshSnapshot)
+    }
+
+    func selectWorkspace(at url: URL) async -> WorkspaceRestoreResult {
+        .ready(refreshSnapshot)
+    }
+
+    func refreshCurrentWorkspace() async throws -> WorkspaceSnapshot {
+        refreshSnapshot
+    }
+
+    func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: refreshSnapshot,
+            outcome: .createdFile(
+                url: (folderURL ?? refreshSnapshot.rootURL).appending(path: proposedName),
+                displayName: proposedName
+            )
+        )
+    }
+
+    func createFolder(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: refreshSnapshot,
+            outcome: .createdFolder(
+                url: (folderURL ?? refreshSnapshot.rootURL).appending(path: proposedName),
+                displayName: proposedName
+            )
+        )
+    }
+
+    func renameFile(at url: URL, to proposedName: String) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: refreshSnapshot,
+            outcome: renameOutcome
+        )
+    }
+
+    func deleteFile(at url: URL) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: refreshSnapshot,
+            outcome: .deletedFile(url: url, displayName: url.lastPathComponent)
+        )
+    }
+
+    func clearWorkspaceSelection() async throws {}
+}
+
+private actor DelayedViewModelMutationWorkspaceManager: WorkspaceManager {
+    let refreshSnapshot: WorkspaceSnapshot
+    let createFileDelay: Duration
+
+    init(
+        refreshSnapshot: WorkspaceSnapshot,
+        createFileDelay: Duration
+    ) {
+        self.refreshSnapshot = refreshSnapshot
+        self.createFileDelay = createFileDelay
+    }
+
+    func restoreWorkspace() async -> WorkspaceRestoreResult {
+        .ready(refreshSnapshot)
+    }
+
+    func selectWorkspace(at url: URL) async -> WorkspaceRestoreResult {
+        .ready(refreshSnapshot)
+    }
+
+    func refreshCurrentWorkspace() async throws -> WorkspaceSnapshot {
+        refreshSnapshot
+    }
+
+    func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+        try await Task.sleep(for: createFileDelay)
+        return WorkspaceMutationResult(
+            snapshot: refreshSnapshot,
+            outcome: .createdFile(
+                url: (folderURL ?? refreshSnapshot.rootURL).appending(path: proposedName),
+                displayName: proposedName
+            )
+        )
+    }
+
+    func createFolder(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: refreshSnapshot,
+            outcome: .createdFolder(
+                url: (folderURL ?? refreshSnapshot.rootURL).appending(path: proposedName),
+                displayName: proposedName
+            )
+        )
+    }
+
+    func renameFile(at url: URL, to proposedName: String) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: refreshSnapshot,
+            outcome: .renamedFile(
+                oldURL: url,
+                newURL: url.deletingLastPathComponent().appending(path: proposedName),
+                displayName: proposedName,
+                relativePath: proposedName
+            )
+        )
+    }
+
+    func deleteFile(at url: URL) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: refreshSnapshot,
+            outcome: .deletedFile(url: url, displayName: url.lastPathComponent)
+        )
+    }
+
+    func clearWorkspaceSelection() async throws {}
 }

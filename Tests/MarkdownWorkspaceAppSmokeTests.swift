@@ -745,6 +745,64 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testRefreshRaceWithCreateFolderAppliesOnlyWinningMutationSnapshot() async {
+        let createdFolderURL = PreviewSampleData.workspaceRootURL.appending(path: "Archive")
+        let createdSnapshot = makeWorkspaceSnapshotAppendingRootFile(
+            .folder(
+                .init(
+                    url: createdFolderURL,
+                    displayName: "Archive",
+                    children: []
+                )
+            )
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: SequencedRefreshWorkspaceManager(
+                refreshResponses: [
+                    .success(snapshot: PreviewSampleData.nestedWorkspace, delay: .milliseconds(180)),
+                ],
+                fallbackSnapshot: createdSnapshot,
+                createFolderResponse: .init(
+                    result: WorkspaceMutationResult(
+                        snapshot: createdSnapshot,
+                        outcome: .createdFolder(
+                            url: createdFolderURL,
+                            displayName: "Archive"
+                        )
+                    ),
+                    delay: .milliseconds(20)
+                )
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        let refreshTask = Task {
+            await coordinator.refreshWorkspace()
+        }
+        try? await Task.sleep(for: .milliseconds(30))
+        let createResult = await coordinator.createFolder(named: "Archive", in: nil)
+        let refreshResult = await refreshTask.value
+
+        guard case .success = createResult else {
+            return XCTFail("Expected create folder mutation to succeed.")
+        }
+
+        XCTAssertNil(refreshResult)
+        XCTAssertEqual(session.workspaceSnapshot, createdSnapshot)
+        XCTAssertTrue(
+            session.workspaceSnapshot?.rootNodes.contains(where: { $0.url == createdFolderURL }) == true
+        )
+    }
+
+    @MainActor
     func testCancelledPullToRefreshResetsRefreshingStateAndAllowsRetry() async throws {
         let session = AppSession()
         session.launchState = .workspaceReady
@@ -1144,6 +1202,224 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
+    func testRenameFolderContainingOpenDocumentUpdatesEditorStateAndRecents() async throws {
+        let renamedFolderURL = PreviewSampleData.workspaceRootURL.appending(path: "Logbook")
+        let renamedYearURL = renamedFolderURL.appending(path: "2026")
+        let renamedDocumentURL = renamedYearURL.appending(path: "2026-04-13.md")
+        let renamedRelativePath = "Logbook/2026/2026-04-13.md"
+        let renamedSnapshot = makeWorkspaceSnapshotReplacingFile(
+            oldURL: PreviewSampleData.journalURL,
+            with: .folder(
+                .init(
+                    url: renamedFolderURL,
+                    displayName: "Logbook",
+                    children: [
+                        .folder(
+                            .init(
+                                url: renamedYearURL,
+                                displayName: "2026",
+                                children: [
+                                    .file(
+                                        .init(
+                                            url: renamedDocumentURL,
+                                            displayName: "2026-04-13.md",
+                                            subtitle: "Daily note"
+                                        )
+                                    ),
+                                    .file(
+                                        .init(
+                                            url: renamedYearURL.appending(path: "Ideas.markdown"),
+                                            displayName: "Ideas.markdown",
+                                            subtitle: "Scratchpad"
+                                        )
+                                    ),
+                                ]
+                            )
+                        ),
+                    ]
+                )
+            )
+        )
+        let sessionStore = StubSessionStore(
+            initialSession: RestorableDocumentSession(relativePath: PreviewSampleData.dirtyDocument.relativePath)
+        )
+        let recentFilesStore = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: PreviewSampleData.dirtyDocument.relativePath,
+                    displayName: PreviewSampleData.dirtyDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+            ]
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.openDocument = PreviewSampleData.dirtyDocument
+        session.path = [.editor(PreviewSampleData.dirtyDocument.url)]
+
+        let documentManager = MutationTrackingDocumentManager()
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: renamedSnapshot,
+                renameOutcome: .renamedFolder(
+                    oldURL: PreviewSampleData.journalURL,
+                    newURL: renamedFolderURL,
+                    displayName: "Logbook",
+                    relativePath: "Logbook"
+                )
+            ),
+            documentManager: documentManager,
+            sessionStore: sessionStore,
+            recentFilesStore: recentFilesStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.renameFile(at: PreviewSampleData.journalURL, to: "Logbook")
+        let restoredSession = try await sessionStore.loadRestorableDocumentSession()
+        let relocatedInputs = await documentManager.relocatedInputs
+
+        XCTAssertEqual(session.workspaceSnapshot, renamedSnapshot)
+        XCTAssertEqual(session.openDocument?.url, renamedDocumentURL)
+        XCTAssertEqual(session.openDocument?.relativePath, renamedRelativePath)
+        XCTAssertEqual(session.path, [.editor(renamedDocumentURL)])
+        XCTAssertEqual(restoredSession?.relativePath, renamedRelativePath)
+        XCTAssertEqual(relocatedInputs.map(\.toURL), [renamedDocumentURL])
+        XCTAssertEqual(relocatedInputs.map(\.toRelativePath), [renamedRelativePath])
+        XCTAssertEqual(recentFilesStore.items.map(\.relativePath), [renamedRelativePath])
+    }
+
+    @MainActor
+    func testRenameFolderPendingEditorPresentationWithNonCanonicalPreferredURLUsesTrustedReplacementURL() async {
+        let renamedFolderURL = PreviewSampleData.workspaceRootURL.appending(path: "Logbook")
+        let renamedYearURL = renamedFolderURL.appending(path: "2026")
+        let renamedDocumentURL = renamedYearURL.appending(path: "2026-04-13.md")
+        let renamedRelativePath = "Logbook/2026/2026-04-13.md"
+        let aliasedRouteURL = URL(filePath: "/alias-root/Journal/2026/2026-04-13.md")
+        let renamedSnapshot = makeWorkspaceSnapshotRenamingJournalFolder(to: "Logbook")
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.pendingEditorPresentation = .init(
+            routeURL: aliasedRouteURL,
+            relativePath: PreviewSampleData.dirtyDocument.relativePath
+        )
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: renamedSnapshot,
+                renameOutcome: .renamedFolder(
+                    oldURL: PreviewSampleData.journalURL,
+                    newURL: renamedFolderURL,
+                    displayName: "Logbook",
+                    relativePath: "Logbook"
+                )
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.renameFile(at: PreviewSampleData.journalURL, to: "Logbook")
+
+        XCTAssertEqual(session.pendingEditorPresentation?.relativePath, renamedRelativePath)
+        XCTAssertEqual(session.pendingEditorPresentation?.routeURL, renamedDocumentURL)
+    }
+
+    @MainActor
+    func testRenameFolderCompactTrustedRouteUsesSnapshotURLWhenExistingRouteDiffersLexically() async {
+        let renamedFolderURL = PreviewSampleData.workspaceRootURL.appending(path: "Logbook")
+        let renamedYearURL = renamedFolderURL.appending(path: "2026")
+        let renamedDocumentURL = renamedYearURL.appending(path: "2026-04-13.md")
+        let renamedRelativePath = "Logbook/2026/2026-04-13.md"
+        let aliasedRouteURL = URL(filePath: "/alias-root/Journal/2026/2026-04-13.md")
+        let renamedSnapshot = makeWorkspaceSnapshotRenamingJournalFolder(to: "Logbook")
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.path = [.trustedEditor(
+            aliasedRouteURL,
+            PreviewSampleData.dirtyDocument.relativePath
+        )]
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: renamedSnapshot,
+                renameOutcome: .renamedFolder(
+                    oldURL: PreviewSampleData.journalURL,
+                    newURL: renamedFolderURL,
+                    displayName: "Logbook",
+                    relativePath: "Logbook"
+                )
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.renameFile(at: PreviewSampleData.journalURL, to: "Logbook")
+
+        XCTAssertEqual(
+            session.path,
+            [.trustedEditor(renamedDocumentURL, renamedRelativePath)]
+        )
+    }
+
+    @MainActor
+    func testRenameFolderRegularNavigationRewritesRelativeSelectionAndCanonicalizesOpenDocumentURL() async throws {
+        let renamedFolderURL = PreviewSampleData.workspaceRootURL.appending(path: "Logbook")
+        let renamedYearURL = renamedFolderURL.appending(path: "2026")
+        let renamedDocumentURL = renamedYearURL.appending(path: "2026-04-13.md")
+        let renamedRelativePath = "Logbook/2026/2026-04-13.md"
+        let aliasedRouteURL = URL(filePath: "/alias-root/Journal/2026/2026-04-13.md")
+        let renamedSnapshot = makeWorkspaceSnapshotRenamingJournalFolder(to: "Logbook")
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.navigationLayout = .regular
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        var aliasedOpenDocument = PreviewSampleData.dirtyDocument
+        aliasedOpenDocument.url = aliasedRouteURL
+        session.openDocument = aliasedOpenDocument
+        session.regularDetailSelection = .editor(aliasedOpenDocument.relativePath)
+
+        let documentManager = MutationTrackingDocumentManager()
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: renamedSnapshot,
+                renameOutcome: .renamedFolder(
+                    oldURL: PreviewSampleData.journalURL,
+                    newURL: renamedFolderURL,
+                    displayName: "Logbook",
+                    relativePath: "Logbook"
+                )
+            ),
+            documentManager: documentManager,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.renameFile(at: PreviewSampleData.journalURL, to: "Logbook")
+        let relocatedInputs = await documentManager.relocatedInputs
+
+        XCTAssertEqual(session.regularDetailSelection, .editor(renamedRelativePath))
+        XCTAssertEqual(session.regularWorkspaceDetail, .editor(renamedDocumentURL))
+        XCTAssertEqual(session.openDocument?.url, renamedDocumentURL)
+        XCTAssertEqual(session.openDocument?.relativePath, renamedRelativePath)
+        XCTAssertEqual(relocatedInputs.map(\.toURL), [renamedDocumentURL])
+        XCTAssertEqual(relocatedInputs.map(\.toRelativePath), [renamedRelativePath])
+    }
+
+    @MainActor
     func testDeleteActiveOpenDocumentClosesEditorAndShowsExplicitMessage() async {
         let session = AppSession()
         session.launchState = .workspaceReady
@@ -1217,6 +1493,60 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
         XCTAssertEqual(session.path, [])
         XCTAssertEqual(session.workspaceAlertError?.title, "Document Deleted")
         XCTAssertNil(restoredSession)
+    }
+
+    @MainActor
+    func testDeleteFolderContainingOpenDocumentClosesEditorClearsRestoreStateAndRecents() async throws {
+        let sessionStore = StubSessionStore(
+            initialSession: RestorableDocumentSession(relativePath: PreviewSampleData.dirtyDocument.relativePath)
+        )
+        let recentFilesStore = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: PreviewSampleData.dirtyDocument.relativePath,
+                    displayName: PreviewSampleData.dirtyDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+            ]
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+
+        var openDocument = PreviewSampleData.dirtyDocument
+        openDocument.isDirty = false
+        openDocument.saveState = .saved(PreviewSampleData.previewDate)
+        session.openDocument = openDocument
+        session.path = [.editor(openDocument.url)]
+
+        let deletedSnapshot = makeWorkspaceSnapshotRemovingFile(url: PreviewSampleData.journalURL)
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: deletedSnapshot,
+                deleteOutcome: .deletedFolder(
+                    url: PreviewSampleData.journalURL,
+                    displayName: "Journal"
+                )
+            ),
+            documentManager: MutationTrackingDocumentManager(),
+            sessionStore: sessionStore,
+            recentFilesStore: recentFilesStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.deleteFile(at: PreviewSampleData.journalURL)
+        let restoredSession = try await sessionStore.loadRestorableDocumentSession()
+
+        XCTAssertEqual(session.workspaceSnapshot, deletedSnapshot)
+        XCTAssertNil(session.openDocument)
+        XCTAssertEqual(session.path, [])
+        XCTAssertEqual(session.workspaceAlertError?.title, "Document Deleted")
+        XCTAssertNil(restoredSession)
+        XCTAssertTrue(recentFilesStore.items.isEmpty)
     }
 
     @MainActor
@@ -2824,6 +3154,46 @@ final class MarkdownWorkspaceAppSmokeTests: XCTestCase {
     }
 
     @MainActor
+    private func makeWorkspaceSnapshotRenamingJournalFolder(to folderName: String) -> WorkspaceSnapshot {
+        let renamedFolderURL = PreviewSampleData.workspaceRootURL.appending(path: folderName)
+        let renamedYearURL = renamedFolderURL.appending(path: "2026")
+
+        return makeWorkspaceSnapshotReplacingFile(
+            oldURL: PreviewSampleData.journalURL,
+            with: .folder(
+                .init(
+                    url: renamedFolderURL,
+                    displayName: folderName,
+                    children: [
+                        .folder(
+                            .init(
+                                url: renamedYearURL,
+                                displayName: "2026",
+                                children: [
+                                    .file(
+                                        .init(
+                                            url: renamedYearURL.appending(path: "2026-04-13.md"),
+                                            displayName: "2026-04-13.md",
+                                            subtitle: "Daily note"
+                                        )
+                                    ),
+                                    .file(
+                                        .init(
+                                            url: renamedYearURL.appending(path: "Ideas.markdown"),
+                                            displayName: "Ideas.markdown",
+                                            subtitle: "Scratchpad"
+                                        )
+                                    ),
+                                ]
+                            )
+                        ),
+                    ]
+                )
+            )
+        )
+    }
+
+    @MainActor
     private func makeWorkspaceSnapshotRemovingRootFile(url: URL) -> WorkspaceSnapshot {
         WorkspaceSnapshot(
             rootURL: PreviewSampleData.nestedWorkspace.rootURL,
@@ -3340,6 +3710,7 @@ private actor SequencedRefreshWorkspaceManager: WorkspaceManager {
     private var refreshResponses: [SequencedWorkspaceRefreshResponse]
     private let fallbackSnapshot: WorkspaceSnapshot
     private let createResponse: SequencedWorkspaceMutationResponse?
+    private let createFolderResponse: SequencedWorkspaceMutationResponse?
     private let renameResponse: SequencedWorkspaceMutationResponse?
     private let deleteResponse: SequencedWorkspaceMutationResponse?
 
@@ -3347,12 +3718,14 @@ private actor SequencedRefreshWorkspaceManager: WorkspaceManager {
         refreshResponses: [SequencedWorkspaceRefreshResponse],
         fallbackSnapshot: WorkspaceSnapshot,
         createResponse: SequencedWorkspaceMutationResponse? = nil,
+        createFolderResponse: SequencedWorkspaceMutationResponse? = nil,
         renameResponse: SequencedWorkspaceMutationResponse? = nil,
         deleteResponse: SequencedWorkspaceMutationResponse? = nil
     ) {
         self.refreshResponses = refreshResponses
         self.fallbackSnapshot = fallbackSnapshot
         self.createResponse = createResponse
+        self.createFolderResponse = createFolderResponse
         self.renameResponse = renameResponse
         self.deleteResponse = deleteResponse
     }
@@ -3389,6 +3762,21 @@ private actor SequencedRefreshWorkspaceManager: WorkspaceManager {
         return WorkspaceMutationResult(
             snapshot: fallbackSnapshot,
             outcome: .createdFile(
+                url: (folderURL ?? fallbackSnapshot.rootURL).appending(path: proposedName),
+                displayName: proposedName
+            )
+        )
+    }
+
+    func createFolder(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+        if let createFolderResponse {
+            try await Task.sleep(for: createFolderResponse.delay)
+            return createFolderResponse.result
+        }
+
+        return WorkspaceMutationResult(
+            snapshot: fallbackSnapshot,
+            outcome: .createdFolder(
                 url: (folderURL ?? fallbackSnapshot.rootURL).appending(path: proposedName),
                 displayName: proposedName
             )
@@ -3476,6 +3864,16 @@ private actor MutationTestingWorkspaceManager: WorkspaceManager {
         WorkspaceMutationResult(
             snapshot: refreshSnapshot,
             outcome: .createdFile(
+                url: (folderURL ?? refreshSnapshot.rootURL).appending(path: proposedName),
+                displayName: proposedName
+            )
+        )
+    }
+
+    func createFolder(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: refreshSnapshot,
+            outcome: .createdFolder(
                 url: (folderURL ?? refreshSnapshot.rootURL).appending(path: proposedName),
                 displayName: proposedName
             )

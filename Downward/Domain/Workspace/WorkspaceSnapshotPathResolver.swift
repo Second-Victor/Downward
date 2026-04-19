@@ -7,7 +7,11 @@ import Foundation
 /// that are already present in `WorkspaceSnapshot` without re-validating against live disk state.
 extension WorkspaceSnapshot {
     nonisolated func relativePath(for url: URL) -> String? {
-        relativePath(for: url.standardizedFileURL, in: rootNodes, parentPath: nil)
+        relativePath(
+            forNormalizedURL: WorkspaceIdentity.normalizedPath(for: url),
+            in: rootNodes,
+            parentPath: nil
+        )
     }
 
     nonisolated func fileURL(forRelativePath relativePath: String) -> URL? {
@@ -19,19 +23,19 @@ extension WorkspaceSnapshot {
     }
 
     nonisolated private func relativePath(
-        for url: URL,
+        forNormalizedURL normalizedURL: String,
         in nodes: [WorkspaceNode],
         parentPath: String?
     ) -> String? {
         for node in nodes {
             let currentPath = joinedPath(parentPath, node.url.lastPathComponent)
-            if node.url.standardizedFileURL == url {
+            if WorkspaceIdentity.normalizedPath(for: node.url) == normalizedURL {
                 return currentPath
             }
 
             if let children = node.children,
                let descendantPath = relativePath(
-                   for: url,
+                   forNormalizedURL: normalizedURL,
                    in: children,
                    parentPath: currentPath
                ) {

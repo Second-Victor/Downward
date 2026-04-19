@@ -2,6 +2,56 @@ import Foundation
 import Observation
 import SwiftUI
 
+enum WorkspaceCreateItemKind: Equatable {
+    case file
+    case folder
+
+    var promptTitle: String {
+        switch self {
+        case .file:
+            "New Text File"
+        case .folder:
+            "New Folder"
+        }
+    }
+
+    var fieldTitle: String {
+        switch self {
+        case .file:
+            "File Name"
+        case .folder:
+            "Folder Name"
+        }
+    }
+
+    var promptMessage: String {
+        switch self {
+        case .file:
+            "Create a new Markdown or text file."
+        case .folder:
+            "Create a new folder in the workspace."
+        }
+    }
+
+    var createActionTitle: String {
+        switch self {
+        case .file:
+            "Create File"
+        case .folder:
+            "Create Folder"
+        }
+    }
+
+    var defaultName: String {
+        switch self {
+        case .file:
+            "Untitled.md"
+        case .folder:
+            "Untitled Folder"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class WorkspaceViewModel {
@@ -15,16 +65,17 @@ final class WorkspaceViewModel {
     var isRefreshing = false
     var isPerformingFileOperation = false
     var loadError: UserFacingError?
-    var isShowingCreateFilePrompt = false
-    var createFileName = "Untitled.md"
+    var isShowingCreatePrompt = false
+    var createItemName = WorkspaceCreateItemKind.file.defaultName
     var isShowingRenamePrompt = false
-    var renameFileName = ""
+    var renameItemName = ""
     var isShowingDeleteConfirmation = false
     var isShowingRecentFiles = false
     private(set) var expandedFolderRelativePaths: Set<String> = []
+    private(set) var pendingCreateItemKind: WorkspaceCreateItemKind = .file
 
-    private(set) var pendingRenameFile: WorkspaceNode.File?
-    private(set) var pendingDeleteFile: WorkspaceNode.File?
+    private(set) var pendingRenameNode: WorkspaceNode?
+    private(set) var pendingDeleteNode: WorkspaceNode?
     private(set) var searchResults: [WorkspaceSearchResult] = []
 
     private let coordinator: AppCoordinator
@@ -35,7 +86,7 @@ final class WorkspaceViewModel {
     private var loadGeneration = 0
     private var fileOperationGeneration = 0
     private var hasLoadedInitialSnapshot = false
-    private var pendingCreateFolderURL: URL?
+    private var pendingCreateParentFolderURL: URL?
     private var lastSearchContext: SearchComputationContext?
 
     init(
@@ -79,12 +130,50 @@ final class WorkspaceViewModel {
         isRefreshing || isPerformingFileOperation
     }
 
+    var areRowActionsDisabled: Bool {
+        isBusy
+    }
+
     var pendingRenameTitle: String {
-        pendingRenameFile?.displayName ?? "Rename File"
+        pendingRenameNode?.displayName ?? "Rename Item"
     }
 
     var pendingDeleteTitle: String {
-        pendingDeleteFile?.displayName ?? "Delete File"
+        pendingDeleteNode?.displayName ?? "Delete Item"
+    }
+
+    var renamePromptTitle: String {
+        pendingRenameNode?.isFolder == true ? "Rename Folder" : "Rename File"
+    }
+
+    var renamePromptFieldTitle: String {
+        pendingRenameNode?.isFolder == true ? "Folder Name" : "File Name"
+    }
+
+    var deletePromptTitle: String {
+        pendingDeleteNode?.isFolder == true ? "Delete Folder" : "Delete File"
+    }
+
+    var deletePromptMessage: String {
+        pendingDeleteNode?.isFolder == true
+            ? "This removes the folder and its contents from the workspace."
+            : "This removes the file from the workspace."
+    }
+
+    var createPromptTitle: String {
+        pendingCreateItemKind.promptTitle
+    }
+
+    var createPromptFieldTitle: String {
+        pendingCreateItemKind.fieldTitle
+    }
+
+    var createPromptMessage: String {
+        pendingCreateItemKind.promptMessage
+    }
+
+    var createPromptActionTitle: String {
+        pendingCreateItemKind.createActionTitle
     }
 
     var searchQueryDescription: String {
@@ -243,78 +332,132 @@ final class WorkspaceViewModel {
         expandedFolderRelativePaths.formIntersection(validFolderPaths)
     }
 
+    private func rewriteExpandedFolderRelativePaths(
+        from oldPrefix: String,
+        to newPrefix: String
+    ) {
+        guard expandedFolderRelativePaths.isEmpty == false, oldPrefix != newPrefix else {
+            return
+        }
+
+        expandedFolderRelativePaths = Set(
+            expandedFolderRelativePaths.map { path in
+                rewrittenExpandedFolderRelativePath(
+                    path,
+                    from: oldPrefix,
+                    to: newPrefix
+                )
+            }
+        )
+    }
+
     func presentCreateFile(in folderURL: URL?) {
-        pendingCreateFolderURL = folderURL
-        createFileName = suggestedCreateFileName(in: folderURL)
-        isShowingCreateFilePrompt = true
+        presentCreateItem(.file, in: folderURL)
     }
 
-    func cancelCreateFile() {
-        isShowingCreateFilePrompt = false
-        createFileName = "Untitled.md"
-        pendingCreateFolderURL = nil
+    func presentCreateFolder(in folderURL: URL?) {
+        presentCreateItem(.folder, in: folderURL)
     }
 
-    func createFile() {
-        let pendingFolderURL = pendingCreateFolderURL
-        let proposedName = createFileName
-        cancelCreateFile()
+    func cancelCreateItem() {
+        isShowingCreatePrompt = false
+        createItemName = WorkspaceCreateItemKind.file.defaultName
+        pendingCreateItemKind = .file
+        pendingCreateParentFolderURL = nil
+    }
+
+    func createItem() {
+        let pendingFolderURL = pendingCreateParentFolderURL
+        let proposedName = createItemName
+        let itemKind = pendingCreateItemKind
+        cancelCreateItem()
 
         startFileOperation { [self] in
-            _ = await self.coordinator.createFile(
-                named: proposedName,
-                in: pendingFolderURL
-            )
+            let result: Result<WorkspaceMutationOutcome, UserFacingError>
+            switch itemKind {
+            case .file:
+                result = await self.coordinator.createFile(
+                    named: proposedName,
+                    in: pendingFolderURL
+                )
+            case .folder:
+                result = await self.coordinator.createFolder(
+                    named: proposedName,
+                    in: pendingFolderURL
+                )
+            }
+
+            guard case let .success(outcome) = result else {
+                return
+            }
+
+            revealCreatedItem(using: outcome)
         }
     }
 
-    func presentRename(for file: WorkspaceNode.File) {
-        pendingRenameFile = file
-        renameFileName = file.displayName
+    func presentRename(for node: WorkspaceNode) {
+        pendingRenameNode = node
+        renameItemName = node.displayName
         isShowingRenamePrompt = true
     }
 
     func cancelRename() {
         isShowingRenamePrompt = false
-        renameFileName = ""
-        pendingRenameFile = nil
+        renameItemName = ""
+        pendingRenameNode = nil
     }
 
-    func renameFile() {
-        guard let pendingRenameFile else {
+    func renameItem() {
+        guard let pendingRenameNode else {
             return
         }
 
-        let proposedName = renameFileName
+        let proposedName = renameItemName
+        let renamedNode = pendingRenameNode
+        let oldExpandedRelativePath = renamedNode.isFolder ? folderRelativePath(for: renamedNode.url) : nil
         cancelRename()
 
         startFileOperation { [self] in
-            _ = await self.coordinator.renameFile(
-                at: pendingRenameFile.url,
+            let result = await self.coordinator.renameFile(
+                at: renamedNode.url,
                 to: proposedName
+            )
+
+            guard case let .success(outcome) = result else {
+                return
+            }
+
+            guard case let .renamedFolder(_, _, _, newRelativePath) = outcome,
+                  let oldExpandedRelativePath else {
+                return
+            }
+
+            rewriteExpandedFolderRelativePaths(
+                from: oldExpandedRelativePath,
+                to: newRelativePath
             )
         }
     }
 
-    func presentDelete(for file: WorkspaceNode.File) {
-        pendingDeleteFile = file
+    func presentDelete(for node: WorkspaceNode) {
+        pendingDeleteNode = node
         isShowingDeleteConfirmation = true
     }
 
     func cancelDelete() {
         isShowingDeleteConfirmation = false
-        pendingDeleteFile = nil
+        pendingDeleteNode = nil
     }
 
-    func deleteFile() {
-        guard let pendingDeleteFile else {
+    func deleteItem() {
+        guard let pendingDeleteNode else {
             return
         }
 
         cancelDelete()
 
         startFileOperation { [self] in
-            _ = await self.coordinator.deleteFile(at: pendingDeleteFile.url)
+            _ = await self.coordinator.deleteFile(at: pendingDeleteNode.url)
         }
     }
 
@@ -416,6 +559,11 @@ final class WorkspaceViewModel {
 
     private func startFileOperation(_ operation: @escaping @MainActor () async -> Void) {
         guard isPerformingFileOperation == false else {
+            session.workspaceAlertError = UserFacingError(
+                title: "Operation in Progress",
+                message: "Finish the current workspace change before starting another one.",
+                recoverySuggestion: "Wait for the current action to complete, then try again."
+            )
             return
         }
 
@@ -457,6 +605,38 @@ final class WorkspaceViewModel {
         fileOperationTask = nil
     }
 
+    private func presentCreateItem(_ itemKind: WorkspaceCreateItemKind, in folderURL: URL?) {
+        pendingCreateItemKind = itemKind
+        pendingCreateParentFolderURL = folderURL
+        createItemName = suggestedCreateItemName(itemKind, in: folderURL)
+        isShowingCreatePrompt = true
+    }
+
+    private func revealCreatedItem(using outcome: WorkspaceMutationOutcome) {
+        let createdURL: URL
+        switch outcome {
+        case let .createdFile(url, _), let .createdFolder(url, _):
+            createdURL = url
+        default:
+            return
+        }
+
+        let parentURL = createdURL.deletingLastPathComponent()
+        expandFolderAndAncestors(at: parentURL)
+    }
+
+    private func suggestedCreateItemName(
+        _ itemKind: WorkspaceCreateItemKind,
+        in folderURL: URL?
+    ) -> String {
+        switch itemKind {
+        case .file:
+            suggestedCreateFileName(in: folderURL)
+        case .folder:
+            suggestedCreateFolderName(in: folderURL)
+        }
+    }
+
     private func suggestedCreateFileName(in folderURL: URL?) -> String {
         let existingNames = Set<String>(
             nodes(in: folderURL)
@@ -474,6 +654,29 @@ final class WorkspaceViewModel {
 
         while existingNames.contains(candidateName.lowercased()) {
             candidateName = "\(baseName) \(duplicateIndex).md"
+            duplicateIndex += 1
+        }
+
+        return candidateName
+    }
+
+    private func suggestedCreateFolderName(in folderURL: URL?) -> String {
+        let existingNames = Set<String>(
+            nodes(in: folderURL)
+                .compactMap { node in
+                    guard node.isFolder else {
+                        return nil
+                    }
+
+                    return node.displayName.lowercased()
+                }
+        )
+        let baseName = "Untitled Folder"
+        var candidateName = baseName
+        var duplicateIndex = 2
+
+        while existingNames.contains(candidateName.lowercased()) {
+            candidateName = "\(baseName) \(duplicateIndex)"
             duplicateIndex += 1
         }
 
@@ -522,6 +725,23 @@ final class WorkspaceViewModel {
         }
 
         return relativePaths
+    }
+
+    private func rewrittenExpandedFolderRelativePath(
+        _ path: String,
+        from oldPrefix: String,
+        to newPrefix: String
+    ) -> String {
+        guard path == oldPrefix || path.hasPrefix("\(oldPrefix)/") else {
+            return path
+        }
+
+        if path == oldPrefix {
+            return newPrefix
+        }
+
+        let suffix = path.dropFirst(oldPrefix.count + 1)
+        return "\(newPrefix)/\(suffix)"
     }
 
     private func joinedRelativePath(_ parentRelativePath: String?, component: String) -> String {

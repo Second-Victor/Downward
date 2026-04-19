@@ -145,17 +145,76 @@ final class AppCoordinator {
         }
     }
 
+    func createFolder(
+        named proposedName: String,
+        in folderURL: URL?
+    ) async -> Result<WorkspaceMutationOutcome, UserFacingError> {
+        let applyContext = nextWorkspaceSnapshotApplyContext()
+
+        do {
+            let mutationResult = try await workspaceManager.createFolder(
+                named: proposedName,
+                in: folderURL
+            )
+            await applyWorkspaceMutationResult(mutationResult, context: applyContext)
+            return .success(mutationResult.outcome)
+        } catch let error as AppError {
+            guard shouldApplyWorkspaceSnapshotResult(applyContext, requiresReadyWorkspace: true) else {
+                return .failure(errorReporter.makeUserFacingError(from: error))
+            }
+
+            if case let .workspaceAccessInvalid(displayName) = error {
+                let reconnectError = transitionToWorkspaceReconnectState(
+                    displayName: session.currentWorkspaceName ?? displayName,
+                    message: "The workspace can no longer be accessed."
+                )
+                return .failure(reconnectError)
+            }
+
+            errorReporter.report(error, context: "Creating folder")
+            let userFacingError = errorReporter.makeUserFacingError(from: error)
+            session.workspaceAlertError = userFacingError
+            return .failure(userFacingError)
+        } catch {
+            guard shouldApplyWorkspaceSnapshotResult(applyContext, requiresReadyWorkspace: true) else {
+                return .failure(
+                    errorReporter.makeUserFacingError(
+                        from: AppError.fileOperationFailed(
+                            action: "Create Folder",
+                            name: proposedName.isEmpty ? "Untitled Folder" : proposedName,
+                            details: "The folder could not be created."
+                        )
+                    )
+                )
+            }
+
+            let appError = AppError.fileOperationFailed(
+                action: "Create Folder",
+                name: proposedName.isEmpty ? "Untitled Folder" : proposedName,
+                details: "The folder could not be created."
+            )
+            errorReporter.report(appError, context: "Creating folder")
+            let userFacingError = errorReporter.makeUserFacingError(from: appError)
+            session.workspaceAlertError = userFacingError
+            return .failure(userFacingError)
+        }
+    }
+
     func renameFile(
         at url: URL,
         to proposedName: String
     ) async -> Result<WorkspaceMutationOutcome, UserFacingError> {
         var applyContext: WorkspaceSnapshotApplyContext?
+        let targetKind = browserItemKind(for: url)
+        let targetRelativePath = session.workspaceSnapshot?.relativePath(for: url)
 
         do {
-            if let openDocument = session.openDocument, openDocument.url == url {
+            if let openDocument = session.openDocument,
+               openDocument.url == url
+                || targetRelativePath.map({ isSameOrDescendantPath(openDocument.relativePath, of: $0) }) == true {
                 guard openDocument.saveState != .saving else {
                     let error = UserFacingError(
-                        title: "Rename File",
+                        title: targetKind.renameActionTitle,
                         message: "\(openDocument.displayName) is still saving.",
                         recoverySuggestion: "Wait for the current save to finish, then try renaming it again."
                     )
@@ -165,8 +224,10 @@ final class AppCoordinator {
 
                 guard openDocument.conflictState.isConflicted == false else {
                     let error = UserFacingError(
-                        title: "Rename File",
-                        message: "Resolve the current conflict before renaming \(openDocument.displayName).",
+                        title: targetKind.renameActionTitle,
+                        message: targetKind == .folder
+                            ? "Resolve the current conflict before renaming the folder containing \(openDocument.displayName)."
+                            : "Resolve the current conflict before renaming \(openDocument.displayName).",
                         recoverySuggestion: "Finish resolving the document, then try again."
                     )
                     session.workspaceAlertError = error
@@ -206,18 +267,22 @@ final class AppCoordinator {
                 return .failure(
                     errorReporter.makeUserFacingError(
                         from: AppError.fileOperationFailed(
-                            action: "Rename File",
+                            action: targetKind.renameActionTitle,
                             name: url.lastPathComponent,
-                            details: "The file could not be renamed."
+                            details: targetKind == .folder
+                                ? "The folder could not be renamed."
+                                : "The file could not be renamed."
                         )
                     )
                 )
             }
 
             let appError = AppError.fileOperationFailed(
-                action: "Rename File",
+                action: targetKind.renameActionTitle,
                 name: url.lastPathComponent,
-                details: "The file could not be renamed."
+                details: targetKind == .folder
+                    ? "The folder could not be renamed."
+                    : "The file could not be renamed."
             )
             errorReporter.report(appError, context: "Renaming file")
             let userFacingError = errorReporter.makeUserFacingError(from: appError)
@@ -228,12 +293,16 @@ final class AppCoordinator {
 
     func deleteFile(at url: URL) async -> Result<WorkspaceMutationOutcome, UserFacingError> {
         var applyContext: WorkspaceSnapshotApplyContext?
+        let targetKind = browserItemKind(for: url)
+        let targetRelativePath = session.workspaceSnapshot?.relativePath(for: url)
 
         do {
-            if let openDocument = session.openDocument, openDocument.url == url {
+            if let openDocument = session.openDocument,
+               openDocument.url == url
+                || targetRelativePath.map({ isSameOrDescendantPath(openDocument.relativePath, of: $0) }) == true {
                 if openDocument.saveState == .saving {
                     let error = UserFacingError(
-                        title: "Delete File",
+                        title: targetKind.deleteActionTitle,
                         message: "\(openDocument.displayName) is still saving.",
                         recoverySuggestion: "Wait for the current save to finish, then try deleting it again."
                     )
@@ -243,8 +312,10 @@ final class AppCoordinator {
 
                 if openDocument.isDirty || openDocument.conflictState.isConflicted {
                     let error = UserFacingError(
-                        title: "Delete File",
-                        message: "Finish with \(openDocument.displayName) before deleting it from the browser.",
+                        title: targetKind.deleteActionTitle,
+                        message: targetKind == .folder
+                            ? "Finish with \(openDocument.displayName) before deleting its folder from the browser."
+                            : "Finish with \(openDocument.displayName) before deleting it from the browser.",
                         recoverySuggestion: "Let it save or resolve the conflict first."
                     )
                     session.workspaceAlertError = error
@@ -281,18 +352,22 @@ final class AppCoordinator {
                 return .failure(
                     errorReporter.makeUserFacingError(
                         from: AppError.fileOperationFailed(
-                            action: "Delete File",
+                            action: targetKind.deleteActionTitle,
                             name: url.lastPathComponent,
-                            details: "The file could not be deleted."
+                            details: targetKind == .folder
+                                ? "The folder could not be deleted."
+                                : "The file could not be deleted."
                         )
                     )
                 )
             }
 
             let appError = AppError.fileOperationFailed(
-                action: "Delete File",
+                action: targetKind.deleteActionTitle,
                 name: url.lastPathComponent,
-                details: "The file could not be deleted."
+                details: targetKind == .folder
+                    ? "The folder could not be deleted."
+                    : "The file could not be deleted."
             )
             errorReporter.report(appError, context: "Deleting file")
             let userFacingError = errorReporter.makeUserFacingError(from: appError)
@@ -947,6 +1022,8 @@ final class AppCoordinator {
         switch mutationResult.outcome {
         case .createdFile:
             break
+        case .createdFolder:
+            break
         case let .renamedFile(oldURL, newURL, displayName, newRelativePath):
             let oldRelativePath = previousSnapshot?.relativePath(for: oldURL)
 
@@ -979,6 +1056,78 @@ final class AppCoordinator {
                 openDocument.url = newURL
                 openDocument.relativePath = newRelativePath
                 openDocument.displayName = displayName
+                session.openDocument = openDocument
+                await saveRestorableDocumentSession(for: openDocument)
+            }
+        case let .renamedFolder(oldURL, newURL, _, newRelativePath):
+            let workspaceRootURL = previousSnapshot?.rootURL ?? mutationResult.snapshot.rootURL
+            let oldRelativePath = previousSnapshot?.relativePath(for: oldURL)
+                ?? relativePath(for: oldURL, within: workspaceRootURL)
+
+            if let oldRelativePath {
+                recentFilesStore.renameItemsInFolder(
+                    using: mutationResult.snapshot,
+                    oldFolderRelativePath: oldRelativePath,
+                    newFolderRelativePath: newRelativePath
+                )
+            }
+
+            if let pendingPresentation = session.pendingEditorPresentation,
+               let oldRelativePath,
+               let updatedRelativePath = replacingPathPrefix(
+                pendingPresentation.relativePath,
+                oldPrefix: oldRelativePath,
+                newPrefix: newRelativePath
+               ) {
+                let updatedRouteURL = resolvedRenamedTrustedDescendantURL(
+                    existingURL: pendingPresentation.routeURL,
+                    updatedRelativePath: updatedRelativePath,
+                    oldFolderURL: oldURL,
+                    newFolderURL: newURL,
+                    snapshot: mutationResult.snapshot
+                )
+                session.pendingEditorPresentation = .init(
+                    routeURL: updatedRouteURL,
+                    relativePath: updatedRelativePath,
+                    source: pendingPresentation.source
+                )
+            }
+
+            session.applyNavigationState(
+                WorkspaceNavigationPolicy.replacingEditorPresentation(
+                    from: session.navigationState,
+                    oldURL: oldURL,
+                    newURL: newURL,
+                    oldRelativePath: oldRelativePath,
+                    newRelativePath: newRelativePath,
+                    openDocument: session.openDocument,
+                    includingDescendants: true,
+                    workspaceRootURL: workspaceRootURL
+                )
+            )
+
+            if var openDocument = session.openDocument,
+               let oldRelativePath,
+               let updatedRelativePath = replacingPathPrefix(
+                openDocument.relativePath,
+                oldPrefix: oldRelativePath,
+                newPrefix: newRelativePath
+               ) {
+                let updatedURL = resolvedRenamedTrustedDescendantURL(
+                existingURL: openDocument.url,
+                updatedRelativePath: updatedRelativePath,
+                oldFolderURL: oldURL,
+                newFolderURL: newURL,
+                snapshot: mutationResult.snapshot
+               )
+                await documentManager.relocateDocumentSession(
+                    for: openDocument,
+                    to: updatedURL,
+                    relativePath: updatedRelativePath
+                )
+                openDocument.url = updatedURL
+                openDocument.relativePath = updatedRelativePath
+                openDocument.displayName = updatedURL.lastPathComponent
                 session.openDocument = openDocument
                 await saveRestorableDocumentSession(for: openDocument)
             }
@@ -1032,6 +1181,69 @@ final class AppCoordinator {
                 session.workspaceAlertError = UserFacingError(
                     title: "Document Deleted",
                     message: "\(displayName) was deleted from the workspace.",
+                    recoverySuggestion: "Choose another file from the browser."
+                )
+            }
+        case let .deletedFolder(url, displayName):
+            let workspaceRootURL = previousSnapshot?.rootURL ?? mutationResult.snapshot.rootURL
+            let deletedRelativePath = previousSnapshot?.relativePath(for: url)
+                ?? relativePath(for: url, within: workspaceRootURL)
+            if let deletedRelativePath {
+                recentFilesStore.removeItemsInFolder(
+                    using: mutationResult.snapshot,
+                    folderRelativePath: deletedRelativePath
+                )
+            }
+
+            let deletedPendingPresentation = session.pendingEditorPresentation.map { pendingPresentation in
+                pendingPresentation.routeURL == url
+                    || deletedRelativePath.map {
+                        isSameOrDescendantPath(pendingPresentation.relativePath, of: $0)
+                    } == true
+            } ?? false
+            let deletedOpenDocument = session.openDocument.map { openDocument in
+                openDocument.url == url
+                    || deletedRelativePath.map {
+                        isSameOrDescendantPath(openDocument.relativePath, of: $0)
+                    } == true
+            } ?? false
+            let hadVisibleDeletedEditor = session.visibleEditorURL == url
+                || deletedRelativePath.map { deletedRelativePath in
+                    session.visibleEditorRelativePath.map {
+                        isSameOrDescendantPath($0, of: deletedRelativePath)
+                    } ?? false
+                } ?? false
+            let deletedDocumentName = session.openDocument?.displayName ?? displayName
+            let shouldClearDeletedEditorPresentation = hadVisibleDeletedEditor || deletedOpenDocument
+            let shouldShowDeletedDocumentAlert = hadVisibleDeletedEditor
+
+            if deletedPendingPresentation {
+                session.pendingEditorPresentation = nil
+            }
+
+            if shouldClearDeletedEditorPresentation {
+                session.applyNavigationState(
+                    WorkspaceNavigationPolicy.removingEditorPresentation(
+                        from: session.navigationState,
+                        workspaceRootURL: workspaceRootURL,
+                        matchingRelativePath: deletedRelativePath,
+                        matchingURL: url,
+                        includingDescendants: true
+                    )
+                )
+                session.editorLoadError = nil
+                session.editorAlertError = nil
+            }
+
+            if deletedOpenDocument {
+                session.openDocument = nil
+                await clearRestorableDocumentSession()
+            }
+
+            if shouldShowDeletedDocumentAlert {
+                session.workspaceAlertError = UserFacingError(
+                    title: "Document Deleted",
+                    message: "\(deletedDocumentName) was deleted when \(displayName) was removed from the workspace.",
                     recoverySuggestion: "Choose another file from the browser."
                 )
             }
@@ -1277,6 +1489,99 @@ final class AppCoordinator {
         }
     }
 
+    private func browserItemKind(for url: URL) -> WorkspaceBrowserItemKind {
+        guard
+            let snapshot = session.workspaceSnapshot,
+            let node = workspaceNode(at: url, in: snapshot.rootNodes)
+        else {
+            return .file
+        }
+
+        return node.isFolder ? .folder : .file
+    }
+
+    private func workspaceNode(at url: URL, in nodes: [WorkspaceNode]) -> WorkspaceNode? {
+        for node in nodes {
+            if WorkspaceIdentity.normalizedPath(for: node.url) == WorkspaceIdentity.normalizedPath(for: url) {
+                return node
+            }
+
+            guard case let .folder(folder) = node,
+                  let descendant = workspaceNode(at: url, in: folder.children) else {
+                continue
+            }
+
+            return descendant
+        }
+
+        return nil
+    }
+
+    private func isSameOrDescendantPath(_ path: String, of prefix: String) -> Bool {
+        path == prefix || path.hasPrefix("\(prefix)/")
+    }
+
+    /// Folder mutations rewrite descendant identities by relative path first so bookmark-scoped
+    /// browser/search/restore state stays aligned even if route URLs were aliases.
+    private func resolvedRenamedTrustedDescendantURL(
+        existingURL: URL,
+        updatedRelativePath: String,
+        oldFolderURL: URL,
+        newFolderURL: URL,
+        snapshot: WorkspaceSnapshot
+    ) -> URL {
+        if let rewrittenURL = replacingDescendantURL(
+            existingURL,
+            oldPrefix: oldFolderURL,
+            newPrefix: newFolderURL
+        ) {
+            return rewrittenURL
+        }
+
+        if let snapshotURL = snapshot.fileURL(forRelativePath: updatedRelativePath) {
+            return snapshotURL
+        }
+
+        return WorkspaceRelativePath.resolve(
+            updatedRelativePath,
+            within: snapshot.rootURL
+        )
+    }
+
+    private func replacingPathPrefix(
+        _ path: String,
+        oldPrefix: String,
+        newPrefix: String
+    ) -> String? {
+        guard isSameOrDescendantPath(path, of: oldPrefix) else {
+            return nil
+        }
+
+        if path == oldPrefix {
+            return newPrefix
+        }
+
+        let suffix = path.dropFirst(oldPrefix.count + 1)
+        return "\(newPrefix)/\(suffix)"
+    }
+
+    private func replacingDescendantURL(
+        _ url: URL,
+        oldPrefix: URL,
+        newPrefix: URL
+    ) -> URL? {
+        let urlComponents = url.standardizedFileURL.pathComponents
+        let oldComponents = oldPrefix.standardizedFileURL.pathComponents
+        guard urlComponents.starts(with: oldComponents) else {
+            return nil
+        }
+
+        let suffixComponents = urlComponents.dropFirst(oldComponents.count)
+        return suffixComponents.reduce(newPrefix.standardizedFileURL) { partialURL, component in
+            partialURL.appending(path: component)
+        }
+    }
+
     private func applyWorkspaceSessionState(_ application: WorkspaceSessionStateApplication) {
         session.workspaceSnapshot = application.workspaceSnapshot
 
@@ -1300,5 +1605,28 @@ final class AppCoordinator {
         }
 
         session.applyNavigationState(application.navigationState)
+    }
+}
+
+private enum WorkspaceBrowserItemKind {
+    case file
+    case folder
+
+    var renameActionTitle: String {
+        switch self {
+        case .file:
+            "Rename File"
+        case .folder:
+            "Rename Folder"
+        }
+    }
+
+    var deleteActionTitle: String {
+        switch self {
+        case .file:
+            "Delete File"
+        case .folder:
+            "Delete Folder"
+        }
     }
 }

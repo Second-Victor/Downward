@@ -133,7 +133,8 @@ enum WorkspaceNavigationPolicy {
         from navigationState: WorkspaceNavigationState,
         workspaceRootURL: URL?,
         matchingRelativePath relativePath: String?,
-        matchingURL url: URL? = nil
+        matchingURL url: URL? = nil,
+        includingDescendants: Bool = false
     ) -> WorkspaceNavigationState {
         let targetRelativePath = relativePath ?? {
             guard let url, let workspaceRootURL else {
@@ -152,6 +153,10 @@ enum WorkspaceNavigationPolicy {
                 return false
             }
 
+            if let url, includingDescendants, isSameOrDescendantURL(editorURL, of: url) {
+                return false
+            }
+
             guard
                 let targetRelativePath,
                 let workspaceRootURL
@@ -161,13 +166,27 @@ enum WorkspaceNavigationPolicy {
 
             let routeRelativePath = route.editorRelativePath
                 ?? WorkspaceRelativePath.make(for: editorURL, within: workspaceRootURL)
-            return routeRelativePath != targetRelativePath
+            guard let routeRelativePath else {
+                return true
+            }
+
+            return matchesEditorRelativePath(
+                routeRelativePath,
+                targetRelativePath: targetRelativePath,
+                includingDescendants: includingDescendants
+            ) == false
         }
 
         let updatedSelection: RegularWorkspaceDetailSelection
         switch navigationState.regularDetailSelection {
         case let .editor(selectedRelativePath)
-            where targetRelativePath == nil || selectedRelativePath == targetRelativePath:
+            where targetRelativePath == nil || targetRelativePath.map {
+                matchesEditorRelativePath(
+                    selectedRelativePath,
+                    targetRelativePath: $0,
+                    includingDescendants: includingDescendants
+                )
+            } == true:
             updatedSelection = .placeholder
         default:
             updatedSelection = navigationState.regularDetailSelection
@@ -185,17 +204,33 @@ enum WorkspaceNavigationPolicy {
         newURL: URL,
         oldRelativePath: String?,
         newRelativePath: String,
-        openDocument: OpenDocument?
+        openDocument: OpenDocument?,
+        includingDescendants: Bool = false,
+        workspaceRootURL: URL? = nil
     ) -> WorkspaceNavigationState {
         let updatedPath = navigationState.path.map { route in
-            route.replacingEditorURL(oldURL: oldURL, newURL: newURL)
+            replacingRoute(
+                route,
+                oldURL: oldURL,
+                newURL: newURL,
+                oldRelativePath: oldRelativePath,
+                newRelativePath: newRelativePath,
+                includingDescendants: includingDescendants,
+                workspaceRootURL: workspaceRootURL
+            )
         }
 
         let updatedSelection: RegularWorkspaceDetailSelection
         switch navigationState.regularDetailSelection {
         case let .editor(selectedRelativePath):
-            if selectedRelativePath == newRelativePath || selectedRelativePath == oldRelativePath {
-                updatedSelection = .editor(newRelativePath)
+            if let oldRelativePath,
+               let rewrittenRelativePath = replacingRelativePath(
+                selectedRelativePath,
+                oldRelativePath: oldRelativePath,
+                newRelativePath: newRelativePath,
+                includingDescendants: includingDescendants
+               ) {
+                updatedSelection = .editor(rewrittenRelativePath)
             } else {
                 updatedSelection = navigationState.regularDetailSelection
             }
@@ -257,5 +292,163 @@ enum WorkspaceNavigationPolicy {
         }
 
         return snapshot?.relativePath(for: url)
+    }
+
+    private static func replacingRoute(
+        _ route: AppRoute,
+        oldURL: URL,
+        newURL: URL,
+        oldRelativePath: String?,
+        newRelativePath: String,
+        includingDescendants: Bool,
+        workspaceRootURL: URL?
+    ) -> AppRoute {
+        if includingDescendants == false {
+            return route.replacingEditorURL(oldURL: oldURL, newURL: newURL)
+        }
+
+        guard let editorURL = route.editorURL else {
+            return route
+        }
+
+        switch route {
+        case .editor:
+            if let rewrittenURL = replacingDescendantURL(editorURL, oldPrefix: oldURL, newPrefix: newURL) {
+                return .editor(rewrittenURL)
+            }
+
+            guard
+                let workspaceRootURL,
+                let oldRelativePath,
+                let routeRelativePath = WorkspaceRelativePath.make(for: editorURL, within: workspaceRootURL),
+                let rewrittenRelativePath = replacingRelativePath(
+                    routeRelativePath,
+                    oldRelativePath: oldRelativePath,
+                    newRelativePath: newRelativePath,
+                    includingDescendants: includingDescendants
+                )
+            else {
+                return route
+            }
+
+            let resolvedURL = WorkspaceRelativePath.resolve(
+                rewrittenRelativePath,
+                within: workspaceRootURL
+            )
+            return .editor(resolvedURL)
+        case let .trustedEditor(_, existingRelativePath):
+            guard
+                let oldRelativePath,
+                let rewrittenRelativePath = replacingRelativePath(
+                    existingRelativePath,
+                    oldRelativePath: oldRelativePath,
+                    newRelativePath: newRelativePath,
+                    includingDescendants: includingDescendants
+                )
+            else {
+                return route
+            }
+
+            let rewrittenURL = resolvedTrustedEditorRouteURL(
+                existingURL: editorURL,
+                oldURL: oldURL,
+                newURL: newURL,
+                rewrittenRelativePath: rewrittenRelativePath,
+                workspaceRootURL: workspaceRootURL
+            )
+            return .trustedEditor(rewrittenURL, rewrittenRelativePath)
+        case .settings:
+            return .settings
+        }
+    }
+
+    private static func replacingRelativePath(
+        _ path: String,
+        oldRelativePath: String,
+        newRelativePath: String,
+        includingDescendants: Bool
+    ) -> String? {
+        if includingDescendants == false {
+            guard path == oldRelativePath else {
+                return nil
+            }
+
+            return newRelativePath
+        }
+
+        guard matchesEditorRelativePath(
+            path,
+            targetRelativePath: oldRelativePath,
+            includingDescendants: true
+        ) else {
+            return nil
+        }
+
+        if path == oldRelativePath {
+            return newRelativePath
+        }
+
+        let suffix = path.dropFirst(oldRelativePath.count + 1)
+        return "\(newRelativePath)/\(suffix)"
+    }
+
+    private static func matchesEditorRelativePath(
+        _ path: String,
+        targetRelativePath: String,
+        includingDescendants: Bool
+    ) -> Bool {
+        if includingDescendants == false {
+            return path == targetRelativePath
+        }
+
+        return path == targetRelativePath || path.hasPrefix("\(targetRelativePath)/")
+    }
+
+    private static func replacingDescendantURL(
+        _ url: URL,
+        oldPrefix: URL,
+        newPrefix: URL
+    ) -> URL? {
+        let urlComponents = url.standardizedFileURL.pathComponents
+        let oldComponents = oldPrefix.standardizedFileURL.pathComponents
+        guard urlComponents.starts(with: oldComponents) else {
+            return nil
+        }
+
+        let suffixComponents = urlComponents.dropFirst(oldComponents.count)
+        return suffixComponents.reduce(newPrefix.standardizedFileURL) { partialURL, component in
+            partialURL.appending(path: component)
+        }
+    }
+
+    private static func resolvedTrustedEditorRouteURL(
+        existingURL: URL,
+        oldURL: URL,
+        newURL: URL,
+        rewrittenRelativePath: String,
+        workspaceRootURL: URL?
+    ) -> URL {
+        if let rewrittenURL = replacingDescendantURL(
+            existingURL,
+            oldPrefix: oldURL,
+            newPrefix: newURL
+        ) {
+            return rewrittenURL
+        }
+
+        if let workspaceRootURL {
+            return WorkspaceRelativePath.resolve(
+                rewrittenRelativePath,
+                within: workspaceRootURL
+            )
+        }
+
+        return existingURL
+    }
+
+    private static func isSameOrDescendantURL(_ url: URL, of prefix: URL) -> Bool {
+        let urlComponents = url.standardizedFileURL.pathComponents
+        let prefixComponents = prefix.standardizedFileURL.pathComponents
+        return urlComponents.starts(with: prefixComponents)
     }
 }
