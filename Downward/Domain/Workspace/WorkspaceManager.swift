@@ -39,6 +39,7 @@ protocol WorkspaceManager: Sendable {
     func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult
     func createFolder(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult
     func renameFile(at url: URL, to proposedName: String) async throws -> WorkspaceMutationResult
+    func moveItem(at url: URL, toFolder destinationFolderURL: URL?) async throws -> WorkspaceMutationResult
     func deleteFile(at url: URL) async throws -> WorkspaceMutationResult
     func clearWorkspaceSelection() async throws
 }
@@ -433,6 +434,156 @@ actor LiveWorkspaceManager: WorkspaceManager {
         return WorkspaceMutationResult(snapshot: snapshot, outcome: outcome)
     }
 
+    func moveItem(at url: URL, toFolder destinationFolderURL: URL?) async throws -> WorkspaceMutationResult {
+        let workspaceContext = try await currentWorkspaceContext()
+        let fileCoordinator = self.fileCoordinator
+
+        let outcome = try await performMutation(in: workspaceContext.rootURL) { securedRootURL in
+            let sourceURL = try Self.resolveWorkspaceItemURL(
+                from: url,
+                within: workspaceContext.rootURL,
+                securedRootURL: securedRootURL
+            )
+            let resourceValues = try sourceURL.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey])
+            let destinationFolderURL = try Self.resolveWorkspaceDestinationFolderURL(
+                from: destinationFolderURL,
+                within: workspaceContext.rootURL,
+                securedRootURL: securedRootURL
+            )
+
+            if resourceValues.isDirectory == true {
+                let normalizedSourceURL = sourceURL.standardizedFileURL
+                let normalizedDestinationFolderURL = destinationFolderURL.standardizedFileURL
+
+                guard Self.isSameOrDescendantURL(normalizedDestinationFolderURL, of: normalizedSourceURL) == false else {
+                    throw AppError.fileOperationFailed(
+                        action: "Move Folder",
+                        name: normalizedSourceURL.lastPathComponent,
+                        details: "Choose a different destination folder."
+                    )
+                }
+
+                let destinationFolderRelativePath = Self.relativePathIfNotRoot(
+                    for: normalizedDestinationFolderURL,
+                    within: securedRootURL
+                )
+                let destinationRelativePath = Self.childRelativePath(
+                    named: normalizedSourceURL.lastPathComponent,
+                    in: destinationFolderRelativePath
+                )
+                guard let destinationURL = WorkspaceRelativePath.resolveCandidate(
+                    destinationRelativePath,
+                    within: securedRootURL
+                ) else {
+                    throw AppError.fileOperationFailed(
+                        action: "Move Folder",
+                        name: normalizedSourceURL.lastPathComponent,
+                        details: "The folder is outside the current workspace."
+                    )
+                }
+                let normalizedDestinationURL = destinationURL.standardizedFileURL
+
+                if normalizedDestinationURL != normalizedSourceURL {
+                    do {
+                        try fileCoordinator.coordinateMove(
+                            from: normalizedSourceURL,
+                            to: normalizedDestinationURL
+                        ) { coordinatedSourceURL, coordinatedDestinationURL in
+                            try Self.moveItemAllowingCaseOnlyRename(
+                                at: coordinatedSourceURL,
+                                to: coordinatedDestinationURL,
+                                action: "Move Folder"
+                            )
+                        }
+                    } catch let error as AppError {
+                        throw error
+                    } catch {
+                        throw AppError.fileOperationFailed(
+                            action: "Move Folder",
+                            name: normalizedSourceURL.lastPathComponent,
+                            details: "The folder could not be moved."
+                        )
+                    }
+                }
+
+                return .renamedFolder(
+                    oldURL: normalizedSourceURL,
+                    newURL: normalizedDestinationURL,
+                    displayName: normalizedDestinationURL.lastPathComponent,
+                    relativePath: destinationRelativePath
+                )
+            }
+
+            guard resourceValues.isRegularFile == true, resourceValues.isDirectory != true else {
+                throw AppError.fileOperationFailed(
+                    action: "Move File",
+                    name: url.lastPathComponent,
+                    details: "Only files can be moved from the browser."
+                )
+            }
+
+            let normalizedSourceURL = sourceURL.standardizedFileURL
+            let normalizedDestinationFolderURL = destinationFolderURL.standardizedFileURL
+            let destinationFolderRelativePath = Self.relativePathIfNotRoot(
+                for: normalizedDestinationFolderURL,
+                within: securedRootURL
+            )
+            let destinationRelativePath = Self.childRelativePath(
+                named: normalizedSourceURL.lastPathComponent,
+                in: destinationFolderRelativePath
+            )
+            guard let destinationURL = WorkspaceRelativePath.resolveCandidate(
+                destinationRelativePath,
+                within: securedRootURL
+            ) else {
+                throw AppError.fileOperationFailed(
+                    action: "Move File",
+                    name: normalizedSourceURL.lastPathComponent,
+                    details: "The file is outside the current workspace."
+                )
+            }
+            let normalizedDestinationURL = destinationURL.standardizedFileURL
+
+            if normalizedDestinationURL != normalizedSourceURL {
+                do {
+                    try fileCoordinator.coordinateMove(
+                        from: normalizedSourceURL,
+                        to: normalizedDestinationURL
+                    ) { coordinatedSourceURL, coordinatedDestinationURL in
+                        try Self.moveItemAllowingCaseOnlyRename(
+                            at: coordinatedSourceURL,
+                            to: coordinatedDestinationURL,
+                            action: "Move File"
+                        )
+                    }
+                } catch let error as AppError {
+                    throw error
+                } catch {
+                    throw AppError.fileOperationFailed(
+                        action: "Move File",
+                        name: normalizedSourceURL.lastPathComponent,
+                        details: "The file could not be moved."
+                    )
+                }
+            }
+
+            return .renamedFile(
+                oldURL: normalizedSourceURL,
+                newURL: normalizedDestinationURL,
+                displayName: normalizedDestinationURL.lastPathComponent,
+                relativePath: destinationRelativePath
+            )
+        }
+
+        let snapshot = try await loadSnapshot(
+            rootURL: workspaceContext.rootURL,
+            displayName: workspaceContext.displayName,
+            workspaceID: workspaceContext.workspaceID,
+            recentFileLookupPaths: workspaceContext.recentFileLookupPaths
+        )
+        return WorkspaceMutationResult(snapshot: snapshot, outcome: outcome)
+    }
+
     func deleteFile(at url: URL) async throws -> WorkspaceMutationResult {
         let workspaceContext = try await currentWorkspaceContext()
         let fileCoordinator = self.fileCoordinator
@@ -720,6 +871,48 @@ actor LiveWorkspaceManager: WorkspaceManager {
         return relativePath
     }
 
+    nonisolated private static func resolveWorkspaceDestinationFolderURL(
+        from destinationFolderURL: URL?,
+        within rootURL: URL,
+        securedRootURL: URL
+    ) throws -> URL {
+        guard let destinationFolderURL else {
+            return securedRootURL
+        }
+
+        let resolvedURL = try resolveWorkspaceItemURL(
+            from: destinationFolderURL,
+            within: rootURL,
+            securedRootURL: securedRootURL
+        )
+        let resourceValues = try resolvedURL.resourceValues(forKeys: [.isDirectoryKey])
+        guard resourceValues.isDirectory == true else {
+            throw AppError.fileOperationFailed(
+                action: "Move File",
+                name: destinationFolderURL.lastPathComponent,
+                details: "Choose a destination folder in the workspace."
+            )
+        }
+
+        return resolvedURL
+    }
+
+    nonisolated private static func relativePathIfNotRoot(for url: URL, within rootURL: URL) -> String? {
+        guard WorkspaceIdentity.normalizedPath(for: url) != WorkspaceIdentity.normalizedPath(for: rootURL) else {
+            return nil
+        }
+
+        return WorkspaceRelativePath.make(for: url, within: rootURL)
+    }
+
+    nonisolated private static func childRelativePath(named leafName: String, in parentRelativePath: String?) -> String {
+        guard let parentRelativePath, parentRelativePath.isEmpty == false else {
+            return leafName
+        }
+
+        return "\(parentRelativePath)/\(leafName)"
+    }
+
     nonisolated private static func renamedRelativePath(
         from sourceRelativePath: String,
         toLeafName leafName: String
@@ -890,6 +1083,12 @@ actor LiveWorkspaceManager: WorkspaceManager {
         }
 
         return WorkspaceIdentity.normalizedPath(for: lhs) == WorkspaceIdentity.normalizedPath(for: rhs)
+    }
+
+    nonisolated private static func isSameOrDescendantURL(_ url: URL, of prefix: URL) -> Bool {
+        let urlComponents = url.standardizedFileURL.pathComponents
+        let prefixComponents = prefix.standardizedFileURL.pathComponents
+        return urlComponents.starts(with: prefixComponents)
     }
 
     nonisolated private static func uniqueTemporaryRenameHopURL(
@@ -1257,6 +1456,29 @@ actor StubWorkspaceManager: WorkspaceManager {
         )
     }
 
+    func moveItem(at url: URL, toFolder destinationFolderURL: URL?) async throws -> WorkspaceMutationResult {
+        let destinationURL = (destinationFolderURL ?? readySnapshot.rootURL).appending(path: url.lastPathComponent)
+        let relativePath = WorkspaceRelativePath.make(for: destinationURL, within: readySnapshot.rootURL)
+            ?? destinationURL.lastPathComponent
+
+        return WorkspaceMutationResult(
+            snapshot: readySnapshot,
+            outcome: browserNode(at: url)?.isFolder == true
+                ? .renamedFolder(
+                    oldURL: url,
+                    newURL: destinationURL,
+                    displayName: destinationURL.lastPathComponent,
+                    relativePath: relativePath
+                )
+                : .renamedFile(
+                    oldURL: url,
+                    newURL: destinationURL,
+                    displayName: destinationURL.lastPathComponent,
+                    relativePath: relativePath
+                )
+        )
+    }
+
     func deleteFile(at url: URL) async throws -> WorkspaceMutationResult {
         WorkspaceMutationResult(
             snapshot: readySnapshot,
@@ -1266,5 +1488,22 @@ actor StubWorkspaceManager: WorkspaceManager {
 
     func clearWorkspaceSelection() async throws {
         try await bookmarkStore.clearBookmark()
+    }
+
+    private func browserNode(at url: URL, in nodes: [WorkspaceNode]? = nil) -> WorkspaceNode? {
+        let nodes = nodes ?? readySnapshot.rootNodes
+
+        for node in nodes {
+            if WorkspaceIdentity.normalizedPath(for: node.url) == WorkspaceIdentity.normalizedPath(for: url) {
+                return node
+            }
+
+            if let children = node.children,
+               let descendant = browserNode(at: url, in: children) {
+                return descendant
+            }
+        }
+
+        return nil
     }
 }

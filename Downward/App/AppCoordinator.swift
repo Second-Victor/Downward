@@ -291,6 +291,97 @@ final class AppCoordinator {
         }
     }
 
+    func moveItem(
+        at url: URL,
+        toFolder destinationFolderURL: URL?
+    ) async -> Result<WorkspaceMutationOutcome, UserFacingError> {
+        var applyContext: WorkspaceSnapshotApplyContext?
+        let targetKind = browserItemKind(for: url)
+        let targetRelativePath = session.workspaceSnapshot?.relativePath(for: url)
+
+        do {
+            if let openDocument = session.openDocument,
+               openDocument.url == url
+                || targetRelativePath.map({ isSameOrDescendantPath(openDocument.relativePath, of: $0) }) == true {
+                guard openDocument.saveState != .saving else {
+                    let error = UserFacingError(
+                        title: targetKind.moveActionTitle,
+                        message: "\(openDocument.displayName) is still saving.",
+                        recoverySuggestion: "Wait for the current save to finish, then try moving it again."
+                    )
+                    session.workspaceAlertError = error
+                    return .failure(error)
+                }
+
+                guard openDocument.conflictState.isConflicted == false else {
+                    let error = UserFacingError(
+                        title: targetKind.moveActionTitle,
+                        message: targetKind == .folder
+                            ? "Resolve the current conflict before moving the folder containing \(openDocument.displayName)."
+                            : "Resolve the current conflict before moving \(openDocument.displayName).",
+                        recoverySuggestion: "Finish resolving the document, then try again."
+                    )
+                    session.workspaceAlertError = error
+                    return .failure(error)
+                }
+            }
+
+            let claimedApplyContext = nextWorkspaceSnapshotApplyContext()
+            applyContext = claimedApplyContext
+            let mutationResult = try await workspaceManager.moveItem(
+                at: url,
+                toFolder: destinationFolderURL
+            )
+            await applyWorkspaceMutationResult(mutationResult, context: claimedApplyContext)
+            return .success(mutationResult.outcome)
+        } catch let error as AppError {
+            guard let applyContext,
+                  shouldApplyWorkspaceSnapshotResult(applyContext, requiresReadyWorkspace: true) else {
+                return .failure(errorReporter.makeUserFacingError(from: error))
+            }
+
+            if case let .workspaceAccessInvalid(displayName) = error {
+                let reconnectError = transitionToWorkspaceReconnectState(
+                    displayName: session.currentWorkspaceName ?? displayName,
+                    message: "The workspace can no longer be accessed."
+                )
+                return .failure(reconnectError)
+            }
+
+            errorReporter.report(error, context: "Moving item")
+            let userFacingError = errorReporter.makeUserFacingError(from: error)
+            session.workspaceAlertError = userFacingError
+            return .failure(userFacingError)
+        } catch {
+            guard let applyContext,
+                  shouldApplyWorkspaceSnapshotResult(applyContext, requiresReadyWorkspace: true) else {
+                return .failure(
+                    errorReporter.makeUserFacingError(
+                        from: AppError.fileOperationFailed(
+                            action: targetKind.moveActionTitle,
+                            name: url.lastPathComponent,
+                            details: targetKind == .folder
+                                ? "The folder could not be moved."
+                                : "The file could not be moved."
+                        )
+                    )
+                )
+            }
+
+            let appError = AppError.fileOperationFailed(
+                action: targetKind.moveActionTitle,
+                name: url.lastPathComponent,
+                details: targetKind == .folder
+                    ? "The folder could not be moved."
+                    : "The file could not be moved."
+            )
+            errorReporter.report(appError, context: "Moving item")
+            let userFacingError = errorReporter.makeUserFacingError(from: appError)
+            session.workspaceAlertError = userFacingError
+            return .failure(userFacingError)
+        }
+    }
+
     func deleteFile(at url: URL) async -> Result<WorkspaceMutationOutcome, UserFacingError> {
         var applyContext: WorkspaceSnapshotApplyContext?
         let targetKind = browserItemKind(for: url)
@@ -1611,6 +1702,15 @@ final class AppCoordinator {
 private enum WorkspaceBrowserItemKind {
     case file
     case folder
+
+    var moveActionTitle: String {
+        switch self {
+        case .file:
+            "Move File"
+        case .folder:
+            "Move Folder"
+        }
+    }
 
     var renameActionTitle: String {
         switch self {

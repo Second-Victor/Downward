@@ -3800,6 +3800,25 @@ private actor SequencedRefreshWorkspaceManager: WorkspaceManager {
         )
     }
 
+    func moveItem(at url: URL, toFolder destinationFolderURL: URL?) async throws -> WorkspaceMutationResult {
+        let destinationFolderURL = destinationFolderURL ?? fallbackSnapshot.rootURL
+        let destinationURL = destinationFolderURL.appending(path: url.lastPathComponent)
+        let relativePath = WorkspaceRelativePath.make(
+            for: destinationURL,
+            within: fallbackSnapshot.rootURL
+        ) ?? destinationURL.lastPathComponent
+
+        return WorkspaceMutationResult(
+            snapshot: fallbackSnapshot,
+            outcome: .renamedFile(
+                oldURL: url,
+                newURL: destinationURL,
+                displayName: destinationURL.lastPathComponent,
+                relativePath: relativePath
+            )
+        )
+    }
+
     func deleteFile(at url: URL) async throws -> WorkspaceMutationResult {
         if let deleteResponse {
             try await Task.sleep(for: deleteResponse.delay)
@@ -3888,6 +3907,25 @@ private actor MutationTestingWorkspaceManager: WorkspaceManager {
                 newURL: url.deletingLastPathComponent().appending(path: proposedName),
                 displayName: proposedName,
                 relativePath: proposedName
+            )
+        )
+    }
+
+    func moveItem(at url: URL, toFolder destinationFolderURL: URL?) async throws -> WorkspaceMutationResult {
+        let destinationFolderURL = destinationFolderURL ?? refreshSnapshot.rootURL
+        let destinationURL = destinationFolderURL.appending(path: url.lastPathComponent)
+        let relativePath = WorkspaceRelativePath.make(
+            for: destinationURL,
+            within: refreshSnapshot.rootURL
+        ) ?? destinationURL.lastPathComponent
+
+        return WorkspaceMutationResult(
+            snapshot: refreshSnapshot,
+            outcome: renameOutcome ?? .renamedFile(
+                oldURL: url,
+                newURL: destinationURL,
+                displayName: destinationURL.lastPathComponent,
+                relativePath: relativePath
             )
         )
     }

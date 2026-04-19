@@ -672,6 +672,41 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
     }
 
     @MainActor
+    func testMoveFolderIntoAnotherFolderUpdatesSnapshot() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+        let archiveURL = workspaceURL.appending(path: "Archive")
+        let draftsURL = workspaceURL.appending(path: "Drafts")
+        try FileManager.default.createDirectory(at: archiveURL, withIntermediateDirectories: false)
+        try FileManager.default.createDirectory(at: draftsURL, withIntermediateDirectories: false)
+        try Data("# Note".utf8).write(to: draftsURL.appending(path: "Note.md"))
+        let fileCoordinator = RecordingWorkspaceFileCoordinator()
+
+        let manager = makeLiveWorkspaceManager(
+            for: workspaceURL,
+            fileCoordinator: fileCoordinator
+        )
+        _ = await manager.selectWorkspace(at: workspaceURL)
+
+        let mutationResult = try await manager.moveItem(at: draftsURL, toFolder: archiveURL)
+
+        guard case let .renamedFolder(oldURL, newURL, displayName, relativePath) = mutationResult.outcome else {
+            return XCTFail("Expected renamedFolder result for move.")
+        }
+
+        let expectedURL = archiveURL.appending(path: "Drafts")
+        XCTAssertEqual(WorkspaceIdentity.normalizedPath(for: oldURL), WorkspaceIdentity.normalizedPath(for: draftsURL))
+        XCTAssertEqual(WorkspaceIdentity.normalizedPath(for: newURL), WorkspaceIdentity.normalizedPath(for: expectedURL))
+        XCTAssertEqual(displayName, "Drafts")
+        XCTAssertEqual(relativePath, "Archive/Drafts")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: draftsURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: expectedURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: expectedURL.appending(path: "Note.md").path))
+        XCTAssertEqual(mutationResult.snapshot.relativePath(for: expectedURL), "Archive/Drafts")
+        XCTAssertEqual(fileCoordinator.movedURLs.count, 1)
+    }
+
+    @MainActor
     func testRenameFileUpdatesSnapshot() async throws {
         let workspaceURL = try makeTemporaryWorkspace()
         defer { removeItemIfPresent(at: workspaceURL) }
@@ -773,6 +808,76 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
 
         XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "# Draft")
         XCTAssertEqual(try String(contentsOf: existingTargetURL, encoding: .utf8), "# Published")
+    }
+
+    @MainActor
+    func testMoveFileIntoAnotherFolderUpdatesSnapshot() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+        let archiveURL = workspaceURL.appending(path: "Archive")
+        let fileURL = workspaceURL.appending(path: "Draft.md")
+        try FileManager.default.createDirectory(at: archiveURL, withIntermediateDirectories: false)
+        try Data("# Draft".utf8).write(to: fileURL)
+        let fileCoordinator = RecordingWorkspaceFileCoordinator()
+
+        let manager = makeLiveWorkspaceManager(
+            for: workspaceURL,
+            fileCoordinator: fileCoordinator
+        )
+        _ = await manager.selectWorkspace(at: workspaceURL)
+
+        let mutationResult = try await manager.moveItem(at: fileURL, toFolder: archiveURL)
+
+        guard case let .renamedFile(oldURL, newURL, displayName, relativePath) = mutationResult.outcome else {
+            return XCTFail("Expected renamedFile result for move.")
+        }
+
+        let expectedURL = archiveURL.appending(path: "Draft.md")
+        XCTAssertEqual(oldURL, fileURL)
+        XCTAssertEqual(newURL, expectedURL)
+        XCTAssertEqual(displayName, "Draft.md")
+        XCTAssertEqual(relativePath, "Archive/Draft.md")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: expectedURL.path))
+        XCTAssertEqual(try String(contentsOf: expectedURL, encoding: .utf8), "# Draft")
+        XCTAssertEqual(mutationResult.snapshot.relativePath(for: expectedURL), "Archive/Draft.md")
+        XCTAssertEqual(fileCoordinator.movedURLs.first?.0, fileURL)
+        XCTAssertEqual(fileCoordinator.movedURLs.first?.1, expectedURL)
+    }
+
+    @MainActor
+    func testMoveFileRejectsDifferentExistingTargetInDestinationFolder() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+        let archiveURL = workspaceURL.appending(path: "Archive")
+        let fileURL = workspaceURL.appending(path: "Draft.md")
+        let existingTargetURL = archiveURL.appending(path: "Draft.md")
+        try FileManager.default.createDirectory(at: archiveURL, withIntermediateDirectories: false)
+        try Data("# Draft".utf8).write(to: fileURL)
+        try Data("# Existing".utf8).write(to: existingTargetURL)
+        let fileCoordinator = RecordingWorkspaceFileCoordinator()
+
+        let manager = makeLiveWorkspaceManager(
+            for: workspaceURL,
+            fileCoordinator: fileCoordinator
+        )
+        _ = await manager.selectWorkspace(at: workspaceURL)
+
+        do {
+            _ = try await manager.moveItem(at: fileURL, toFolder: archiveURL)
+            XCTFail("Expected move to reject a different existing destination.")
+        } catch let error as AppError {
+            guard case let .fileOperationFailed(action, name, details) = error else {
+                return XCTFail("Expected fileOperationFailed for duplicate move.")
+            }
+
+            XCTAssertEqual(action, "Move File")
+            XCTAssertEqual(name, "Draft.md")
+            XCTAssertEqual(details, "Draft.md already exists in this folder.")
+        }
+
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "# Draft")
+        XCTAssertEqual(try String(contentsOf: existingTargetURL, encoding: .utf8), "# Existing")
     }
 
     @MainActor

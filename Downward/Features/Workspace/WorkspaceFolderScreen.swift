@@ -20,11 +20,11 @@ struct WorkspaceFolderScreen: View {
                 )
             } else {
                 if navigationMode == .splitSidebar {
-                    List {
-                        WorkspaceTreeRows(
-                            viewModel: viewModel,
-                            nodes: viewModel.nodes,
-                            parentRelativePath: nil,
+                List {
+                    WorkspaceTreeRows(
+                        viewModel: viewModel,
+                        nodes: viewModel.nodes,
+                        parentRelativePath: nil,
                             depth: 0,
                             navigationMode: navigationMode
                         )
@@ -107,6 +107,36 @@ struct WorkspaceFolderScreen: View {
         } message: {
             Text("Rename \(viewModel.pendingRenameTitle).")
         }
+        .sheet(isPresented: moveSheetBinding) {
+            NavigationStack {
+                List(viewModel.moveDestinations) { destination in
+                    Button {
+                        viewModel.moveItem(toFolderRelativePath: destination.relativePath)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(destination.title)
+                                .foregroundStyle(.primary)
+                            if let subtitle = destination.subtitle {
+                                Text(subtitle)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .disabled(viewModel.isBusy)
+                    .buttonStyle(.plain)
+                }
+                .navigationTitle(viewModel.moveSheetTitle)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            viewModel.cancelMove()
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private var createPromptBinding: Binding<Bool> {
@@ -149,6 +179,17 @@ struct WorkspaceFolderScreen: View {
         Binding(
             get: { viewModel.searchQuery },
             set: { viewModel.searchQuery = $0 }
+        )
+    }
+
+    private var moveSheetBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.isShowingMoveSheet },
+            set: { isPresented in
+                if isPresented == false {
+                    viewModel.cancelMove()
+                }
+            }
         )
     }
 
@@ -263,6 +304,13 @@ private struct WorkspaceTreeRow: View {
                 .accessibilityLabel("Rename \(node.displayName)")
                 .accessibilityHint("Changes the folder name.")
 
+                Button("Move", systemImage: "folder") {
+                    viewModel.presentMove(for: node)
+                }
+                .disabled(viewModel.areRowActionsDisabled)
+                .accessibilityLabel("Move \(node.displayName)")
+                .accessibilityHint("Moves this folder to another folder in the workspace.")
+
                 Button("Delete", systemImage: "trash", role: .destructive) {
                     viewModel.presentDelete(for: node)
                 }
@@ -360,6 +408,15 @@ private struct WorkspaceTreeRow: View {
 
     @ViewBuilder
     private var fileContextMenu: some View {
+        Button("Move", systemImage: "folder") {
+            if case .file = node {
+                viewModel.presentMove(for: node)
+            }
+        }
+        .disabled(viewModel.areRowActionsDisabled)
+        .accessibilityLabel("Move \(node.displayName)")
+        .accessibilityHint("Moves this file to another folder in the workspace.")
+
         Button("Rename", systemImage: "pencil") {
             if case .file = node {
                 viewModel.presentRename(for: node)
@@ -381,6 +438,14 @@ private struct WorkspaceTreeRow: View {
 
     @ViewBuilder
     private var fileSwipeActions: some View {
+        Button("Move", systemImage: "folder") {
+            if case .file = node {
+                viewModel.presentMove(for: node)
+            }
+        }
+        .disabled(viewModel.areRowActionsDisabled)
+        .tint(.blue)
+
         Button("Rename", systemImage: "pencil") {
             if case .file = node {
                 viewModel.presentRename(for: node)
@@ -400,6 +465,14 @@ private struct WorkspaceTreeRow: View {
 
     @ViewBuilder
     private var folderSwipeActions: some View {
+        Button("Move", systemImage: "folder") {
+            if case .folder = node {
+                viewModel.presentMove(for: node)
+            }
+        }
+        .disabled(viewModel.areRowActionsDisabled)
+        .tint(.blue)
+
         Button("Rename", systemImage: "pencil") {
             if case .folder = node {
                 viewModel.presentRename(for: node)

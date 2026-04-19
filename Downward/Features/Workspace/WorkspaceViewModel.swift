@@ -52,6 +52,16 @@ enum WorkspaceCreateItemKind: Equatable {
     }
 }
 
+struct WorkspaceMoveDestination: Identifiable, Equatable {
+    let relativePath: String?
+    let title: String
+    let subtitle: String?
+
+    var id: String {
+        relativePath ?? "__workspace_root__"
+    }
+}
+
 @MainActor
 @Observable
 final class WorkspaceViewModel {
@@ -70,12 +80,14 @@ final class WorkspaceViewModel {
     var isShowingRenamePrompt = false
     var renameItemName = ""
     var isShowingDeleteConfirmation = false
+    var isShowingMoveSheet = false
     var isShowingRecentFiles = false
     private(set) var expandedFolderRelativePaths: Set<String> = []
     private(set) var pendingCreateItemKind: WorkspaceCreateItemKind = .file
 
     private(set) var pendingRenameNode: WorkspaceNode?
     private(set) var pendingDeleteNode: WorkspaceNode?
+    private(set) var pendingMoveNode: WorkspaceNode?
     private(set) var searchResults: [WorkspaceSearchResult] = []
 
     private let coordinator: AppCoordinator
@@ -142,6 +154,10 @@ final class WorkspaceViewModel {
         pendingDeleteNode?.displayName ?? "Delete Item"
     }
 
+    var pendingMoveTitle: String {
+        pendingMoveNode?.displayName ?? "Move Item"
+    }
+
     var renamePromptTitle: String {
         pendingRenameNode?.isFolder == true ? "Rename Folder" : "Rename File"
     }
@@ -158,6 +174,18 @@ final class WorkspaceViewModel {
         pendingDeleteNode?.isFolder == true
             ? "This removes the folder and its contents from the workspace."
             : "This removes the file from the workspace."
+    }
+
+    var moveSheetTitle: String {
+        pendingMoveNode?.isFolder == true ? "Move Folder" : "Move File"
+    }
+
+    var moveDestinations: [WorkspaceMoveDestination] {
+        guard let pendingMoveNode else {
+            return []
+        }
+
+        return availableMoveDestinations(for: pendingMoveNode)
     }
 
     var createPromptTitle: String {
@@ -461,6 +489,51 @@ final class WorkspaceViewModel {
         }
     }
 
+    func presentMove(for node: WorkspaceNode) {
+        let destinations = availableMoveDestinations(for: node)
+        guard destinations.isEmpty == false else {
+            session.workspaceAlertError = UserFacingError(
+                title: node.isFolder ? "Move Folder" : "Move File",
+                message: "No other destination folder is available in this workspace.",
+                recoverySuggestion: "Create another folder or choose a different item."
+            )
+            return
+        }
+
+        pendingMoveNode = node
+        isShowingMoveSheet = true
+    }
+
+    func cancelMove() {
+        isShowingMoveSheet = false
+        pendingMoveNode = nil
+    }
+
+    func moveItem(toFolderRelativePath destinationFolderRelativePath: String?) {
+        guard let pendingMoveNode else {
+            return
+        }
+
+        let nodeToMove = pendingMoveNode
+        let oldExpandedRelativePath = nodeToMove.isFolder ? folderRelativePath(for: nodeToMove.url) : nil
+        guard
+            destinationFolderRelativePath == nil
+                || folderURL(forRelativePath: destinationFolderRelativePath) != nil
+        else {
+            return
+        }
+        let destinationFolderURL = resolvedMoveDestinationFolderURL(
+            forRelativePath: destinationFolderRelativePath
+        )
+        cancelMove()
+
+        performMove(
+            nodeToMove,
+            toFolderURL: destinationFolderURL,
+            oldExpandedRelativePath: oldExpandedRelativePath
+        )
+    }
+
     func nodes(in folderURL: URL?) -> [WorkspaceNode] {
         guard let folderURL else {
             return nodes
@@ -625,6 +698,58 @@ final class WorkspaceViewModel {
         expandFolderAndAncestors(at: parentURL)
     }
 
+    private func performMove(
+        _ node: WorkspaceNode,
+        toFolderURL destinationFolderURL: URL?,
+        oldExpandedRelativePath: String?
+    ) {
+        startFileOperation { [self] in
+            let result = await self.coordinator.moveItem(
+                at: node.url,
+                toFolder: destinationFolderURL
+            )
+
+            guard case let .success(outcome) = result else {
+                return
+            }
+
+            applyPostMoveState(
+                for: outcome,
+                oldExpandedRelativePath: oldExpandedRelativePath
+            )
+        }
+    }
+
+    private func applyPostMoveState(
+        for outcome: WorkspaceMutationOutcome,
+        oldExpandedRelativePath: String?
+    ) {
+        let oldParentURL: URL
+        let newParentURL: URL
+
+        switch outcome {
+        case let .renamedFile(oldURL, newURL, _, _):
+            oldParentURL = oldURL.deletingLastPathComponent()
+            newParentURL = newURL.deletingLastPathComponent()
+        case let .renamedFolder(oldURL, newURL, _, newRelativePath):
+            oldParentURL = oldURL.deletingLastPathComponent()
+            newParentURL = newURL.deletingLastPathComponent()
+
+            if let oldExpandedRelativePath {
+                rewriteExpandedFolderRelativePaths(
+                    from: oldExpandedRelativePath,
+                    to: newRelativePath
+                )
+            }
+        default:
+            return
+        }
+
+        if WorkspaceIdentity.normalizedPath(for: oldParentURL) != WorkspaceIdentity.normalizedPath(for: newParentURL) {
+            expandFolderAndAncestors(at: newParentURL)
+        }
+    }
+
     private func suggestedCreateItemName(
         _ itemKind: WorkspaceCreateItemKind,
         in folderURL: URL?
@@ -683,11 +808,62 @@ final class WorkspaceViewModel {
         return candidateName
     }
 
+    private func availableMoveDestinations(for node: WorkspaceNode) -> [WorkspaceMoveDestination] {
+        guard let sourceRelativePath = relativePath(for: node.url) else {
+            return []
+        }
+
+        let currentParentRelativePath = parentRelativePath(for: sourceRelativePath)
+        var destinations: [WorkspaceMoveDestination] = []
+
+        if currentParentRelativePath != nil {
+            destinations.append(
+                WorkspaceMoveDestination(
+                    relativePath: nil,
+                    title: workspaceTitle,
+                    subtitle: "Workspace Root"
+                )
+            )
+        }
+
+        destinations.append(
+            contentsOf: folderMoveDestinations(
+                in: nodes,
+                parentRelativePath: nil,
+                sourceRelativePath: sourceRelativePath,
+                currentParentRelativePath: currentParentRelativePath,
+                movingFolder: node.isFolder
+            )
+        )
+
+        return destinations
+    }
+
     private func folderNode(for folderURL: URL) -> WorkspaceNode.Folder? {
         findFolder(at: folderURL, within: nodes)
     }
 
+    private func folderURL(forRelativePath relativePath: String?) -> URL? {
+        guard let relativePath else {
+            return nil
+        }
+
+        return findFolder(relativePath: relativePath, within: nodes, parentRelativePath: nil)?.url
+    }
+
+    private func resolvedMoveDestinationFolderURL(forRelativePath relativePath: String?) -> URL? {
+        if let relativePath {
+            return folderURL(forRelativePath: relativePath)
+        }
+
+        return session.workspaceSnapshot?.rootURL
+    }
+
     private func folderRelativePath(for url: URL) -> String? {
+        session.workspaceSnapshot?.relativePath(for: url)
+    }
+
+    private func relativePath(for url: URL) -> String? {
         session.workspaceSnapshot?.relativePath(for: url)
     }
 
@@ -697,6 +873,15 @@ final class WorkspaceViewModel {
         }
 
         return session.workspaceSnapshot?.relativePath(for: url)
+    }
+
+    private func parentRelativePath(for relativePath: String) -> String? {
+        let components = relativePath.split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count > 1 else {
+            return nil
+        }
+
+        return components.dropLast().joined(separator: "/")
     }
 
     private func folderRelativePaths(
@@ -768,6 +953,82 @@ final class WorkspaceViewModel {
         }
 
         return nil
+    }
+
+    private func findFolder(
+        relativePath: String,
+        within nodes: [WorkspaceNode],
+        parentRelativePath: String?
+    ) -> WorkspaceNode.Folder? {
+        for node in nodes {
+            guard case let .folder(folder) = node else {
+                continue
+            }
+
+            let currentPath = joinedRelativePath(
+                parentRelativePath,
+                component: folder.url.lastPathComponent
+            )
+            if currentPath == relativePath {
+                return folder
+            }
+
+            if let descendant = findFolder(
+                relativePath: relativePath,
+                within: folder.children,
+                parentRelativePath: currentPath
+            ) {
+                return descendant
+            }
+        }
+
+        return nil
+    }
+
+    private func folderMoveDestinations(
+        in nodes: [WorkspaceNode],
+        parentRelativePath: String?,
+        sourceRelativePath: String,
+        currentParentRelativePath: String?,
+        movingFolder: Bool
+    ) -> [WorkspaceMoveDestination] {
+        var destinations: [WorkspaceMoveDestination] = []
+
+        for node in nodes {
+            guard case let .folder(folder) = node else {
+                continue
+            }
+
+            let currentPath = joinedRelativePath(
+                parentRelativePath,
+                component: folder.url.lastPathComponent
+            )
+            let isSourceFolder = movingFolder && currentPath == sourceRelativePath
+            let isDescendantOfSource = movingFolder && currentPath.hasPrefix("\(sourceRelativePath)/")
+            let isCurrentParent = currentPath == currentParentRelativePath
+
+            if isSourceFolder == false, isDescendantOfSource == false, isCurrentParent == false {
+                destinations.append(
+                    WorkspaceMoveDestination(
+                        relativePath: currentPath,
+                        title: folder.displayName,
+                        subtitle: currentPath
+                    )
+                )
+            }
+
+            destinations.append(
+                contentsOf: folderMoveDestinations(
+                    in: folder.children,
+                    parentRelativePath: currentPath,
+                    sourceRelativePath: sourceRelativePath,
+                    currentParentRelativePath: currentParentRelativePath,
+                    movingFolder: movingFolder
+                )
+            )
+        }
+
+        return destinations
     }
 
     private func observeSearchSnapshotChanges() {
