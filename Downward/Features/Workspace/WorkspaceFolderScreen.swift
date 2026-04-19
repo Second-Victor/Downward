@@ -55,6 +55,16 @@ struct WorkspaceFolderScreen: View {
         .navigationTitle(viewModel.workspaceTitle)
         .searchable(text: searchQueryBinding, prompt: "Search Files")
         .toolbar {
+            if showsSettingsButton {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Settings", systemImage: "gearshape") {
+                        viewModel.showSettings()
+                    }
+                    .disabled(viewModel.isBusy)
+                    .accessibilityHint("Shows workspace management options.")
+                }
+            }
+
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("New File", systemImage: "plus") {
                     viewModel.presentCreateFile(in: nil)
@@ -62,26 +72,6 @@ struct WorkspaceFolderScreen: View {
                 .disabled(viewModel.isBusy)
                 .accessibilityLabel("New Text File")
                 .accessibilityHint("Creates a Markdown or text file in the workspace root.")
-
-                if showsSettingsButton {
-                    Menu("More", systemImage: "ellipsis.circle") {
-                        Button("Recent Files", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90") {
-                            viewModel.presentRecentFiles()
-                        }
-                        .accessibilityHint("Shows recently opened files for this workspace.")
-
-                        Button("Settings", systemImage: "gearshape") {
-                            viewModel.showSettings()
-                        }
-                        .accessibilityHint("Shows workspace management options.")
-                    }
-                    .disabled(viewModel.isBusy)
-                }
-            }
-        }
-        .sheet(isPresented: recentFilesSheetBinding) {
-            NavigationStack {
-                RecentFilesSheet(viewModel: viewModel)
             }
         }
         .alert("New Text File", isPresented: createPromptBinding) {
@@ -180,17 +170,6 @@ struct WorkspaceFolderScreen: View {
         Binding(
             get: { viewModel.searchQuery },
             set: { viewModel.searchQuery = $0 }
-        )
-    }
-
-    private var recentFilesSheetBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.isShowingRecentFiles },
-            set: { isPresented in
-                if isPresented == false {
-                    viewModel.dismissRecentFiles()
-                }
-            }
         )
     }
 
