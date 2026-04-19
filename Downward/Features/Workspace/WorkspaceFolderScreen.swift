@@ -107,21 +107,6 @@ struct WorkspaceFolderScreen: View {
         } message: {
             Text("Rename \(viewModel.pendingRenameTitle).")
         }
-        .confirmationDialog(
-            viewModel.deletePromptTitle,
-            isPresented: deletePromptBinding,
-            titleVisibility: .visible
-        ) {
-            Button("Delete \(viewModel.pendingDeleteTitle)", role: .destructive) {
-                viewModel.deleteItem()
-            }
-
-            Button("Cancel", role: .cancel) {
-                viewModel.cancelDelete()
-            }
-        } message: {
-            Text(viewModel.deletePromptMessage)
-        }
     }
 
     private var createPromptBinding: Binding<Bool> {
@@ -157,17 +142,6 @@ struct WorkspaceFolderScreen: View {
         Binding(
             get: { viewModel.renameItemName },
             set: { viewModel.renameItemName = $0 }
-        )
-    }
-
-    private var deletePromptBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.isShowingDeleteConfirmation },
-            set: { isPresented in
-                if isPresented == false {
-                    viewModel.cancelDelete()
-                }
-            }
         )
     }
 
@@ -247,7 +221,16 @@ private struct WorkspaceTreeRow: View {
 
     var body: some View {
         switch node {
-        case let .folder(folder):
+        case .folder:
+            folderRow
+        case .file:
+            fileRow
+        }
+    }
+
+    @ViewBuilder
+    private var folderRow: some View {
+        if case let .folder(folder) = node {
             Button {
                 viewModel.toggleFolderExpansion(atRelativePath: relativePath)
             } label: {
@@ -290,8 +273,21 @@ private struct WorkspaceTreeRow: View {
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 folderSwipeActions
             }
-        case .file:
-            fileRow
+            .confirmationDialog(
+                deleteDialogTitle,
+                isPresented: deleteDialogBinding,
+                titleVisibility: .visible
+            ) {
+                Button("Delete \(node.displayName)", role: .destructive) {
+                    viewModel.deleteItem()
+                }
+
+                Button("Cancel", role: .cancel) {
+                    viewModel.cancelDelete()
+                }
+            } message: {
+                Text(deleteDialogMessage)
+            }
         }
     }
 
@@ -309,6 +305,21 @@ private struct WorkspaceTreeRow: View {
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 fileSwipeActions
+            }
+            .confirmationDialog(
+                deleteDialogTitle,
+                isPresented: deleteDialogBinding,
+                titleVisibility: .visible
+            ) {
+                Button("Delete \(node.displayName)", role: .destructive) {
+                    viewModel.deleteItem()
+                }
+
+                Button("Cancel", role: .cancel) {
+                    viewModel.cancelDelete()
+                }
+            } message: {
+                Text(deleteDialogMessage)
             }
         } else {
             Button {
@@ -328,6 +339,21 @@ private struct WorkspaceTreeRow: View {
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 fileSwipeActions
+            }
+            .confirmationDialog(
+                deleteDialogTitle,
+                isPresented: deleteDialogBinding,
+                titleVisibility: .visible
+            ) {
+                Button("Delete \(node.displayName)", role: .destructive) {
+                    viewModel.deleteItem()
+                }
+
+                Button("Cancel", role: .cancel) {
+                    viewModel.cancelDelete()
+                }
+            } message: {
+                Text(deleteDialogMessage)
             }
         }
     }
@@ -389,6 +415,33 @@ private struct WorkspaceTreeRow: View {
         }
         .disabled(viewModel.areRowActionsDisabled)
         .tint(.red)
+    }
+
+    private var deleteDialogBinding: Binding<Bool> {
+        Binding(
+            get: {
+                viewModel.isShowingDeleteConfirmation && viewModel.pendingDeleteNode?.url == node.url
+            },
+            set: { isPresented in
+                guard isPresented == false, viewModel.pendingDeleteNode?.url == node.url else {
+                    return
+                }
+
+                viewModel.cancelDelete()
+            }
+        )
+    }
+
+    private var deleteDialogTitle: String {
+        node.isFolder ? "Delete Folder" : "Delete File"
+    }
+
+    private var deleteDialogMessage: String {
+        if node.isFolder {
+            return "This removes \(node.displayName) and its contents from the workspace."
+        }
+
+        return "This removes \(node.displayName) from the workspace."
     }
 }
 
