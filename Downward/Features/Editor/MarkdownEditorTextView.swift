@@ -9,11 +9,18 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     let font: UIFont
     let syntaxMode: MarkdownSyntaxMode
     let isEditable: Bool
+    let undoCommandToken: Int
+    let redoCommandToken: Int
+    let dismissKeyboardCommandToken: Int
+    let onEditorFocusChange: @MainActor (Bool) -> Void
+    let onUndoRedoAvailabilityChange: @MainActor (Bool, Bool) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             text: $text,
-            topOverlayClearance: $topOverlayClearance
+            topOverlayClearance: $topOverlayClearance,
+            onEditorFocusChange: onEditorFocusChange,
+            onUndoRedoAvailabilityChange: onUndoRedoAvailabilityChange
         )
     }
 
@@ -47,6 +54,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         textView.onViewportChromeChange = { [weak coordinator = context.coordinator] textView in
             coordinator?.updateViewportInsets(for: textView)
         }
+        context.coordinator.configureKeyboardAccessory(for: textView)
         context.coordinator.apply(
             configuration: .init(
                 text: text,
@@ -55,6 +63,9 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 syntaxMode: syntaxMode,
                 isEditable: isEditable
             ),
+            undoCommandToken: undoCommandToken,
+            redoCommandToken: redoCommandToken,
+            dismissKeyboardCommandToken: dismissKeyboardCommandToken,
             to: textView,
             force: true
         )
@@ -67,6 +78,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
             uiView.onViewportChromeChange = { [weak coordinator = context.coordinator] textView in
                 coordinator?.updateViewportInsets(for: textView)
             }
+            context.coordinator.configureKeyboardAccessory(for: uiView)
         }
 
         context.coordinator.apply(
@@ -77,6 +89,9 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 syntaxMode: syntaxMode,
                 isEditable: isEditable
             ),
+            undoCommandToken: undoCommandToken,
+            redoCommandToken: redoCommandToken,
+            dismissKeyboardCommandToken: dismissKeyboardCommandToken,
             to: uiView,
             force: false
         )
@@ -98,21 +113,34 @@ extension MarkdownEditorTextView {
         @Binding private var text: String
         @Binding private var topOverlayClearance: CGFloat
 
+        private let onEditorFocusChange: @MainActor (Bool) -> Void
+        private let onUndoRedoAvailabilityChange: @MainActor (Bool, Bool) -> Void
         private let renderer = MarkdownStyledTextRenderer()
         private var configuration: Configuration?
         private var isApplyingProgrammaticChange = false
         private var lastRevealedLineRange: NSRange?
+        private var lastHandledUndoCommandToken: Int?
+        private var lastHandledRedoCommandToken: Int?
+        private var lastHandledDismissKeyboardCommandToken: Int?
+        private weak var activeTextView: EditorChromeAwareTextView?
 
         init(
             text: Binding<String>,
-            topOverlayClearance: Binding<CGFloat>
+            topOverlayClearance: Binding<CGFloat>,
+            onEditorFocusChange: @escaping @MainActor (Bool) -> Void,
+            onUndoRedoAvailabilityChange: @escaping @MainActor (Bool, Bool) -> Void
         ) {
             _text = text
             _topOverlayClearance = topOverlayClearance
+            self.onEditorFocusChange = onEditorFocusChange
+            self.onUndoRedoAvailabilityChange = onUndoRedoAvailabilityChange
         }
 
         func apply(
             configuration: Configuration,
+            undoCommandToken: Int,
+            redoCommandToken: Int,
+            dismissKeyboardCommandToken: Int,
             to textView: UITextView,
             force: Bool
         ) {
@@ -124,9 +152,17 @@ extension MarkdownEditorTextView {
             textView.accessibilityLabel = "Document Text"
             textView.accessibilityHint = "Edits the current text document."
 
+            if let textView = textView as? EditorChromeAwareTextView {
+                activeTextView = textView
+                configureKeyboardAccessory(for: textView)
+            }
+
             if previousIdentity != configuration.documentIdentity {
                 textView.selectedRange = NSRange(location: 0, length: 0)
                 lastRevealedLineRange = nil
+                lastHandledUndoCommandToken = undoCommandToken
+                lastHandledRedoCommandToken = redoCommandToken
+                lastHandledDismissKeyboardCommandToken = dismissKeyboardCommandToken
             }
 
             if
@@ -143,15 +179,39 @@ extension MarkdownEditorTextView {
                     syntaxMode: configuration.syntaxMode,
                     isEditable: configuration.isEditable
                 )
+                handlePendingEditorCommands(
+                    in: textView,
+                    undoCommandToken: undoCommandToken,
+                    redoCommandToken: redoCommandToken,
+                    dismissKeyboardCommandToken: dismissKeyboardCommandToken
+                )
+                publishUndoRedoAvailability(for: textView)
+                updateKeyboardAccessoryState(for: textView)
                 return
             }
 
             guard force || needsRefresh(previousConfiguration: previousConfiguration, in: textView, for: configuration) else {
                 self.configuration = configuration
+                handlePendingEditorCommands(
+                    in: textView,
+                    undoCommandToken: undoCommandToken,
+                    redoCommandToken: redoCommandToken,
+                    dismissKeyboardCommandToken: dismissKeyboardCommandToken
+                )
+                publishUndoRedoAvailability(for: textView)
+                updateKeyboardAccessoryState(for: textView)
                 return
             }
 
             applyRenderedText(to: textView, using: configuration)
+            handlePendingEditorCommands(
+                in: textView,
+                undoCommandToken: undoCommandToken,
+                redoCommandToken: redoCommandToken,
+                dismissKeyboardCommandToken: dismissKeyboardCommandToken
+            )
+            publishUndoRedoAvailability(for: textView)
+            updateKeyboardAccessoryState(for: textView)
         }
 
         func textViewDidChange(_ textView: UITextView) {
@@ -175,6 +235,8 @@ extension MarkdownEditorTextView {
                 syntaxMode: configuration.syntaxMode,
                 isEditable: configuration.isEditable
             )
+            publishUndoRedoAvailability(for: textView)
+            updateKeyboardAccessoryState(for: textView)
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
@@ -205,6 +267,18 @@ extension MarkdownEditorTextView {
             )
             self.configuration = updatedConfiguration
             applyRenderedText(to: textView, using: updatedConfiguration)
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            onEditorFocusChange(true)
+            publishUndoRedoAvailability(for: textView)
+            updateKeyboardAccessoryState(for: textView)
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            onEditorFocusChange(false)
+            publishUndoRedoAvailability(for: textView)
+            updateKeyboardAccessoryState(for: textView)
         }
 
         func updateViewportInsets(for textView: UITextView) {
@@ -280,6 +354,124 @@ extension MarkdownEditorTextView {
             self.configuration = configuration
         }
 
+        private func handlePendingEditorCommands(
+            in textView: UITextView,
+            undoCommandToken: Int,
+            redoCommandToken: Int,
+            dismissKeyboardCommandToken: Int
+        ) {
+            if let lastHandledUndoCommandToken {
+                if undoCommandToken != lastHandledUndoCommandToken, textView.undoManager?.canUndo == true {
+                    textView.undoManager?.undo()
+                }
+            } else {
+                lastHandledUndoCommandToken = undoCommandToken
+            }
+            lastHandledUndoCommandToken = undoCommandToken
+
+            if let lastHandledRedoCommandToken {
+                if redoCommandToken != lastHandledRedoCommandToken, textView.undoManager?.canRedo == true {
+                    textView.undoManager?.redo()
+                }
+            } else {
+                lastHandledRedoCommandToken = redoCommandToken
+            }
+            lastHandledRedoCommandToken = redoCommandToken
+
+            if let lastHandledDismissKeyboardCommandToken {
+                if dismissKeyboardCommandToken != lastHandledDismissKeyboardCommandToken, textView.isFirstResponder {
+                    textView.resignFirstResponder()
+                }
+            } else {
+                lastHandledDismissKeyboardCommandToken = dismissKeyboardCommandToken
+            }
+            lastHandledDismissKeyboardCommandToken = dismissKeyboardCommandToken
+        }
+
+        private func publishUndoRedoAvailability(for textView: UITextView) {
+            onUndoRedoAvailabilityChange(
+                textView.isEditable && (textView.undoManager?.canUndo ?? false),
+                textView.isEditable && (textView.undoManager?.canRedo ?? false)
+            )
+        }
+
+        func configureKeyboardAccessory(for textView: EditorChromeAwareTextView) {
+            if textView.keyboardAccessoryToolbarView == nil {
+                let accessoryView = KeyboardAccessoryToolbarView(
+                    target: self,
+                    undoAction: #selector(handleAccessoryUndo),
+                    redoAction: #selector(handleAccessoryRedo),
+                    dismissAction: #selector(handleAccessoryDismissKeyboard)
+                )
+                textView.keyboardAccessoryToolbarView = accessoryView
+                textView.undoAccessoryItem = accessoryView.undoButton
+                textView.redoAccessoryItem = accessoryView.redoButton
+                textView.dismissAccessoryItem = accessoryView.dismissButton
+                textView.inputAccessoryView = accessoryView
+
+                let assistantItem = textView.inputAssistantItem
+                assistantItem.leadingBarButtonGroups = []
+                assistantItem.trailingBarButtonGroups = []
+
+                if textView.isFirstResponder {
+                    textView.reloadInputViews()
+                }
+            }
+
+            updateKeyboardAccessoryState(for: textView)
+        }
+
+        private func updateKeyboardAccessoryState(for textView: UITextView) {
+            guard let textView = textView as? EditorChromeAwareTextView else {
+                return
+            }
+
+            textView.keyboardAccessoryToolbarView?.update(
+                canUndo: textView.isEditable && (textView.undoManager?.canUndo ?? false),
+                canRedo: textView.isEditable && (textView.undoManager?.canRedo ?? false),
+                canDismiss: textView.isFirstResponder
+            )
+        }
+
+        @objc
+        private func handleAccessoryUndo() {
+            guard let textView = activeTextView else {
+                return
+            }
+
+            if textView.isEditable, textView.undoManager?.canUndo == true {
+                textView.undoManager?.undo()
+            }
+            publishUndoRedoAvailability(for: textView)
+            updateKeyboardAccessoryState(for: textView)
+        }
+
+        @objc
+        private func handleAccessoryRedo() {
+            guard let textView = activeTextView else {
+                return
+            }
+
+            if textView.isEditable, textView.undoManager?.canRedo == true {
+                textView.undoManager?.redo()
+            }
+            publishUndoRedoAvailability(for: textView)
+            updateKeyboardAccessoryState(for: textView)
+        }
+
+        @objc
+        private func handleAccessoryDismissKeyboard() {
+            guard let textView = activeTextView else {
+                return
+            }
+
+            if textView.isFirstResponder {
+                textView.resignFirstResponder()
+            }
+            publishUndoRedoAvailability(for: textView)
+            updateKeyboardAccessoryState(for: textView)
+        }
+
         private func chromeOverlapTopInset(for textView: UITextView) -> CGFloat {
             guard let window = textView.window else {
                 return 0
@@ -317,8 +509,12 @@ extension MarkdownEditorTextView {
     }
 }
 
-private final class EditorChromeAwareTextView: UITextView {
+class EditorChromeAwareTextView: UITextView {
     var onViewportChromeChange: ((UITextView) -> Void)?
+    var keyboardAccessoryToolbarView: KeyboardAccessoryToolbarView?
+    var undoAccessoryItem: UIBarButtonItem?
+    var redoAccessoryItem: UIBarButtonItem?
+    var dismissAccessoryItem: UIBarButtonItem?
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -333,6 +529,100 @@ private final class EditorChromeAwareTextView: UITextView {
     override func safeAreaInsetsDidChange() {
         super.safeAreaInsetsDidChange()
         onViewportChromeChange?(self)
+    }
+}
+
+final class KeyboardAccessoryToolbarView: UIView {
+    static let bottomSpacing: CGFloat = 8
+
+    let toolbar = UIToolbar()
+    let undoButton: UIBarButtonItem
+    let redoButton: UIBarButtonItem
+    let dismissButton: UIBarButtonItem
+
+    init(target: AnyObject, undoAction: Selector, redoAction: Selector, dismissAction: Selector) {
+        undoButton = UIBarButtonItem(
+            image: UIImage(systemName: "arrow.uturn.backward"),
+            style: .plain,
+            target: target,
+            action: undoAction
+        )
+        undoButton.accessibilityLabel = "Undo"
+
+        redoButton = UIBarButtonItem(
+            image: UIImage(systemName: "arrow.uturn.forward"),
+            style: .plain,
+            target: target,
+            action: redoAction
+        )
+        redoButton.accessibilityLabel = "Redo"
+
+        dismissButton = UIBarButtonItem(
+            image: UIImage(systemName: "keyboard.chevron.compact.down"),
+            style: .plain,
+            target: target,
+            action: dismissAction
+        )
+        dismissButton.accessibilityLabel = "Dismiss Keyboard"
+
+        super.init(frame: .zero)
+
+        backgroundColor = .clear
+        isOpaque = false
+        autoresizingMask = [.flexibleWidth, .flexibleHeight]
+
+        addSubview(toolbar)
+        toolbar.autoresizingMask = [.flexibleWidth]
+        toolbar.isTranslucent = true
+        toolbar.backgroundColor = .clear
+        toolbar.barTintColor = .clear
+        toolbar.items = [undoButton, redoButton, .flexibleSpace(), dismissButton]
+        configureTransparentAppearance()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var intrinsicContentSize: CGSize {
+        let toolbarHeight = toolbar.sizeThatFits(CGSize(width: bounds.width, height: UIView.noIntrinsicMetric)).height
+        return CGSize(width: UIView.noIntrinsicMetric, height: toolbarHeight + Self.bottomSpacing)
+    }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        let toolbarHeight = toolbar.sizeThatFits(CGSize(width: size.width, height: UIView.noIntrinsicMetric)).height
+        return CGSize(width: size.width, height: toolbarHeight + Self.bottomSpacing)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let toolbarHeight = toolbar.sizeThatFits(CGSize(width: bounds.width, height: UIView.noIntrinsicMetric)).height
+        toolbar.frame = CGRect(x: 0, y: 0, width: bounds.width, height: toolbarHeight)
+    }
+
+    func update(canUndo: Bool, canRedo: Bool, canDismiss: Bool) {
+        undoButton.isEnabled = canUndo
+        redoButton.isEnabled = canRedo
+        dismissButton.isEnabled = canDismiss
+        invalidateIntrinsicContentSize()
+        setNeedsLayout()
+    }
+
+    private func configureTransparentAppearance() {
+        let appearance = UIToolbarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundColor = .clear
+        appearance.shadowColor = .clear
+
+        toolbar.standardAppearance = appearance
+        toolbar.compactAppearance = appearance
+        if #available(iOS 15.0, *) {
+            toolbar.scrollEdgeAppearance = appearance
+        }
+
+        let clearImage = UIImage()
+        toolbar.setBackgroundImage(clearImage, forToolbarPosition: .any, barMetrics: .default)
+        toolbar.setShadowImage(clearImage, forToolbarPosition: .any)
     }
 }
 

@@ -10,6 +10,12 @@ final class EditorViewModel {
     let autosaveDelay: Duration
     var isShowingConflictResolution = false
     var isResolvingConflict = false
+    private(set) var isEditorFocused = false
+    private(set) var canUndo = false
+    private(set) var canRedo = false
+    private(set) var undoCommandToken = 0
+    private(set) var redoCommandToken = 0
+    private(set) var dismissKeyboardCommandToken = 0
 
     private let coordinator: AppCoordinator
     private let editorAppearanceStore: EditorAppearanceStore
@@ -154,6 +160,10 @@ final class EditorViewModel {
         editorAppearanceStore.markdownSyntaxMode
     }
 
+    var showsKeyboardToolbar: Bool {
+        isEditorFocused && currentRouteDocument != nil
+    }
+
     func handleTextChange(_ text: String) {
         guard let currentRouteDocument else {
             return
@@ -214,6 +224,7 @@ final class EditorViewModel {
 
     func handleDisappear(for documentURL: URL) {
         visibleEditorURLs.remove(documentURL)
+        handleEditorFocusChange(false)
 
         if currentRouteURL == documentURL {
             currentRouteURL = nil
@@ -271,6 +282,39 @@ final class EditorViewModel {
 
     func dismissAlert() {
         session.editorAlertError = nil
+    }
+
+    func handleEditorFocusChange(_ isFocused: Bool) {
+        isEditorFocused = isFocused
+        if isFocused == false {
+            canUndo = false
+            canRedo = false
+        }
+    }
+
+    func updateUndoRedoAvailability(canUndo: Bool, canRedo: Bool) {
+        self.canUndo = canUndo
+        self.canRedo = canRedo
+    }
+
+    func requestUndo() {
+        guard canUndo else {
+            return
+        }
+
+        undoCommandToken += 1
+    }
+
+    func requestRedo() {
+        guard canRedo else {
+            return
+        }
+
+        redoCommandToken += 1
+    }
+
+    func requestKeyboardDismiss() {
+        dismissKeyboardCommandToken += 1
     }
 
     func reloadFromDisk() {

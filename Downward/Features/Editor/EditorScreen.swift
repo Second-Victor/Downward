@@ -56,7 +56,12 @@ struct EditorScreen: View {
                     font: viewModel.editorUIFont,
                     syntaxMode: viewModel.markdownSyntaxMode,
                     isEditable: viewModel.isResolvingConflict == false
-                        && viewModel.isShowingConflictResolution == false
+                        && viewModel.isShowingConflictResolution == false,
+                    undoCommandToken: viewModel.undoCommandToken,
+                    redoCommandToken: viewModel.redoCommandToken,
+                    dismissKeyboardCommandToken: viewModel.dismissKeyboardCommandToken,
+                    onEditorFocusChange: viewModel.handleEditorFocusChange(_:),
+                    onUndoRedoAvailabilityChange: viewModel.updateUndoRedoAvailability(canUndo:canRedo:)
                 )
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
