@@ -149,6 +149,7 @@ extension MarkdownEditorTextView {
         private var isObservingKeyboard = false
         private var pendingTextChangeTouchesLineBreaks = false
         private var lastTextChangeTouchedLineBreaks = false
+        private var hasUnrenderedTextMutation = false
 
         init(
             text: Binding<String>,
@@ -193,6 +194,7 @@ extension MarkdownEditorTextView {
             if previousIdentity != configuration.documentIdentity {
                 textView.selectedRange = NSRange(location: 0, length: 0)
                 lastRevealedLineRange = nil
+                hasUnrenderedTextMutation = false
                 lastHandledUndoCommandToken = undoCommandToken
                 lastHandledRedoCommandToken = redoCommandToken
                 lastHandledDismissKeyboardCommandToken = dismissKeyboardCommandToken
@@ -262,6 +264,7 @@ extension MarkdownEditorTextView {
 
             let updatedText = textView.text ?? ""
             lastTextChangeTouchedLineBreaks = pendingTextChangeTouchesLineBreaks
+            hasUnrenderedTextMutation = true
             pendingTextChangeTouchesLineBreaks = false
             text = updatedText
 
@@ -315,8 +318,17 @@ extension MarkdownEditorTextView {
                 syntaxMode: configuration.syntaxMode,
                 isEditable: configuration.isEditable
             )
-            self.configuration = updatedConfiguration
-            applyRenderedText(to: textView, using: updatedConfiguration)
+
+            if hasUnrenderedTextMutation {
+                applyRenderedText(to: textView, using: updatedConfiguration)
+            } else {
+                updateRevealedSyntax(
+                    in: textView,
+                    using: updatedConfiguration,
+                    previousRevealedRange: lastRevealedLineRange,
+                    revealedLineRange: revealedLineRange
+                )
+            }
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
@@ -489,6 +501,35 @@ extension MarkdownEditorTextView {
 
             isApplyingProgrammaticChange = true
             textView.attributedText = attributedText
+            textView.typingAttributes = [
+                .font: configuration.font,
+                .foregroundColor: UIColor.label
+            ]
+            textView.selectedRange = safeRange(selectedRange, forTextLength: textView.textStorage.length)
+            textView.setContentOffset(contentOffset, animated: false)
+            isApplyingProgrammaticChange = false
+            lastRevealedLineRange = revealedLineRange
+            hasUnrenderedTextMutation = false
+            self.configuration = configuration
+        }
+
+        private func updateRevealedSyntax(
+            in textView: UITextView,
+            using configuration: Configuration,
+            previousRevealedRange: NSRange?,
+            revealedLineRange: NSRange?
+        ) {
+            let selectedRange = safeSelectedRange(for: textView, text: configuration.text)
+            let contentOffset = textView.contentOffset
+
+            isApplyingProgrammaticChange = true
+            renderer.updateHiddenSyntaxVisibility(
+                in: textView.textStorage,
+                text: (textView.text ?? configuration.text) as NSString,
+                baseFont: configuration.font,
+                previousRevealedRange: previousRevealedRange,
+                revealedRange: revealedLineRange
+            )
             textView.typingAttributes = [
                 .font: configuration.font,
                 .foregroundColor: UIColor.label

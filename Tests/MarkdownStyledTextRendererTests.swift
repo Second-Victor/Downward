@@ -123,6 +123,74 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
     }
 
     @MainActor
+    func testLargeHiddenSyntaxStillCompactsMarkersWithoutKerning() {
+        let text = "Hidden **bold**\n" + String(repeating: "x", count: 120_001)
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .hiddenOutsideCurrentLine,
+                revealedRange: nil
+            )
+        )
+
+        let nsString = rendered.string as NSString
+        let markerRange = nsString.range(of: "**")
+        let markerColor = rendered.attribute(.foregroundColor, at: markerRange.location, effectiveRange: nil) as? UIColor
+        let markerFont = rendered.attribute(.font, at: markerRange.location, effectiveRange: nil) as? UIFont
+        let markerKerning = rendered.attribute(.kern, at: NSMaxRange(markerRange) - 1, effectiveRange: nil)
+
+        XCTAssertGreaterThan(nsString.length, 120_000)
+        XCTAssertEqual(markerColor, .clear)
+        XCTAssertEqual(markerFont?.pointSize, 0.1)
+        XCTAssertNil(markerKerning)
+    }
+
+    @MainActor
+    func testHiddenSyntaxVisibilityCanMoveBetweenLinesWithoutFullRerender() {
+        let text = "Hidden **bold**\nRevealed _italic_"
+        let firstLineRange = renderer.revealedLineRange(
+            for: NSRange(location: (text as NSString).range(of: "Hidden").location, length: 0),
+            in: text
+        )
+        let secondLineRange = renderer.revealedLineRange(
+            for: NSRange(location: (text as NSString).range(of: "Revealed").location, length: 0),
+            in: text
+        )
+        let rendered = NSMutableAttributedString(
+            attributedString: renderer.render(
+                configuration: .init(
+                    text: text,
+                    baseFont: baseFont,
+                    syntaxMode: .hiddenOutsideCurrentLine,
+                    revealedRange: firstLineRange
+                )
+            )
+        )
+
+        renderer.updateHiddenSyntaxVisibility(
+            in: rendered,
+            text: text as NSString,
+            baseFont: baseFont,
+            previousRevealedRange: firstLineRange,
+            revealedRange: secondLineRange
+        )
+
+        let nsString = rendered.string as NSString
+        let firstLineMarkerRange = nsString.range(of: "**")
+        let secondLineMarkerRange = nsString.range(of: "_italic_")
+        let firstLineMarkerColor = rendered.attribute(.foregroundColor, at: firstLineMarkerRange.location, effectiveRange: nil) as? UIColor
+        let firstLineMarkerFont = rendered.attribute(.font, at: firstLineMarkerRange.location, effectiveRange: nil) as? UIFont
+        let secondLineMarkerColor = rendered.attribute(.foregroundColor, at: secondLineMarkerRange.location, effectiveRange: nil) as? UIColor
+        let secondLineMarkerFont = rendered.attribute(.font, at: secondLineMarkerRange.location, effectiveRange: nil) as? UIFont
+
+        XCTAssertEqual(firstLineMarkerColor, .clear)
+        XCTAssertEqual(firstLineMarkerFont?.pointSize, 0.1)
+        XCTAssertNotEqual(secondLineMarkerColor, UIColor.clear)
+        XCTAssertEqual(secondLineMarkerFont?.pointSize, baseFont.pointSize)
+    }
+
+    @MainActor
     func testHeadingMarkersHideWhileHeadingContentKeepsStyledFont() {
         let text = "# Title"
         let rendered = renderer.render(

@@ -9,6 +9,9 @@ extension NSAttributedString.Key {
     nonisolated static let markdownCodeBackgroundKind = NSAttributedString.Key("Downward.MarkdownCodeBackgroundKind")
     nonisolated static let markdownBlockquoteDepth = NSAttributedString.Key("Downward.MarkdownBlockquoteDepth")
     nonisolated static let markdownBlockquoteGroupID = NSAttributedString.Key("Downward.MarkdownBlockquoteGroupID")
+    nonisolated static let markdownSyntaxMarker = NSAttributedString.Key("Downward.MarkdownSyntaxMarker")
+    nonisolated static let markdownSyntaxMarkerFont = NSAttributedString.Key("Downward.MarkdownSyntaxMarkerFont")
+    nonisolated static let markdownSyntaxMarkerForegroundColor = NSAttributedString.Key("Downward.MarkdownSyntaxMarkerForegroundColor")
 }
 
 final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager {

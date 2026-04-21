@@ -322,6 +322,48 @@ struct MarkdownStyledTextRenderer {
         return nsText.lineRange(for: NSRange(location: safeLocation, length: 0))
     }
 
+    func updateHiddenSyntaxVisibility(
+        in attributed: NSMutableAttributedString,
+        text: NSString,
+        baseFont: UIFont,
+        previousRevealedRange: NSRange?,
+        revealedRange: NSRange?
+    ) {
+        let affectedRanges = mergedRanges(
+            [previousRevealedRange, revealedRange]
+                .compactMap { clampedRange($0, length: attributed.length) }
+        )
+        guard affectedRanges.isEmpty == false else {
+            return
+        }
+
+        var markerRanges: [NSRange] = []
+        for affectedRange in affectedRanges {
+            attributed.enumerateAttribute(.markdownSyntaxMarker, in: affectedRange) { value, range, _ in
+                guard (value as? Bool) == true else {
+                    return
+                }
+
+                markerRanges.append(range)
+            }
+        }
+
+        let rangesToUpdate = mergedRanges(markerRanges)
+        guard rangesToUpdate.isEmpty == false else {
+            return
+        }
+
+        attributed.beginEditing()
+        for markerRange in rangesToUpdate {
+            if let revealedRange, NSIntersectionRange(revealedRange, markerRange).length > 0 {
+                revealSyntaxRange(markerRange, in: attributed, fallbackFont: baseFont)
+            } else {
+                hideRange(markerRange, in: attributed, text: text, baseFont: baseFont)
+            }
+        }
+        attributed.endEditing()
+    }
+
     private func styleHeadings(
         in attributed: NSMutableAttributedString,
         text: NSString,
@@ -343,7 +385,7 @@ struct MarkdownStyledTextRenderer {
             let fullMatch = match.range(at: 0)
             guard
                 protectedRanges.contains(where: { NSIntersectionRange($0, fullMatch).length > 0 }) == false,
-                isEscaped(location: fullMatch.location, in: text as String) == false
+                isEscaped(location: fullMatch.location, in: text) == false
             else {
                 return
             }
@@ -656,7 +698,7 @@ struct MarkdownStyledTextRenderer {
             let fullMatch = match.range(at: 0)
             guard
                 protectedRanges.contains(where: { NSIntersectionRange($0, fullMatch).length > 0 }) == false,
-                isEscaped(location: fullMatch.location, in: text as String) == false
+                isEscaped(location: fullMatch.location, in: text) == false
             else {
                 return
             }
@@ -719,7 +761,7 @@ struct MarkdownStyledTextRenderer {
             let fullMatch = match.range(at: 0)
             guard
                 protectedRanges.contains(where: { NSIntersectionRange($0, fullMatch).length > 0 }) == false,
-                isEscaped(location: fullMatch.location, in: text as String) == false
+                isEscaped(location: fullMatch.location, in: text) == false
             else {
                 return
             }
@@ -806,8 +848,8 @@ struct MarkdownStyledTextRenderer {
             let fullMatch = match.range(at: 0)
             guard
                 protectedRanges.contains(where: { NSIntersectionRange($0, fullMatch).length > 0 }) == false,
-                isEscaped(location: fullMatch.location, in: text as String) == false,
-                isImageSyntaxStart(fullMatch.location, in: text as String) == false
+                isEscaped(location: fullMatch.location, in: text) == false,
+                isImageSyntaxStart(fullMatch.location, in: text) == false
             else {
                 return
             }
@@ -863,7 +905,7 @@ struct MarkdownStyledTextRenderer {
             let fullMatch = match.range(at: 0)
             guard
                 protectedRanges.contains(where: { NSIntersectionRange($0, fullMatch).length > 0 }) == false,
-                isEscaped(location: fullMatch.location, in: text as String) == false
+                isEscaped(location: fullMatch.location, in: text) == false
             else {
                 return
             }
@@ -975,7 +1017,7 @@ struct MarkdownStyledTextRenderer {
             }
 
             let fenceLocation = trimmedRange.location + fenceRange.location
-            guard isEscaped(location: fenceLocation, in: text as String) == false else {
+            guard isEscaped(location: fenceLocation, in: text) == false else {
                 continue
             }
 
@@ -1139,39 +1181,40 @@ struct MarkdownStyledTextRenderer {
         in text: String,
         protectedRanges: [NSRange]
     ) -> [CodeSpanMatch] {
-        let utf16 = Array(text.utf16)
+        let nsText = text as NSString
         var matches: [CodeSpanMatch] = []
         var index = 0
 
-        while index < utf16.count {
-            guard utf16[index] == 96 else {
+        while index < nsText.length {
+            guard nsText.character(at: index) == 96 else {
                 index += 1
                 continue
             }
 
             let delimiterStart = index
-            while index < utf16.count, utf16[index] == 96 {
+            while index < nsText.length, nsText.character(at: index) == 96 {
                 index += 1
             }
             let delimiterLength = index - delimiterStart
-            guard isEscaped(location: delimiterStart, in: text) == false else {
+            guard isEscaped(location: delimiterStart, in: nsText) == false else {
                 continue
             }
 
             var searchIndex = index
             var foundMatch: CodeSpanMatch?
-            while searchIndex < utf16.count {
-                if utf16[searchIndex] == 10 || utf16[searchIndex] == 13 {
+            while searchIndex < nsText.length {
+                let character = nsText.character(at: searchIndex)
+                if character == 10 || character == 13 {
                     break
                 }
 
-                guard utf16[searchIndex] == 96 else {
+                guard character == 96 else {
                     searchIndex += 1
                     continue
                 }
 
                 let closingStart = searchIndex
-                while searchIndex < utf16.count, utf16[searchIndex] == 96 {
+                while searchIndex < nsText.length, nsText.character(at: searchIndex) == 96 {
                     searchIndex += 1
                 }
                 let closingLength = searchIndex - closingStart
@@ -1211,12 +1254,13 @@ struct MarkdownStyledTextRenderer {
         protectedRanges: [NSRange]
     ) -> [NSRange] {
         let regex = regex(for: #"!\[([^\]]*)\]\(([^)]+)\)"#)
-        let range = NSRange(location: 0, length: (text as NSString).length)
+        let nsText = text as NSString
+        let range = NSRange(location: 0, length: nsText.length)
         return regex.matches(in: text, options: [], range: range)
             .map(\.range)
             .filter { matchRange in
                 protectedRanges.contains(where: { NSIntersectionRange($0, matchRange).length > 0 }) == false
-                    && isEscaped(location: matchRange.location, in: text) == false
+                    && isEscaped(location: matchRange.location, in: nsText) == false
             }
     }
 
@@ -1225,13 +1269,14 @@ struct MarkdownStyledTextRenderer {
         in text: String,
         protectedRanges: [NSRange]
     ) -> [NSRange] {
-        let range = NSRange(location: 0, length: (text as NSString).length)
+        let nsText = text as NSString
+        let range = NSRange(location: 0, length: nsText.length)
         return patterns.flatMap { pattern in
             regex(for: pattern).matches(in: text, options: [], range: range)
                 .map(\.range)
                 .filter { matchRange in
                     protectedRanges.contains(where: { NSIntersectionRange($0, matchRange).length > 0 }) == false
-                        && isEscaped(location: matchRange.location, in: text) == false
+                        && isEscaped(location: matchRange.location, in: nsText) == false
                 }
         }
     }
@@ -1266,6 +1311,20 @@ struct MarkdownStyledTextRenderer {
         return merged
     }
 
+    private func clampedRange(
+        _ range: NSRange?,
+        length: Int
+    ) -> NSRange? {
+        guard let range else {
+            return nil
+        }
+
+        let location = min(max(range.location, 0), length)
+        let upperBound = min(max(NSMaxRange(range), location), length)
+        let clamped = NSRange(location: location, length: upperBound - location)
+        return clamped.length > 0 ? clamped : nil
+    }
+
     private func isHorizontalRule(_ line: String) -> Bool {
         let compact = line.removingMarkdownWhitespace()
         guard compact.count >= 3 else {
@@ -1282,16 +1341,15 @@ struct MarkdownStyledTextRenderer {
 
     private func isEscaped(
         location: Int,
-        in text: String
+        in text: NSString
     ) -> Bool {
         guard location > 0 else {
             return false
         }
 
-        let utf16 = Array(text.utf16)
         var index = location - 1
         var backslashCount = 0
-        while index >= 0, utf16[index] == 92 {
+        while index >= 0, text.character(at: index) == 92 {
             backslashCount += 1
             index -= 1
         }
@@ -1299,16 +1357,23 @@ struct MarkdownStyledTextRenderer {
         return backslashCount.isMultiple(of: 2) == false
     }
 
+    private func isEscaped(
+        location: Int,
+        in text: String
+    ) -> Bool {
+        isEscaped(location: location, in: text as NSString)
+    }
+
     private func isImageSyntaxStart(
         _ location: Int,
-        in text: String
+        in text: NSString
     ) -> Bool {
         guard location > 0 else {
             return false
         }
 
-        let utf16 = Array(text.utf16)
-        return utf16[location - 1] == 33 && isEscaped(location: location - 1, in: text) == false
+        return text.character(at: location - 1) == 33
+            && isEscaped(location: location - 1, in: text) == false
     }
 
     private func baseAttributes(font: UIFont) -> [NSAttributedString.Key: Any] {
@@ -1346,23 +1411,67 @@ struct MarkdownStyledTextRenderer {
             return
         }
 
+        rememberSyntaxRange(range, in: attributed, fallbackFont: baseFont)
+
         if let revealedRange, NSIntersectionRange(revealedRange, range).length > 0 {
+            revealSyntaxRange(range, in: attributed, fallbackFont: baseFont)
             return
         }
 
-        attributed.addAttributes(
-            [
-                .foregroundColor: UIColor.clear,
-                .font: baseFont.withSize(0.1)
-            ],
-            range: range
+        hideRange(
+            range,
+            in: attributed,
+            text: text,
+            baseFont: baseFont
         )
+    }
 
-        let width = (text.substring(with: range) as NSString).size(
-            withAttributes: [.font: baseFont]
-        ).width
-        let kerningRange = NSRange(location: NSMaxRange(range) - 1, length: 1)
-        attributed.addAttribute(.kern, value: -width, range: kerningRange)
+    private func rememberSyntaxRange(
+        _ range: NSRange,
+        in attributed: NSMutableAttributedString,
+        fallbackFont: UIFont
+    ) {
+        var snapshots: [(attributes: [NSAttributedString.Key: Any], range: NSRange)] = []
+        attributed.enumerateAttributes(in: range) { attributes, subrange, _ in
+            snapshots.append((attributes, subrange))
+        }
+
+        for snapshot in snapshots {
+            let visibleFont = snapshot.attributes[.font] as? UIFont ?? fallbackFont
+            let visibleColor = snapshot.attributes[.foregroundColor] as? UIColor ?? UIColor.secondaryLabel
+            attributed.addAttributes(
+                [
+                    .markdownSyntaxMarker: true,
+                    .markdownSyntaxMarkerFont: visibleFont,
+                    .markdownSyntaxMarkerForegroundColor: visibleColor
+                ],
+                range: snapshot.range
+            )
+        }
+    }
+
+    private func revealSyntaxRange(
+        _ range: NSRange,
+        in attributed: NSMutableAttributedString,
+        fallbackFont: UIFont
+    ) {
+        var snapshots: [(attributes: [NSAttributedString.Key: Any], range: NSRange)] = []
+        attributed.enumerateAttributes(in: range) { attributes, subrange, _ in
+            snapshots.append((attributes, subrange))
+        }
+
+        for snapshot in snapshots {
+            let visibleFont = snapshot.attributes[.markdownSyntaxMarkerFont] as? UIFont ?? fallbackFont
+            let visibleColor = snapshot.attributes[.markdownSyntaxMarkerForegroundColor] as? UIColor ?? UIColor.secondaryLabel
+            attributed.addAttributes(
+                [
+                    .font: visibleFont,
+                    .foregroundColor: visibleColor
+                ],
+                range: snapshot.range
+            )
+            attributed.removeAttribute(.kern, range: snapshot.range)
+        }
     }
 
     private func hideRange(
@@ -1382,12 +1491,7 @@ struct MarkdownStyledTextRenderer {
             ],
             range: range
         )
-
-        let width = (text.substring(with: range) as NSString).size(
-            withAttributes: [.font: baseFont]
-        ).width
-        let kerningRange = NSRange(location: NSMaxRange(range) - 1, length: 1)
-        attributed.addAttribute(.kern, value: -width, range: kerningRange)
+        attributed.removeAttribute(.kern, range: range)
     }
 
     private func regex(
