@@ -46,35 +46,105 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorConfiguresTransparentKeyboardAccessoryToolbar() {
+        let textBox = MutableBox("Draft")
+        let topOverlayBox = MutableBox<CGFloat>(0)
+        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let configuration = makeConfiguration(text: textBox.value)
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        guard let accessoryView = textView.inputAccessoryView as? KeyboardAccessoryToolbarView else {
+            XCTFail("Expected keyboard accessory toolbar view")
+            return
+        }
+
+        XCTAssertNotNil(textView.keyboardAccessoryToolbarView)
+        XCTAssertTrue(accessoryView.toolbar.isTranslucent)
+        XCTAssertEqual(accessoryView.toolbar.items?.count, 4)
+        XCTAssertFalse(textView.undoAccessoryItem?.isEnabled ?? true)
+        XCTAssertFalse(textView.redoAccessoryItem?.isEnabled ?? true)
+        XCTAssertFalse(textView.dismissAccessoryItem?.isEnabled ?? true)
+
+        textView.trackingUndoManager.simulatedCanUndo = true
+        textView.trackingUndoManager.simulatedCanRedo = false
+        textView.simulatedIsFirstResponder = true
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: false
+        )
+
+        XCTAssertTrue(textView.undoAccessoryItem?.isEnabled ?? false)
+        XCTAssertFalse(textView.redoAccessoryItem?.isEnabled ?? true)
+        XCTAssertTrue(textView.dismissAccessoryItem?.isEnabled ?? false)
+    }
+
+    @MainActor
+    func testViewportInsetsAllowTextToFlowUnderKeyboardAccessory() {
+        let textBox = MutableBox("Draft")
+        let topOverlayBox = MutableBox<CGFloat>(0)
+        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let configuration = makeConfiguration(text: textBox.value)
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        guard let accessoryView = textView.inputAccessoryView as? KeyboardAccessoryToolbarView else {
+            XCTFail("Expected keyboard accessory toolbar view")
+            return
+        }
+
+        let accessoryHeight = accessoryView.sizeThatFits(CGSize(width: 320, height: UIView.noIntrinsicMetric)).height
+        textView.keyboardOverlapInset = accessoryHeight + 180
+
+        coordinator.updateViewportInsets(for: textView)
+
+        XCTAssertEqual(textView.contentInset.bottom, 180, accuracy: 0.5)
+        XCTAssertEqual(textView.verticalScrollIndicatorInsets.bottom, 180, accuracy: 0.5)
+    }
+
+    @MainActor
     func testCoordinatorExecutesPendingUndoCommand() {
-        var text = "Draft"
-        var topOverlayClearance: CGFloat = 0
-        let textBinding = Binding(
-            get: { text },
-            set: { text = $0 }
-        )
-        let topOverlayBinding = Binding(
-            get: { topOverlayClearance },
-            set: { topOverlayClearance = $0 }
-        )
+        let textBox = MutableBox("Draft")
+        let topOverlayBox = MutableBox<CGFloat>(0)
         var focusEvents: [Bool] = []
         var availabilityEvents: [(Bool, Bool)] = []
         let coordinator = MarkdownEditorTextView.Coordinator(
-            text: textBinding,
-            topOverlayClearance: topOverlayBinding,
+            text: Binding(
+                get: { textBox.value },
+                set: { textBox.value = $0 }
+            ),
+            topOverlayClearance: Binding(
+                get: { topOverlayBox.value },
+                set: { topOverlayBox.value = $0 }
+            ),
             onEditorFocusChange: { focusEvents.append($0) },
             onUndoRedoAvailabilityChange: { canUndo, canRedo in
                 availabilityEvents.append((canUndo, canRedo))
             }
         )
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
-        let configuration = MarkdownEditorTextView.Configuration(
-            text: text,
-            documentIdentity: PreviewSampleData.cleanDocument.url,
-            font: .preferredFont(forTextStyle: .body),
-            syntaxMode: .visible,
-            isEditable: true
-        )
+        let configuration = makeConfiguration(text: textBox.value)
 
         coordinator.apply(
             configuration: configuration,
@@ -106,30 +176,11 @@ final class EditorUndoRedoTests: XCTestCase {
 
     @MainActor
     func testCoordinatorExecutesPendingRedoCommand() {
-        var text = "Draft"
-        var topOverlayClearance: CGFloat = 0
-        let textBinding = Binding(
-            get: { text },
-            set: { text = $0 }
-        )
-        let topOverlayBinding = Binding(
-            get: { topOverlayClearance },
-            set: { topOverlayClearance = $0 }
-        )
-        let coordinator = MarkdownEditorTextView.Coordinator(
-            text: textBinding,
-            topOverlayClearance: topOverlayBinding,
-            onEditorFocusChange: { _ in },
-            onUndoRedoAvailabilityChange: { _, _ in }
-        )
+        let textBox = MutableBox("Draft")
+        let topOverlayBox = MutableBox<CGFloat>(0)
+        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
-        let configuration = MarkdownEditorTextView.Configuration(
-            text: text,
-            documentIdentity: PreviewSampleData.cleanDocument.url,
-            font: .preferredFont(forTextStyle: .body),
-            syntaxMode: .visible,
-            isEditable: true
-        )
+        let configuration = makeConfiguration(text: textBox.value)
 
         coordinator.apply(
             configuration: configuration,
@@ -158,30 +209,11 @@ final class EditorUndoRedoTests: XCTestCase {
 
     @MainActor
     func testCoordinatorExecutesPendingKeyboardDismissCommand() {
-        var text = "Draft"
-        var topOverlayClearance: CGFloat = 0
-        let textBinding = Binding(
-            get: { text },
-            set: { text = $0 }
-        )
-        let topOverlayBinding = Binding(
-            get: { topOverlayClearance },
-            set: { topOverlayClearance = $0 }
-        )
-        let coordinator = MarkdownEditorTextView.Coordinator(
-            text: textBinding,
-            topOverlayClearance: topOverlayBinding,
-            onEditorFocusChange: { _ in },
-            onUndoRedoAvailabilityChange: { _, _ in }
-        )
+        let textBox = MutableBox("Draft")
+        let topOverlayBox = MutableBox<CGFloat>(0)
+        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
-        let configuration = MarkdownEditorTextView.Configuration(
-            text: text,
-            documentIdentity: PreviewSampleData.cleanDocument.url,
-            font: .preferredFont(forTextStyle: .body),
-            syntaxMode: .visible,
-            isEditable: true
-        )
+        let configuration = makeConfiguration(text: textBox.value)
 
         coordinator.apply(
             configuration: configuration,
@@ -208,33 +240,14 @@ final class EditorUndoRedoTests: XCTestCase {
 
     @MainActor
     func testCoordinatorConfiguresNativeKeyboardAccessoryToolbar() {
-        var text = "Draft"
-        var topOverlayClearance: CGFloat = 0
-        let textBinding = Binding(
-            get: { text },
-            set: { text = $0 }
-        )
-        let topOverlayBinding = Binding(
-            get: { topOverlayClearance },
-            set: { topOverlayClearance = $0 }
-        )
-        let coordinator = MarkdownEditorTextView.Coordinator(
-            text: textBinding,
-            topOverlayClearance: topOverlayBinding,
-            onEditorFocusChange: { _ in },
-            onUndoRedoAvailabilityChange: { _, _ in }
-        )
+        let textBox = MutableBox("Draft")
+        let topOverlayBox = MutableBox<CGFloat>(0)
+        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         textView.simulatedIsFirstResponder = true
         textView.trackingUndoManager.simulatedCanUndo = true
         textView.trackingUndoManager.simulatedCanRedo = false
-        let configuration = MarkdownEditorTextView.Configuration(
-            text: text,
-            documentIdentity: PreviewSampleData.cleanDocument.url,
-            font: .preferredFont(forTextStyle: .body),
-            syntaxMode: .visible,
-            isEditable: true
-        )
+        let configuration = makeConfiguration(text: textBox.value)
 
         coordinator.configureKeyboardAccessory(for: textView)
         coordinator.apply(
@@ -257,6 +270,38 @@ final class EditorUndoRedoTests: XCTestCase {
         XCTAssertEqual(textView.redoAccessoryItem?.isEnabled, false)
         XCTAssertEqual(textView.dismissAccessoryItem?.isEnabled, true)
         XCTAssertEqual(textView.reloadInputViewsCallCount, 1)
+    }
+
+    @MainActor
+    private func makeCoordinator(
+        text: MutableBox<String>,
+        topOverlayClearance: MutableBox<CGFloat>
+    ) -> MarkdownEditorTextView.Coordinator {
+        let textBinding = Binding(
+            get: { text.value },
+            set: { text.value = $0 }
+        )
+        let topOverlayBinding = Binding(
+            get: { topOverlayClearance.value },
+            set: { topOverlayClearance.value = $0 }
+        )
+        return MarkdownEditorTextView.Coordinator(
+            text: textBinding,
+            topOverlayClearance: topOverlayBinding,
+            onEditorFocusChange: { _ in },
+            onUndoRedoAvailabilityChange: { _, _ in }
+        )
+    }
+
+    @MainActor
+    private func makeConfiguration(text: String) -> MarkdownEditorTextView.Configuration {
+        MarkdownEditorTextView.Configuration(
+            text: text,
+            documentIdentity: PreviewSampleData.cleanDocument.url,
+            font: .preferredFont(forTextStyle: .body),
+            syntaxMode: .visible,
+            isEditable: true
+        )
     }
 
     @MainActor
@@ -341,5 +386,13 @@ private final class TrackingUndoManager: UndoManager {
         redoCallCount += 1
         simulatedCanUndo = true
         simulatedCanRedo = false
+    }
+}
+
+private final class MutableBox<Value> {
+    var value: Value
+
+    init(_ value: Value) {
+        self.value = value
     }
 }

@@ -27,7 +27,8 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextView {
         let textStorage = NSTextStorage()
         let layoutManager = MarkdownCodeBackgroundLayoutManager()
-        let textContainer = NSTextContainer(size: .zero)
+        let textContainer = NSTextContainer(size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        textContainer.widthTracksTextView = true
         textStorage.addLayoutManager(layoutManager)
         layoutManager.addTextContainer(textContainer)
 
@@ -48,9 +49,12 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         textView.contentInsetAdjustmentBehavior = .never
         textView.automaticallyAdjustsScrollIndicatorInsets = false
         textView.contentInset = .zero
-        textView.scrollIndicatorInsets = .zero
+        textView.verticalScrollIndicatorInsets = .zero
+        textView.horizontalScrollIndicatorInsets = .zero
         textView.keyboardDismissMode = .interactive
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        textView.setContentHuggingPriority(.defaultLow, for: .vertical)
         textView.onViewportChromeChange = { [weak coordinator = context.coordinator] textView in
             coordinator?.updateViewportInsets(for: textView)
         }
@@ -71,6 +75,17 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         )
         context.coordinator.updateViewportInsets(for: textView)
         return textView
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        let width = proposal.width ?? (uiView.bounds.width > 0 ? uiView.bounds.width : nil)
+        let height = proposal.height ?? (uiView.bounds.height > 0 ? uiView.bounds.height : nil)
+
+        guard let width, let height else {
+            return nil
+        }
+
+        return CGSize(width: width, height: height)
     }
 
     func updateUIView(_ uiView: UITextView, context: Context) {
@@ -123,6 +138,9 @@ extension MarkdownEditorTextView {
         private var lastHandledRedoCommandToken: Int?
         private var lastHandledDismissKeyboardCommandToken: Int?
         private weak var activeTextView: EditorChromeAwareTextView?
+        private var pendingTopOverlayClearance: CGFloat?
+        private var isTopOverlayClearanceUpdateScheduled = false
+        private var isObservingKeyboard = false
 
         init(
             text: Binding<String>,
@@ -134,6 +152,12 @@ extension MarkdownEditorTextView {
             _topOverlayClearance = topOverlayClearance
             self.onEditorFocusChange = onEditorFocusChange
             self.onUndoRedoAvailabilityChange = onUndoRedoAvailabilityChange
+        }
+
+        deinit {
+            if isObservingKeyboard {
+                NotificationCenter.default.removeObserver(self)
+            }
         }
 
         func apply(
@@ -155,6 +179,7 @@ extension MarkdownEditorTextView {
             if let textView = textView as? EditorChromeAwareTextView {
                 activeTextView = textView
                 configureKeyboardAccessory(for: textView)
+                subscribeToKeyboardNotificationsIfNeeded()
             }
 
             if previousIdentity != configuration.documentIdentity {
@@ -270,15 +295,20 @@ extension MarkdownEditorTextView {
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
+            if let textView = textView as? EditorChromeAwareTextView {
+                activeTextView = textView
+            }
             onEditorFocusChange(true)
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
+            updateViewportInsets(for: textView)
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
             onEditorFocusChange(false)
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
+            updateViewportInsets(for: textView)
         }
 
         func updateViewportInsets(for textView: UITextView) {
@@ -293,19 +323,24 @@ extension MarkdownEditorTextView {
                 textView.textContainerInset = updatedTextContainerInset
             }
 
-            if textView.contentInset != .zero {
-                textView.contentInset = .zero
+            let keyboardOverlap = (textView as? EditorChromeAwareTextView)?.keyboardOverlapInset ?? 0
+            let accessoryHeight = accessoryHeightToUnderlap(for: textView)
+            let visibleContentBottomInset = max(0, keyboardOverlap - accessoryHeight)
+
+            var updatedContentInset = textView.contentInset
+            updatedContentInset.bottom = visibleContentBottomInset
+            if textView.contentInset != updatedContentInset {
+                textView.contentInset = updatedContentInset
             }
 
-            var updatedScrollIndicatorInsets = textView.scrollIndicatorInsets
-            updatedScrollIndicatorInsets.top = clearance
-            if textView.scrollIndicatorInsets != updatedScrollIndicatorInsets {
-                textView.scrollIndicatorInsets = updatedScrollIndicatorInsets
+            var updatedVerticalScrollIndicatorInsets = textView.verticalScrollIndicatorInsets
+            updatedVerticalScrollIndicatorInsets.top = clearance
+            updatedVerticalScrollIndicatorInsets.bottom = visibleContentBottomInset
+            if textView.verticalScrollIndicatorInsets != updatedVerticalScrollIndicatorInsets {
+                textView.verticalScrollIndicatorInsets = updatedVerticalScrollIndicatorInsets
             }
 
-            if abs(topOverlayClearance - clearance) > 0.5 {
-                topOverlayClearance = clearance
-            }
+            publishTopOverlayClearance(clearance)
         }
 
         private func needsRefresh(
@@ -318,6 +353,41 @@ extension MarkdownEditorTextView {
             }
 
             return textView.text != configuration.text
+        }
+
+        /// SwiftUI warns if this representable mutates bound state during `updateUIView`.
+        /// Defer the placeholder clearance publication to the next main-actor turn while
+        /// still applying the UIKit inset changes synchronously to the live text view.
+        private func publishTopOverlayClearance(_ clearance: CGFloat) {
+            guard abs(topOverlayClearance - clearance) > 0.5 else {
+                pendingTopOverlayClearance = nil
+                return
+            }
+
+            pendingTopOverlayClearance = clearance
+            guard isTopOverlayClearanceUpdateScheduled == false else {
+                return
+            }
+
+            isTopOverlayClearanceUpdateScheduled = true
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+
+                self.isTopOverlayClearanceUpdateScheduled = false
+
+                guard let pendingTopOverlayClearance = self.pendingTopOverlayClearance else {
+                    return
+                }
+
+                self.pendingTopOverlayClearance = nil
+                guard abs(self.topOverlayClearance - pendingTopOverlayClearance) > 0.5 else {
+                    return
+                }
+
+                self.topOverlayClearance = pendingTopOverlayClearance
+            }
         }
 
         private func applyRenderedText(
@@ -472,6 +542,113 @@ extension MarkdownEditorTextView {
             updateKeyboardAccessoryState(for: textView)
         }
 
+        private func subscribeToKeyboardNotificationsIfNeeded() {
+            guard isObservingKeyboard == false else {
+                return
+            }
+
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(keyboardWillChangeFrame(_:)),
+                name: UIResponder.keyboardWillChangeFrameNotification,
+                object: nil
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(keyboardWillHide(_:)),
+                name: UIResponder.keyboardWillHideNotification,
+                object: nil
+            )
+            isObservingKeyboard = true
+        }
+
+        @objc
+        private func keyboardWillChangeFrame(_ notification: Notification) {
+            guard
+                let textView = activeTextView,
+                let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+                let window = textView.window
+            else {
+                return
+            }
+
+            let keyboardFrameInView = textView.convert(endFrame, from: window.screen.coordinateSpace)
+            textView.keyboardOverlapInset = max(0, textView.bounds.maxY - keyboardFrameInView.minY)
+
+            animateAlongsideKeyboard(notification) {
+                self.updateViewportInsets(for: textView)
+            } completion: {
+                self.scrollToCaret(in: textView)
+                self.updateKeyboardAccessoryState(for: textView)
+            }
+        }
+
+        @objc
+        private func keyboardWillHide(_ notification: Notification) {
+            guard let textView = activeTextView else {
+                return
+            }
+
+            textView.keyboardOverlapInset = 0
+            animateAlongsideKeyboard(notification) {
+                self.updateViewportInsets(for: textView)
+            } completion: {
+                self.updateKeyboardAccessoryState(for: textView)
+            }
+        }
+
+        private func animateAlongsideKeyboard(
+            _ notification: Notification,
+            animations: @escaping () -> Void,
+            completion: @escaping () -> Void = {}
+        ) {
+            let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
+            let curveRaw = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 0
+            let options = UIView.AnimationOptions(rawValue: curveRaw << 16)
+
+            UIView.animate(withDuration: duration, delay: 0, options: options) {
+                animations()
+            } completion: { _ in
+                completion()
+            }
+        }
+
+        private func scrollToCaret(in textView: UITextView) {
+            guard let selectedRange = textView.selectedTextRange else {
+                return
+            }
+
+            let caretRect = textView.caretRect(for: selectedRange.end)
+            let visibleRect = caretRect.insetBy(dx: 0, dy: -20)
+            textView.scrollRectToVisible(visibleRect, animated: true)
+        }
+
+        private func accessoryHeightToUnderlap(for textView: UITextView) -> CGFloat {
+            guard let textView = textView as? EditorChromeAwareTextView, textView.keyboardOverlapInset > 0 else {
+                return 0
+            }
+
+            if let accessoryView = textView.inputAccessoryView {
+                if accessoryView.bounds.height > 0 {
+                    return accessoryView.bounds.height
+                }
+
+                let fittedHeight = accessoryView.sizeThatFits(
+                    CGSize(width: textView.bounds.width, height: UIView.noIntrinsicMetric)
+                ).height
+                if fittedHeight > 0 {
+                    return fittedHeight
+                }
+
+                let intrinsicHeight = accessoryView.intrinsicContentSize.height
+                if intrinsicHeight > 0, intrinsicHeight != UIView.noIntrinsicMetric {
+                    return intrinsicHeight
+                }
+            }
+
+            return 0
+        }
+
         private func chromeOverlapTopInset(for textView: UITextView) -> CGFloat {
             guard let window = textView.window else {
                 return 0
@@ -515,6 +692,7 @@ class EditorChromeAwareTextView: UITextView {
     var undoAccessoryItem: UIBarButtonItem?
     var redoAccessoryItem: UIBarButtonItem?
     var dismissAccessoryItem: UIBarButtonItem?
+    var keyboardOverlapInset: CGFloat = 0
 
     override func didMoveToWindow() {
         super.didMoveToWindow()

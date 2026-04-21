@@ -8,7 +8,9 @@ final class EditorTextViewHostBridgeTests: XCTestCase {
         let textView = UITextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 0, bottom: 12, right: 0)
         textView.textContainer.lineFragmentPadding = 6
-        textView.scrollIndicatorInsets = UIEdgeInsets(top: 1, left: 2, bottom: 3, right: 4)
+        let expectedIndicatorInsets = UIEdgeInsets(top: 1, left: 2, bottom: 3, right: 4)
+        textView.verticalScrollIndicatorInsets = expectedIndicatorInsets
+        textView.horizontalScrollIndicatorInsets = expectedIndicatorInsets
 
         let (container, bridge) = makeContainerWithBridge()
         container.insertSubview(textView, at: 0)
@@ -25,7 +27,8 @@ final class EditorTextViewHostBridgeTests: XCTestCase {
         XCTAssertEqual(textView.textContainerInset.top, 8)
         XCTAssertEqual(textView.textContainerInset.bottom, 12)
         XCTAssertEqual(textView.textContainer.lineFragmentPadding, 0)
-        XCTAssertEqual(textView.scrollIndicatorInsets, UIEdgeInsets(top: 1, left: 2, bottom: 3, right: 4))
+        XCTAssertEqual(textView.verticalScrollIndicatorInsets, expectedIndicatorInsets)
+        XCTAssertEqual(textView.horizontalScrollIndicatorInsets, expectedIndicatorInsets)
     }
 
     @MainActor
