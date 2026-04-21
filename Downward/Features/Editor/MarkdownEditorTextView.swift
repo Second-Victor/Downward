@@ -56,7 +56,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         textView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         textView.setContentHuggingPriority(.defaultLow, for: .vertical)
         textView.onViewportChromeChange = { [weak coordinator = context.coordinator] textView in
-            coordinator?.updateViewportInsets(for: textView)
+            coordinator?.updateTopViewportInsets(for: textView)
         }
         context.coordinator.configureKeyboardAccessory(for: textView)
         context.coordinator.apply(
@@ -73,7 +73,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
             to: textView,
             force: true
         )
-        context.coordinator.updateViewportInsets(for: textView)
+        context.coordinator.updateTopViewportInsets(for: textView)
         return textView
     }
 
@@ -91,7 +91,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     func updateUIView(_ uiView: UITextView, context: Context) {
         if let uiView = uiView as? EditorChromeAwareTextView {
             uiView.onViewportChromeChange = { [weak coordinator = context.coordinator] textView in
-                coordinator?.updateViewportInsets(for: textView)
+                coordinator?.updateTopViewportInsets(for: textView)
             }
             context.coordinator.configureKeyboardAccessory(for: uiView)
         }
@@ -110,7 +110,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
             to: uiView,
             force: false
         )
-        context.coordinator.updateViewportInsets(for: uiView)
+        context.coordinator.updateTopViewportInsets(for: uiView)
     }
 }
 
@@ -125,6 +125,12 @@ extension MarkdownEditorTextView {
 
     @MainActor
     final class Coordinator: NSObject, UITextViewDelegate {
+        struct ViewportInsetsSnapshot: Equatable {
+            let keyboardOverlapInset: CGFloat
+            let contentInsetBottom: CGFloat
+            let verticalScrollIndicatorInsetBottom: CGFloat
+        }
+
         @Binding private var text: String
         @Binding private var topOverlayClearance: CGFloat
 
@@ -301,17 +307,19 @@ extension MarkdownEditorTextView {
             onEditorFocusChange(true)
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
-            updateViewportInsets(for: textView)
+            updateTopViewportInsets(for: textView)
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
             onEditorFocusChange(false)
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
-            updateViewportInsets(for: textView)
+            updateTopViewportInsets(for: textView)
         }
 
-        func updateViewportInsets(for textView: UITextView) {
+        /// Keep general layout churn scoped to top chrome only. Bottom keyboard insets are owned
+        /// exclusively by keyboard frame notifications.
+        func updateTopViewportInsets(for textView: UITextView) {
             let clearance = chromeOverlapTopInset(for: textView)
 
             var updatedTextContainerInset = textView.textContainerInset
@@ -323,24 +331,48 @@ extension MarkdownEditorTextView {
                 textView.textContainerInset = updatedTextContainerInset
             }
 
-            let keyboardOverlap = (textView as? EditorChromeAwareTextView)?.keyboardOverlapInset ?? 0
-            let accessoryHeight = accessoryHeightToUnderlap(for: textView)
-            let visibleContentBottomInset = max(0, keyboardOverlap - accessoryHeight)
+            var updatedVerticalScrollIndicatorInsets = textView.verticalScrollIndicatorInsets
+            updatedVerticalScrollIndicatorInsets.top = clearance
+            if textView.verticalScrollIndicatorInsets != updatedVerticalScrollIndicatorInsets {
+                textView.verticalScrollIndicatorInsets = updatedVerticalScrollIndicatorInsets
+            }
+            publishTopOverlayClearance(clearance)
+        }
+
+        /// Match the prototype behavior: reserve the full keyboard overlap in the scroll view
+        /// insets and let the transparent accessory simply overlay the text view content.
+        func viewportInsetsSnapshot(for textView: UITextView) -> ViewportInsetsSnapshot {
+            let keyboardOverlapInset = (textView as? EditorChromeAwareTextView)?.keyboardOverlapInset ?? 0
+            let contentInsetBottom = max(0, keyboardOverlapInset)
+
+            return ViewportInsetsSnapshot(
+                keyboardOverlapInset: keyboardOverlapInset,
+                contentInsetBottom: contentInsetBottom,
+                verticalScrollIndicatorInsetBottom: contentInsetBottom
+            )
+        }
+
+        func updateKeyboardBottomInsets(for textView: UITextView) {
+            let viewportInsetsSnapshot = viewportInsetsSnapshot(for: textView)
 
             var updatedContentInset = textView.contentInset
-            updatedContentInset.bottom = visibleContentBottomInset
+            updatedContentInset.bottom = viewportInsetsSnapshot.contentInsetBottom
             if textView.contentInset != updatedContentInset {
                 textView.contentInset = updatedContentInset
             }
 
             var updatedVerticalScrollIndicatorInsets = textView.verticalScrollIndicatorInsets
-            updatedVerticalScrollIndicatorInsets.top = clearance
-            updatedVerticalScrollIndicatorInsets.bottom = visibleContentBottomInset
+            updatedVerticalScrollIndicatorInsets.bottom = viewportInsetsSnapshot.verticalScrollIndicatorInsetBottom
             if textView.verticalScrollIndicatorInsets != updatedVerticalScrollIndicatorInsets {
                 textView.verticalScrollIndicatorInsets = updatedVerticalScrollIndicatorInsets
             }
+        }
 
-            publishTopOverlayClearance(clearance)
+        func applyKeyboardOverlap(_ overlap: CGFloat, to textView: UITextView) {
+            if let textView = textView as? EditorChromeAwareTextView {
+                textView.keyboardOverlapInset = max(0, overlap)
+            }
+            updateKeyboardBottomInsets(for: textView)
         }
 
         private func needsRefresh(
@@ -573,11 +605,12 @@ extension MarkdownEditorTextView {
             }
 
             let keyboardFrameInView = textView.convert(endFrame, from: window.screen.coordinateSpace)
-            textView.keyboardOverlapInset = max(0, textView.bounds.maxY - keyboardFrameInView.minY)
+            let overlap = max(0, textView.bounds.maxY - keyboardFrameInView.minY)
 
             animateAlongsideKeyboard(notification) {
-                self.updateViewportInsets(for: textView)
+                self.applyKeyboardOverlap(overlap, to: textView)
             } completion: {
+                self.applyKeyboardOverlap(overlap, to: textView)
                 self.scrollToCaret(in: textView)
                 self.updateKeyboardAccessoryState(for: textView)
             }
@@ -589,10 +622,10 @@ extension MarkdownEditorTextView {
                 return
             }
 
-            textView.keyboardOverlapInset = 0
             animateAlongsideKeyboard(notification) {
-                self.updateViewportInsets(for: textView)
+                self.applyKeyboardOverlap(0, to: textView)
             } completion: {
+                self.applyKeyboardOverlap(0, to: textView)
                 self.updateKeyboardAccessoryState(for: textView)
             }
         }
@@ -621,32 +654,6 @@ extension MarkdownEditorTextView {
             let caretRect = textView.caretRect(for: selectedRange.end)
             let visibleRect = caretRect.insetBy(dx: 0, dy: -20)
             textView.scrollRectToVisible(visibleRect, animated: true)
-        }
-
-        private func accessoryHeightToUnderlap(for textView: UITextView) -> CGFloat {
-            guard let textView = textView as? EditorChromeAwareTextView, textView.keyboardOverlapInset > 0 else {
-                return 0
-            }
-
-            if let accessoryView = textView.inputAccessoryView {
-                if accessoryView.bounds.height > 0 {
-                    return accessoryView.bounds.height
-                }
-
-                let fittedHeight = accessoryView.sizeThatFits(
-                    CGSize(width: textView.bounds.width, height: UIView.noIntrinsicMetric)
-                ).height
-                if fittedHeight > 0 {
-                    return fittedHeight
-                }
-
-                let intrinsicHeight = accessoryView.intrinsicContentSize.height
-                if intrinsicHeight > 0, intrinsicHeight != UIView.noIntrinsicMetric {
-                    return intrinsicHeight
-                }
-            }
-
-            return 0
         }
 
         private func chromeOverlapTopInset(for textView: UITextView) -> CGFloat {
@@ -751,11 +758,7 @@ final class KeyboardAccessoryToolbarView: UIView {
 
         addSubview(toolbar)
         toolbar.autoresizingMask = [.flexibleWidth]
-        toolbar.isTranslucent = true
-        toolbar.backgroundColor = .clear
-        toolbar.barTintColor = .clear
         toolbar.items = [undoButton, redoButton, .flexibleSpace(), dismissButton]
-        configureTransparentAppearance()
     }
 
     required init?(coder: NSCoder) {
@@ -784,23 +787,6 @@ final class KeyboardAccessoryToolbarView: UIView {
         dismissButton.isEnabled = canDismiss
         invalidateIntrinsicContentSize()
         setNeedsLayout()
-    }
-
-    private func configureTransparentAppearance() {
-        let appearance = UIToolbarAppearance()
-        appearance.configureWithTransparentBackground()
-        appearance.backgroundColor = .clear
-        appearance.shadowColor = .clear
-
-        toolbar.standardAppearance = appearance
-        toolbar.compactAppearance = appearance
-        if #available(iOS 15.0, *) {
-            toolbar.scrollEdgeAppearance = appearance
-        }
-
-        let clearImage = UIImage()
-        toolbar.setBackgroundImage(clearImage, forToolbarPosition: .any, barMetrics: .default)
-        toolbar.setShadowImage(clearImage, forToolbarPosition: .any)
     }
 }
 

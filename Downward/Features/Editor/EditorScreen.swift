@@ -78,6 +78,7 @@ struct EditorScreen: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .ignoresSafeArea(.container, edges: [.top, .bottom])
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         } else if let error = viewModel.loadError {
             ContentUnavailableView(
                 error.title,

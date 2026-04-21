@@ -160,10 +160,6 @@ final class EditorViewModel {
         editorAppearanceStore.markdownSyntaxMode
     }
 
-    var showsKeyboardToolbar: Bool {
-        isEditorFocused && currentRouteDocument != nil
-    }
-
     func handleTextChange(_ text: String) {
         guard let currentRouteDocument else {
             return
