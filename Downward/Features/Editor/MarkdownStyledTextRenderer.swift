@@ -2,6 +2,8 @@ import Foundation
 import UIKit
 
 struct MarkdownStyledTextRenderer {
+    private static let regexCache = NSCache<NSString, NSRegularExpression>()
+
     struct Configuration: Equatable {
         let text: String
         let baseFont: UIFont
@@ -1392,8 +1394,15 @@ struct MarkdownStyledTextRenderer {
         for pattern: String,
         options: NSRegularExpression.Options = []
     ) -> NSRegularExpression {
+        let cacheKey = "\(options.rawValue)|\(pattern)" as NSString
+        if let cachedRegex = Self.regexCache.object(forKey: cacheKey) {
+            return cachedRegex
+        }
+
         do {
-            return try NSRegularExpression(pattern: pattern, options: options)
+            let compiledRegex = try NSRegularExpression(pattern: pattern, options: options)
+            Self.regexCache.setObject(compiledRegex, forKey: cacheKey)
+            return compiledRegex
         } catch {
             fatalError("Invalid markdown styling regex: \(pattern)")
         }

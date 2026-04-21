@@ -147,6 +147,8 @@ extension MarkdownEditorTextView {
         private var pendingTopOverlayClearance: CGFloat?
         private var isTopOverlayClearanceUpdateScheduled = false
         private var isObservingKeyboard = false
+        private var pendingTextChangeTouchesLineBreaks = false
+        private var lastTextChangeTouchedLineBreaks = false
 
         init(
             text: Binding<String>,
@@ -245,15 +247,23 @@ extension MarkdownEditorTextView {
             updateKeyboardAccessoryState(for: textView)
         }
 
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            let currentText = (textView.text ?? "") as NSString
+            let removedRange = safeRange(range, forTextLength: currentText.length)
+            let removedText = currentText.substring(with: removedRange)
+            pendingTextChangeTouchesLineBreaks = removedText.containsLineBreak || text.containsLineBreak
+            return true
+        }
+
         func textViewDidChange(_ textView: UITextView) {
             guard isApplyingProgrammaticChange == false else {
                 return
             }
 
             let updatedText = textView.text ?? ""
-            if text != updatedText {
-                text = updatedText
-            }
+            lastTextChangeTouchedLineBreaks = pendingTextChangeTouchesLineBreaks
+            pendingTextChangeTouchesLineBreaks = false
+            text = updatedText
 
             guard let configuration else {
                 return
@@ -280,13 +290,22 @@ extension MarkdownEditorTextView {
                 return
             }
 
+            let selectedRange = textView.selectedRange
             let revealedLineRange = renderer.revealedLineRange(
-                for: textView.selectedRange,
+                for: selectedRange,
                 in: textView.text ?? configuration.text
             )
-            guard revealedLineRange != lastRevealedLineRange else {
+            guard shouldRefreshRevealedLine(
+                previousRange: lastRevealedLineRange,
+                currentRange: revealedLineRange,
+                selectionRange: selectedRange,
+                textChangeTouchedLineBreaks: lastTextChangeTouchedLineBreaks
+            ) else {
+                lastRevealedLineRange = revealedLineRange
+                lastTextChangeTouchedLineBreaks = false
                 return
             }
+            lastTextChangeTouchedLineBreaks = false
 
             let currentText = textView.text ?? configuration.text
             let updatedConfiguration = Configuration(
@@ -373,6 +392,31 @@ extension MarkdownEditorTextView {
                 textView.keyboardOverlapInset = max(0, overlap)
             }
             updateKeyboardBottomInsets(for: textView)
+        }
+
+        func shouldRefreshRevealedLine(
+            previousRange: NSRange?,
+            currentRange: NSRange?,
+            selectionRange: NSRange,
+            textChangeTouchedLineBreaks: Bool
+        ) -> Bool {
+            guard let currentRange else {
+                return previousRange != nil
+            }
+
+            guard let previousRange else {
+                return true
+            }
+
+            guard currentRange != previousRange else {
+                return false
+            }
+
+            guard selectionRange.length == 0, textChangeTouchedLineBreaks == false else {
+                return true
+            }
+
+            return previousRange.location != currentRange.location
         }
 
         private func needsRefresh(
@@ -790,7 +834,14 @@ final class KeyboardAccessoryToolbarView: UIView {
     }
 }
 
+private extension String {
+    var containsLineBreak: Bool {
+        contains("\n") || contains("\r")
+    }
+}
+
 private extension UIView {
+
     var nearestViewController: UIViewController? {
         var responder: UIResponder? = self
 

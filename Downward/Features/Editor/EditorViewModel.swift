@@ -161,11 +161,7 @@ final class EditorViewModel {
     }
 
     func handleTextChange(_ text: String) {
-        guard let currentRouteDocument else {
-            return
-        }
-
-        guard currentRouteDocument.text != text else {
+        guard currentRouteDocument != nil else {
             return
         }
 

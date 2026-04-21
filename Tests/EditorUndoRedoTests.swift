@@ -383,6 +383,56 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testSameLineTypingDoesNotForceHiddenSyntaxRerender() {
+        let textBox = MutableBox("First line\nSecond line")
+        let topOverlayBox = MutableBox<CGFloat>(0)
+        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+
+        let previousLine = NSRange(location: 11, length: 11)
+        let sameLineAfterTyping = NSRange(location: 11, length: 12)
+
+        XCTAssertFalse(
+            coordinator.shouldRefreshRevealedLine(
+                previousRange: previousLine,
+                currentRange: sameLineAfterTyping,
+                selectionRange: NSRange(location: 18, length: 0),
+                textChangeTouchedLineBreaks: false
+            ),
+            "Typing regular characters on the same line should not rerender the full attributed document."
+        )
+
+        XCTAssertTrue(
+            coordinator.shouldRefreshRevealedLine(
+                previousRange: previousLine,
+                currentRange: sameLineAfterTyping,
+                selectionRange: NSRange(location: 18, length: 0),
+                textChangeTouchedLineBreaks: true
+            ),
+            "Line-break edits can change which text belongs to the current line and should still rerender."
+        )
+
+        XCTAssertTrue(
+            coordinator.shouldRefreshRevealedLine(
+                previousRange: previousLine,
+                currentRange: NSRange(location: 0, length: 10),
+                selectionRange: NSRange(location: 5, length: 0),
+                textChangeTouchedLineBreaks: false
+            ),
+            "Moving to a different line should still refresh the hidden-syntax presentation."
+        )
+
+        XCTAssertTrue(
+            coordinator.shouldRefreshRevealedLine(
+                previousRange: previousLine,
+                currentRange: sameLineAfterTyping,
+                selectionRange: NSRange(location: 11, length: 12),
+                textChangeTouchedLineBreaks: false
+            ),
+            "Multi-line or explicit selections should still refresh because the revealed range can expand."
+        )
+    }
+
+    @MainActor
     private func makeCoordinator(
         text: MutableBox<String>,
         topOverlayClearance: MutableBox<CGFloat>
