@@ -323,45 +323,50 @@ struct MarkdownStyledTextRenderer {
     }
 
     func updateHiddenSyntaxVisibility(
-        in attributed: NSMutableAttributedString,
-        text: NSString,
-        baseFont: UIFont,
+        in textStorage: NSTextStorage,
         previousRevealedRange: NSRange?,
         revealedRange: NSRange?
     ) {
         let affectedRanges = mergedRanges(
             [previousRevealedRange, revealedRange]
-                .compactMap { clampedRange($0, length: attributed.length) }
+                .compactMap { clampedRange($0, length: textStorage.length) }
         )
         guard affectedRanges.isEmpty == false else {
             return
         }
 
-        var markerRanges: [NSRange] = []
+        var syntaxRanges: [NSRange] = []
         for affectedRange in affectedRanges {
-            attributed.enumerateAttribute(.markdownSyntaxMarker, in: affectedRange) { value, range, _ in
+            textStorage.enumerateAttribute(.markdownSyntaxToken, in: affectedRange) { value, range, _ in
                 guard (value as? Bool) == true else {
                     return
                 }
 
-                markerRanges.append(range)
+                syntaxRanges.append(range)
             }
         }
 
-        let rangesToUpdate = mergedRanges(markerRanges)
+        let rangesToUpdate = mergedRanges(syntaxRanges)
         guard rangesToUpdate.isEmpty == false else {
             return
         }
 
-        attributed.beginEditing()
-        for markerRange in rangesToUpdate {
-            if let revealedRange, NSIntersectionRange(revealedRange, markerRange).length > 0 {
-                revealSyntaxRange(markerRange, in: attributed, fallbackFont: baseFont)
+        textStorage.beginEditing()
+        for syntaxRange in rangesToUpdate {
+            if let revealedRange, NSIntersectionRange(revealedRange, syntaxRange).length > 0 {
+                textStorage.removeAttribute(.markdownHiddenSyntax, range: syntaxRange)
             } else {
-                hideRange(markerRange, in: attributed, text: text, baseFont: baseFont)
+                textStorage.addAttribute(.markdownHiddenSyntax, value: true, range: syntaxRange)
             }
         }
-        attributed.endEditing()
+        textStorage.endEditing()
+
+        for affectedRange in affectedRanges {
+            for layoutManager in textStorage.layoutManagers {
+                layoutManager.invalidateLayout(forCharacterRange: affectedRange, actualCharacterRange: nil)
+                layoutManager.invalidateDisplay(forCharacterRange: affectedRange)
+            }
+        }
     }
 
     private func styleHeadings(
@@ -1407,14 +1412,14 @@ struct MarkdownStyledTextRenderer {
             return
         }
 
+        attributed.addAttribute(.markdownSyntaxToken, value: true, range: range)
+
         guard syntaxMode == .hiddenOutsideCurrentLine else {
             return
         }
 
-        rememberSyntaxRange(range, in: attributed, fallbackFont: baseFont)
-
         if let revealedRange, NSIntersectionRange(revealedRange, range).length > 0 {
-            revealSyntaxRange(range, in: attributed, fallbackFont: baseFont)
+            attributed.removeAttribute(.markdownHiddenSyntax, range: range)
             return
         }
 
@@ -1424,54 +1429,6 @@ struct MarkdownStyledTextRenderer {
             text: text,
             baseFont: baseFont
         )
-    }
-
-    private func rememberSyntaxRange(
-        _ range: NSRange,
-        in attributed: NSMutableAttributedString,
-        fallbackFont: UIFont
-    ) {
-        var snapshots: [(attributes: [NSAttributedString.Key: Any], range: NSRange)] = []
-        attributed.enumerateAttributes(in: range) { attributes, subrange, _ in
-            snapshots.append((attributes, subrange))
-        }
-
-        for snapshot in snapshots {
-            let visibleFont = snapshot.attributes[.font] as? UIFont ?? fallbackFont
-            let visibleColor = snapshot.attributes[.foregroundColor] as? UIColor ?? UIColor.secondaryLabel
-            attributed.addAttributes(
-                [
-                    .markdownSyntaxMarker: true,
-                    .markdownSyntaxMarkerFont: visibleFont,
-                    .markdownSyntaxMarkerForegroundColor: visibleColor
-                ],
-                range: snapshot.range
-            )
-        }
-    }
-
-    private func revealSyntaxRange(
-        _ range: NSRange,
-        in attributed: NSMutableAttributedString,
-        fallbackFont: UIFont
-    ) {
-        var snapshots: [(attributes: [NSAttributedString.Key: Any], range: NSRange)] = []
-        attributed.enumerateAttributes(in: range) { attributes, subrange, _ in
-            snapshots.append((attributes, subrange))
-        }
-
-        for snapshot in snapshots {
-            let visibleFont = snapshot.attributes[.markdownSyntaxMarkerFont] as? UIFont ?? fallbackFont
-            let visibleColor = snapshot.attributes[.markdownSyntaxMarkerForegroundColor] as? UIColor ?? UIColor.secondaryLabel
-            attributed.addAttributes(
-                [
-                    .font: visibleFont,
-                    .foregroundColor: visibleColor
-                ],
-                range: snapshot.range
-            )
-            attributed.removeAttribute(.kern, range: snapshot.range)
-        }
     }
 
     private func hideRange(
@@ -1484,13 +1441,9 @@ struct MarkdownStyledTextRenderer {
             return
         }
 
-        attributed.addAttributes(
-            [
-                .foregroundColor: UIColor.clear,
-                .font: baseFont.withSize(0.1)
-            ],
-            range: range
-        )
+        _ = text
+        _ = baseFont
+        attributed.addAttribute(.markdownHiddenSyntax, value: true, range: range)
         attributed.removeAttribute(.kern, range: range)
     }
 

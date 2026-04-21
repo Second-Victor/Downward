@@ -113,17 +113,17 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         let nsString = rendered.string as NSString
         let hiddenMarkerRange = nsString.range(of: "**")
         let revealedMarkerRange = nsString.range(of: "_italic_")
-        let hiddenMarkerColor = rendered.attribute(.foregroundColor, at: hiddenMarkerRange.location, effectiveRange: nil) as? UIColor
-        let hiddenMarkerFont = rendered.attribute(.font, at: hiddenMarkerRange.location, effectiveRange: nil) as? UIFont
-        let revealedMarkerColor = rendered.attribute(.foregroundColor, at: revealedMarkerRange.location, effectiveRange: nil) as? UIColor
+        let hiddenMarkerIsSyntaxToken = rendered.attribute(.markdownSyntaxToken, at: hiddenMarkerRange.location, effectiveRange: nil) as? Bool
+        let hiddenMarkerIsHidden = rendered.attribute(.markdownHiddenSyntax, at: hiddenMarkerRange.location, effectiveRange: nil) as? Bool
+        let revealedMarkerIsHidden = rendered.attribute(.markdownHiddenSyntax, at: revealedMarkerRange.location, effectiveRange: nil) as? Bool
 
-        XCTAssertEqual(hiddenMarkerColor, .clear)
-        XCTAssertEqual(hiddenMarkerFont?.pointSize, 0.1)
-        XCTAssertNotEqual(revealedMarkerColor, UIColor.clear)
+        XCTAssertEqual(hiddenMarkerIsSyntaxToken, true)
+        XCTAssertEqual(hiddenMarkerIsHidden, true)
+        XCTAssertNil(revealedMarkerIsHidden)
     }
 
     @MainActor
-    func testLargeHiddenSyntaxStillCompactsMarkersWithoutKerning() {
+    func testLargeHiddenSyntaxMarksMarkersWithoutFontOrKerningCompaction() {
         let text = "Hidden **bold**\n" + String(repeating: "x", count: 120_001)
         let rendered = renderer.render(
             configuration: .init(
@@ -136,13 +136,13 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
 
         let nsString = rendered.string as NSString
         let markerRange = nsString.range(of: "**")
-        let markerColor = rendered.attribute(.foregroundColor, at: markerRange.location, effectiveRange: nil) as? UIColor
+        let markerIsHidden = rendered.attribute(.markdownHiddenSyntax, at: markerRange.location, effectiveRange: nil) as? Bool
         let markerFont = rendered.attribute(.font, at: markerRange.location, effectiveRange: nil) as? UIFont
         let markerKerning = rendered.attribute(.kern, at: NSMaxRange(markerRange) - 1, effectiveRange: nil)
 
         XCTAssertGreaterThan(nsString.length, 120_000)
-        XCTAssertEqual(markerColor, .clear)
-        XCTAssertEqual(markerFont?.pointSize, 0.1)
+        XCTAssertEqual(markerIsHidden, true)
+        XCTAssertEqual(markerFont?.pointSize, baseFont.pointSize)
         XCTAssertNil(markerKerning)
     }
 
@@ -157,7 +157,7 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
             for: NSRange(location: (text as NSString).range(of: "Revealed").location, length: 0),
             in: text
         )
-        let rendered = NSMutableAttributedString(
+        let rendered = NSTextStorage(
             attributedString: renderer.render(
                 configuration: .init(
                     text: text,
@@ -170,8 +170,6 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
 
         renderer.updateHiddenSyntaxVisibility(
             in: rendered,
-            text: text as NSString,
-            baseFont: baseFont,
             previousRevealedRange: firstLineRange,
             revealedRange: secondLineRange
         )
@@ -179,15 +177,11 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         let nsString = rendered.string as NSString
         let firstLineMarkerRange = nsString.range(of: "**")
         let secondLineMarkerRange = nsString.range(of: "_italic_")
-        let firstLineMarkerColor = rendered.attribute(.foregroundColor, at: firstLineMarkerRange.location, effectiveRange: nil) as? UIColor
-        let firstLineMarkerFont = rendered.attribute(.font, at: firstLineMarkerRange.location, effectiveRange: nil) as? UIFont
-        let secondLineMarkerColor = rendered.attribute(.foregroundColor, at: secondLineMarkerRange.location, effectiveRange: nil) as? UIColor
-        let secondLineMarkerFont = rendered.attribute(.font, at: secondLineMarkerRange.location, effectiveRange: nil) as? UIFont
+        let firstLineMarkerIsHidden = rendered.attribute(.markdownHiddenSyntax, at: firstLineMarkerRange.location, effectiveRange: nil) as? Bool
+        let secondLineMarkerIsHidden = rendered.attribute(.markdownHiddenSyntax, at: secondLineMarkerRange.location, effectiveRange: nil) as? Bool
 
-        XCTAssertEqual(firstLineMarkerColor, .clear)
-        XCTAssertEqual(firstLineMarkerFont?.pointSize, 0.1)
-        XCTAssertNotEqual(secondLineMarkerColor, UIColor.clear)
-        XCTAssertEqual(secondLineMarkerFont?.pointSize, baseFont.pointSize)
+        XCTAssertEqual(firstLineMarkerIsHidden, true)
+        XCTAssertNil(secondLineMarkerIsHidden)
     }
 
     @MainActor
@@ -205,10 +199,10 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         let nsString = rendered.string as NSString
         let markerRange = nsString.range(of: "#")
         let titleRange = nsString.range(of: "Title")
-        let markerColor = rendered.attribute(.foregroundColor, at: markerRange.location, effectiveRange: nil) as? UIColor
+        let markerIsHidden = rendered.attribute(.markdownHiddenSyntax, at: markerRange.location, effectiveRange: nil) as? Bool
         let titleFont = rendered.attribute(.font, at: titleRange.location, effectiveRange: nil) as? UIFont
 
-        XCTAssertEqual(markerColor, .clear)
+        XCTAssertEqual(markerIsHidden, true)
         XCTAssertGreaterThan(titleFont?.pointSize ?? 0, baseFont.pointSize)
         XCTAssertTrue(titleFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
     }
@@ -264,12 +258,12 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         let nestedQuoteDepth = rendered.attribute(.markdownBlockquoteDepth, at: nestedContentRange.location, effectiveRange: nil) as? Int
         let outerGroupID = rendered.attribute(.markdownBlockquoteGroupID, at: outerContentRange.location, effectiveRange: nil) as? Int
         let nestedGroupID = rendered.attribute(.markdownBlockquoteGroupID, at: nestedContentRange.location, effectiveRange: nil) as? Int
-        let hiddenMarkerColor = rendered.attribute(.foregroundColor, at: firstMarkerRange.location, effectiveRange: nil) as? UIColor
+        let hiddenMarkerIsHidden = rendered.attribute(.markdownHiddenSyntax, at: firstMarkerRange.location, effectiveRange: nil) as? Bool
 
         XCTAssertEqual(blankQuoteDepth, 1)
         XCTAssertEqual(nestedQuoteDepth, 2)
         XCTAssertEqual(outerGroupID, nestedGroupID)
-        XCTAssertEqual(hiddenMarkerColor, .clear)
+        XCTAssertEqual(hiddenMarkerIsHidden, true)
     }
 
     @MainActor
@@ -291,11 +285,11 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         let titleRange = nsString.range(of: "Heading level 2")
         let underlineRange = nsString.range(of: "---------------")
         let titleFont = rendered.attribute(.font, at: titleRange.location, effectiveRange: nil) as? UIFont
-        let underlineColor = rendered.attribute(.foregroundColor, at: underlineRange.location, effectiveRange: nil) as? UIColor
+        let underlineIsHidden = rendered.attribute(.markdownHiddenSyntax, at: underlineRange.location, effectiveRange: nil) as? Bool
 
         XCTAssertGreaterThan(titleFont?.pointSize ?? 0, baseFont.pointSize)
         XCTAssertTrue(titleFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
-        XCTAssertEqual(underlineColor, .clear)
+        XCTAssertEqual(underlineIsHidden, true)
     }
 
     @MainActor
@@ -342,12 +336,12 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         let nsString = rendered.string as NSString
         let fenceRange = nsString.range(of: "```")
         let literalRange = nsString.range(of: "literal")
-        let fenceColor = rendered.attribute(.foregroundColor, at: fenceRange.location, effectiveRange: nil) as? UIColor
+        let fenceIsHidden = rendered.attribute(.markdownHiddenSyntax, at: fenceRange.location, effectiveRange: nil) as? Bool
         let literalFont = rendered.attribute(.font, at: literalRange.location, effectiveRange: nil) as? UIFont
         let backgroundKind = rendered.attribute(.markdownCodeBackgroundKind, at: literalRange.location, effectiveRange: nil) as? Int
         let markerColor = rendered.attribute(.foregroundColor, at: nsString.range(of: "**").location, effectiveRange: nil) as? UIColor
 
-        XCTAssertEqual(fenceColor, .clear)
+        XCTAssertEqual(fenceIsHidden, true)
         XCTAssertEqual(literalFont?.fontDescriptor.symbolicTraits.contains(.traitMonoSpace), true)
         XCTAssertEqual(literalFont?.fontDescriptor.symbolicTraits.contains(.traitBold), false)
         XCTAssertEqual(backgroundKind, MarkdownCodeBackgroundKind.block.rawValue)
@@ -370,11 +364,11 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         let openingMarkerRange = nsString.range(of: "``")
         let contentRange = nsString.range(of: "code `here` ")
         let font = rendered.attribute(.font, at: contentRange.location, effectiveRange: nil) as? UIFont
-        let markerColor = rendered.attribute(.foregroundColor, at: openingMarkerRange.location, effectiveRange: nil) as? UIColor
+        let markerIsHidden = rendered.attribute(.markdownHiddenSyntax, at: openingMarkerRange.location, effectiveRange: nil) as? Bool
         let backgroundKind = rendered.attribute(.markdownCodeBackgroundKind, at: contentRange.location, effectiveRange: nil) as? Int
 
         XCTAssertEqual(font?.fontDescriptor.symbolicTraits.contains(.traitMonoSpace), true)
-        XCTAssertEqual(markerColor, .clear)
+        XCTAssertEqual(markerIsHidden, true)
         XCTAssertEqual(backgroundKind, MarkdownCodeBackgroundKind.inline.rawValue)
     }
 
@@ -438,12 +432,12 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         let markerRange = nsString.range(of: "![")
         let altTextRange = nsString.range(of: "Mountains")
         let sourceRange = nsString.range(of: "/assets/mountains.jpg \"Mountain view\"")
-        let markerColor = rendered.attribute(.foregroundColor, at: markerRange.location, effectiveRange: nil) as? UIColor
+        let markerIsHidden = rendered.attribute(.markdownHiddenSyntax, at: markerRange.location, effectiveRange: nil) as? Bool
         let altTextFont = rendered.attribute(.font, at: altTextRange.location, effectiveRange: nil) as? UIFont
-        let sourceColor = rendered.attribute(.foregroundColor, at: sourceRange.location, effectiveRange: nil) as? UIColor
+        let sourceIsHidden = rendered.attribute(.markdownHiddenSyntax, at: sourceRange.location, effectiveRange: nil) as? Bool
 
-        XCTAssertEqual(markerColor, .clear)
+        XCTAssertEqual(markerIsHidden, true)
         XCTAssertTrue(altTextFont?.fontDescriptor.symbolicTraits.contains(.traitItalic) == true)
-        XCTAssertEqual(sourceColor, .clear)
+        XCTAssertEqual(sourceIsHidden, true)
     }
 }

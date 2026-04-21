@@ -9,12 +9,11 @@ extension NSAttributedString.Key {
     nonisolated static let markdownCodeBackgroundKind = NSAttributedString.Key("Downward.MarkdownCodeBackgroundKind")
     nonisolated static let markdownBlockquoteDepth = NSAttributedString.Key("Downward.MarkdownBlockquoteDepth")
     nonisolated static let markdownBlockquoteGroupID = NSAttributedString.Key("Downward.MarkdownBlockquoteGroupID")
-    nonisolated static let markdownSyntaxMarker = NSAttributedString.Key("Downward.MarkdownSyntaxMarker")
-    nonisolated static let markdownSyntaxMarkerFont = NSAttributedString.Key("Downward.MarkdownSyntaxMarkerFont")
-    nonisolated static let markdownSyntaxMarkerForegroundColor = NSAttributedString.Key("Downward.MarkdownSyntaxMarkerForegroundColor")
+    nonisolated static let markdownSyntaxToken = NSAttributedString.Key("Downward.MarkdownSyntaxToken")
+    nonisolated static let markdownHiddenSyntax = NSAttributedString.Key("Downward.MarkdownHiddenSyntax")
 }
 
-final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager {
+final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     private let horizontalPadding: CGFloat = 4
     private let verticalPadding: CGFloat = 1
     private let cornerRadius: CGFloat = 4
@@ -27,10 +26,96 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager {
 
     nonisolated override init() {
         super.init()
+        allowsNonContiguousLayout = true
+        delegate = self
     }
 
     nonisolated required init?(coder: NSCoder) {
         super.init(coder: coder)
+        allowsNonContiguousLayout = true
+        delegate = self
+    }
+
+    nonisolated func layoutManager(
+        _ layoutManager: NSLayoutManager,
+        shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
+        properties props: UnsafePointer<NSLayoutManager.GlyphProperty>,
+        characterIndexes charIndexes: UnsafePointer<Int>,
+        font aFont: UIFont,
+        forGlyphRange glyphRange: NSRange
+    ) -> Int {
+        guard
+            layoutManager === self,
+            let textStorage,
+            glyphRange.length > 0
+        else {
+            return 0
+        }
+
+        let firstCharacterIndex = charIndexes[0]
+        let lastCharacterIndex = charIndexes[glyphRange.length - 1]
+        guard lastCharacterIndex >= firstCharacterIndex else {
+            return 0
+        }
+
+        let characterRange = NSRange(
+            location: firstCharacterIndex,
+            length: lastCharacterIndex - firstCharacterIndex + 1
+        )
+
+        var hiddenRanges: [NSRange] = []
+        textStorage.enumerateAttribute(.markdownHiddenSyntax, in: characterRange) { value, range, _ in
+            guard (value as? Bool) == true else {
+                return
+            }
+            hiddenRanges.append(range)
+        }
+
+        guard hiddenRanges.isEmpty == false else {
+            return 0
+        }
+
+        var hiddenRangeIndex = 0
+        var modifiedGlyphProperties = Array(repeating: NSLayoutManager.GlyphProperty(), count: glyphRange.length)
+        var didModifyGlyphProperties = false
+
+        for glyphOffset in 0 ..< glyphRange.length {
+            let characterIndex = charIndexes[glyphOffset]
+            var glyphProperties = props[glyphOffset]
+
+            while hiddenRangeIndex < hiddenRanges.count,
+                  NSMaxRange(hiddenRanges[hiddenRangeIndex]) <= characterIndex {
+                hiddenRangeIndex += 1
+            }
+
+            if hiddenRangeIndex < hiddenRanges.count,
+               NSLocationInRange(characterIndex, hiddenRanges[hiddenRangeIndex]) {
+                glyphProperties.insert(.null)
+                didModifyGlyphProperties = true
+            }
+
+            modifiedGlyphProperties[glyphOffset] = glyphProperties
+        }
+
+        guard didModifyGlyphProperties else {
+            return 0
+        }
+
+        modifiedGlyphProperties.withUnsafeBufferPointer { bufferPointer in
+            guard let modifiedGlyphPropertiesPointer = bufferPointer.baseAddress else {
+                return
+            }
+
+            self.setGlyphs(
+                glyphs,
+                properties: modifiedGlyphPropertiesPointer,
+                characterIndexes: charIndexes,
+                font: aFont,
+                forGlyphRange: glyphRange
+            )
+        }
+
+        return glyphRange.length
     }
 
     nonisolated override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {

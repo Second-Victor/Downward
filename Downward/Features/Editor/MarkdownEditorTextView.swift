@@ -525,8 +525,6 @@ extension MarkdownEditorTextView {
             isApplyingProgrammaticChange = true
             renderer.updateHiddenSyntaxVisibility(
                 in: textView.textStorage,
-                text: (textView.text ?? configuration.text) as NSString,
-                baseFont: configuration.font,
                 previousRevealedRange: previousRevealedRange,
                 revealedRange: revealedLineRange
             )
