@@ -47,6 +47,9 @@ final class MarkdownEditorTextViewSizingTests: XCTestCase {
         XCTAssertEqual(textView.frame.height, 480, accuracy: 1)
         XCTAssertEqual(textView.frame.width, 320, accuracy: 1)
         XCTAssertTrue(textView.textContainer.widthTracksTextView)
+        XCTAssertEqual(textView.textContainerInset.left, EditorTextViewLayout.horizontalInset)
+        XCTAssertEqual(textView.textContainerInset.right, EditorTextViewLayout.horizontalInset)
+        XCTAssertEqual(textView.textContainerInset.bottom, EditorTextViewLayout.bottomInset)
         XCTAssertEqual(textView.contentCompressionResistancePriority(for: .vertical), .defaultLow)
         XCTAssertEqual(textView.contentHuggingPriority(for: .vertical), .defaultLow)
     }

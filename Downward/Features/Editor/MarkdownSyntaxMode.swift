@@ -1,5 +1,8 @@
 import Foundation
 
+/// Markdown syntax visibility is explicit per token.
+/// The shipping editor currently lets supported markdown syntax follow
+/// `MarkdownSyntaxMode`, including code span delimiters and fenced code fences.
 enum MarkdownSyntaxMode: String, CaseIterable, Codable, Equatable, Sendable {
     case visible
     case hiddenOutsideCurrentLine
@@ -16,9 +19,15 @@ enum MarkdownSyntaxMode: String, CaseIterable, Codable, Equatable, Sendable {
     var previewDescription: String {
         switch self {
         case .visible:
-            "Formatting markers stay visible while bold, italic, and other supported markdown still render."
+            "Markdown markers stay visible while rendered styling still applies."
         case .hiddenOutsideCurrentLine:
-            "Formatting markers hide away from the current line so styled text reads more like a finished document."
+            "Markdown markers hide away from the current line so styled text reads more like a finished document."
         }
     }
+}
+
+/// Explicit renderer policy for how each syntax token responds to `MarkdownSyntaxMode`.
+enum MarkdownSyntaxVisibilityRule: Int, Equatable, Sendable {
+    case followsMode
+    case alwaysHidden
 }

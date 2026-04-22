@@ -369,12 +369,25 @@ final class EditorViewModel {
     private func scheduleAutosave(for generation: Int) {
         autosaveTask?.cancel()
         autosaveTask = Task {
-            try? await Task.sleep(for: autosaveDelay)
+            do {
+                try await Task.sleep(for: autosaveDelay)
+            } catch {
+                return
+            }
+
+            guard Task.isCancelled == false else {
+                return
+            }
+
             await requestAutosave(for: generation)
         }
     }
 
     private func requestAutosave(for generation: Int) async {
+        guard Task.isCancelled == false else {
+            return
+        }
+
         guard generation == editGeneration else {
             return
         }

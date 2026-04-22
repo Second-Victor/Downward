@@ -16,8 +16,9 @@ Use the repo docs in this order:
 1. `AGENTS.md` — guardrails, invariants, and contribution rules
 2. `ARCHITECTURE.md` — current system shape and ownership boundaries
 3. `TASKS.md` — active backlog, known pressure points, and current priorities
+4. `PLANS.md` — detailed technical checklists, performance plans, and code-review findings
 
-Older steering docs were intentionally folded into these three files.
+Older steering docs were intentionally folded into these files.
 If a proposal conflicts with the docs, prefer:
 
 1. user data safety,

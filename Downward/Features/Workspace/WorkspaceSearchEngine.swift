@@ -28,49 +28,21 @@ enum WorkspaceSearchEngine {
         }
 
         var results: [WorkspaceSearchResult] = []
-        appendMatches(
-            from: snapshot.rootNodes,
-            query: query,
-            in: snapshot,
-            results: &results
-        )
-        return results
-    }
-
-    nonisolated private static func appendMatches(
-        from nodes: [WorkspaceNode],
-        query: String,
-        in snapshot: WorkspaceSnapshot,
-        results: inout [WorkspaceSearchResult]
-    ) {
-        for node in nodes {
-            switch node {
-            case let .folder(folder):
-                appendMatches(
-                    from: folder.children,
-                    query: query,
-                    in: snapshot,
-                    results: &results
-                )
-            case let .file(file):
-                guard let relativePath = snapshot.relativePath(for: file.url) else {
-                    continue
-                }
-
-                guard matches(fileName: file.displayName, relativePath: relativePath, query: query) else {
-                    continue
-                }
-
-                results.append(
-                    WorkspaceSearchResult(
-                        url: file.url,
-                        displayName: file.displayName,
-                        relativePath: relativePath,
-                        modifiedAt: file.modifiedAt
-                    )
-                )
+        snapshot.forEachFile { entry in
+            guard matches(fileName: entry.displayName, relativePath: entry.relativePath, query: query) else {
+                return
             }
+
+            results.append(
+                WorkspaceSearchResult(
+                    url: entry.url,
+                    displayName: entry.displayName,
+                    relativePath: entry.relativePath,
+                    modifiedAt: entry.modifiedAt
+                )
+            )
         }
+        return results
     }
 
     nonisolated private static func matches(

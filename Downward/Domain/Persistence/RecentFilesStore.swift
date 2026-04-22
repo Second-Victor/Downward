@@ -253,18 +253,7 @@ final class RecentFilesStore {
     }
 
     private static func relativeFilePaths(in snapshot: WorkspaceSnapshot) -> [String] {
-        flattenFileURLs(in: snapshot.rootNodes).compactMap { snapshot.relativePath(for: $0) }
-    }
-
-    private static func flattenFileURLs(in nodes: [WorkspaceNode]) -> [URL] {
-        nodes.flatMap { node in
-            switch node {
-            case let .folder(folder):
-                return flattenFileURLs(in: folder.children)
-            case let .file(file):
-                return [file.url]
-            }
-        }
+        snapshot.relativeFilePaths()
     }
 
     private static func isSameOrDescendantPath(_ path: String, of folderPath: String) -> Bool {

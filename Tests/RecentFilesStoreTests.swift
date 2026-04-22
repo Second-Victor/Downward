@@ -150,6 +150,73 @@ final class RecentFilesStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRecentFilesStorePrunesMultipleCanonicalRelativePathsWithoutDisplayNameFallback() {
+        let store = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: "References/README.md",
+                    displayName: "Localized README.md",
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+                RecentFileItem(
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: "Inbox.md",
+                    displayName: "Localized Inbox.md",
+                    lastOpenedAt: PreviewSampleData.previewDate.addingTimeInterval(-60)
+                ),
+                RecentFileItem(
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: "Missing.md",
+                    displayName: "Localized Missing.md",
+                    lastOpenedAt: PreviewSampleData.previewDate.addingTimeInterval(-120)
+                ),
+            ]
+        )
+
+        let snapshot = WorkspaceSnapshot(
+            rootURL: PreviewSampleData.workspaceRootURL,
+            displayName: PreviewSampleData.nestedWorkspace.displayName,
+            rootNodes: [
+                .folder(
+                    .init(
+                        url: PreviewSampleData.referencesURL,
+                        displayName: "Localized References",
+                        children: [
+                            .file(
+                                .init(
+                                    url: PreviewSampleData.readmeDocumentURL,
+                                    displayName: "Localized README.md",
+                                    subtitle: "Project overview"
+                                )
+                            ),
+                        ]
+                    )
+                ),
+                .file(
+                    .init(
+                        url: PreviewSampleData.inboxDocumentURL,
+                        displayName: "Localized Inbox.md",
+                        subtitle: "Root document"
+                    )
+                ),
+            ],
+            lastUpdated: PreviewSampleData.previewDate
+        )
+
+        store.pruneInvalidItems(using: snapshot)
+
+        XCTAssertEqual(
+            store.items.map(\.relativePath),
+            ["References/README.md", "Inbox.md"]
+        )
+        XCTAssertEqual(
+            store.items.map(\.displayName),
+            ["Localized README.md", "Localized Inbox.md"]
+        )
+    }
+
+    @MainActor
     func testRecentFilesStoreRenamesAndRemovesItemsSafely() {
         let store = RecentFilesStore(
             initialItems: [

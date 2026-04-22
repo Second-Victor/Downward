@@ -6,6 +6,29 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
     private let renderer = MarkdownStyledTextRenderer()
     private let baseFont = UIFont.systemFont(ofSize: 16)
 
+    private func syntaxVisibilityRule(
+        in attributed: NSAttributedString,
+        at range: NSRange
+    ) -> MarkdownSyntaxVisibilityRule? {
+        guard range.location != NSNotFound else {
+            return nil
+        }
+        guard let rawValue = attributed.attribute(.markdownSyntaxToken, at: range.location, effectiveRange: nil) as? Int else {
+            return nil
+        }
+        return MarkdownSyntaxVisibilityRule(rawValue: rawValue)
+    }
+
+    private func hiddenSyntaxValue(
+        in attributed: NSAttributedString,
+        at range: NSRange
+    ) -> Bool? {
+        guard range.location != NSNotFound else {
+            return nil
+        }
+        return attributed.attribute(.markdownHiddenSyntax, at: range.location, effectiveRange: nil) as? Bool
+    }
+
     @MainActor
     func testVisibleModeKeepsSyntaxVisibleAndStylesMarkdownContent() {
         let rendered = renderer.render(
@@ -32,6 +55,82 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         XCTAssertTrue(italicFont?.fontDescriptor.symbolicTraits.contains(.traitItalic) == true)
         XCTAssertFalse(italicFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
         XCTAssertEqual(syntaxColor, .secondaryLabel)
+    }
+
+    @MainActor
+    func testVisibleModeKeepsModeControlledSyntaxVisibleForHeadingsEmphasisLinksAndImages() {
+        let text = """
+        # Heading
+        This is **bold**
+        [Site](https://example.com)
+        ![Alt](/image.png)
+        """
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .visible,
+                revealedRange: nil
+            )
+        )
+
+        let nsString = rendered.string as NSString
+        let headingMarkerRange = nsString.range(of: "#")
+        let emphasisMarkerRange = nsString.range(of: "**")
+        let linkOpeningRange = nsString.range(of: "[Site]")
+        let linkSourceRange = nsString.range(of: "https://example.com")
+        let imageMarkerRange = nsString.range(of: "![")
+        let imageSourceRange = nsString.range(of: "/image.png")
+
+        XCTAssertEqual(syntaxVisibilityRule(in: rendered, at: headingMarkerRange), .followsMode)
+        XCTAssertNil(hiddenSyntaxValue(in: rendered, at: headingMarkerRange))
+        XCTAssertEqual(syntaxVisibilityRule(in: rendered, at: emphasisMarkerRange), .followsMode)
+        XCTAssertNil(hiddenSyntaxValue(in: rendered, at: emphasisMarkerRange))
+        XCTAssertEqual(syntaxVisibilityRule(in: rendered, at: linkOpeningRange), .followsMode)
+        XCTAssertNil(hiddenSyntaxValue(in: rendered, at: linkOpeningRange))
+        XCTAssertEqual(syntaxVisibilityRule(in: rendered, at: linkSourceRange), .followsMode)
+        XCTAssertNil(hiddenSyntaxValue(in: rendered, at: linkSourceRange))
+        XCTAssertEqual(syntaxVisibilityRule(in: rendered, at: imageMarkerRange), .followsMode)
+        XCTAssertNil(hiddenSyntaxValue(in: rendered, at: imageMarkerRange))
+        XCTAssertEqual(syntaxVisibilityRule(in: rendered, at: imageSourceRange), .followsMode)
+        XCTAssertNil(hiddenSyntaxValue(in: rendered, at: imageSourceRange))
+    }
+
+    @MainActor
+    func testHiddenModeHidesModeControlledSyntaxOutsideTheRevealedLineForHeadingsEmphasisLinksAndImages() {
+        let text = """
+        # Heading
+        This is **bold**
+        [Site](https://example.com)
+        ![Alt](/image.png)
+        """
+        let revealedRange = renderer.revealedLineRange(
+            for: NSRange(location: 0, length: 0),
+            in: text
+        )
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .hiddenOutsideCurrentLine,
+                revealedRange: revealedRange
+            )
+        )
+
+        let nsString = rendered.string as NSString
+        let headingMarkerRange = nsString.range(of: "#")
+        let emphasisMarkerRange = nsString.range(of: "**")
+        let linkOpeningRange = nsString.range(of: "[Site]")
+        let linkSourceRange = nsString.range(of: "https://example.com")
+        let imageMarkerRange = nsString.range(of: "![")
+        let imageSourceRange = nsString.range(of: "/image.png")
+
+        XCTAssertEqual(hiddenSyntaxValue(in: rendered, at: headingMarkerRange), nil)
+        XCTAssertEqual(hiddenSyntaxValue(in: rendered, at: emphasisMarkerRange), true)
+        XCTAssertEqual(hiddenSyntaxValue(in: rendered, at: linkOpeningRange), true)
+        XCTAssertEqual(hiddenSyntaxValue(in: rendered, at: linkSourceRange), true)
+        XCTAssertEqual(hiddenSyntaxValue(in: rendered, at: imageMarkerRange), true)
+        XCTAssertEqual(hiddenSyntaxValue(in: rendered, at: imageSourceRange), true)
     }
 
     @MainActor
@@ -113,11 +212,11 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         let nsString = rendered.string as NSString
         let hiddenMarkerRange = nsString.range(of: "**")
         let revealedMarkerRange = nsString.range(of: "_italic_")
-        let hiddenMarkerIsSyntaxToken = rendered.attribute(.markdownSyntaxToken, at: hiddenMarkerRange.location, effectiveRange: nil) as? Bool
-        let hiddenMarkerIsHidden = rendered.attribute(.markdownHiddenSyntax, at: hiddenMarkerRange.location, effectiveRange: nil) as? Bool
-        let revealedMarkerIsHidden = rendered.attribute(.markdownHiddenSyntax, at: revealedMarkerRange.location, effectiveRange: nil) as? Bool
+        let hiddenMarkerRule = syntaxVisibilityRule(in: rendered, at: hiddenMarkerRange)
+        let hiddenMarkerIsHidden = hiddenSyntaxValue(in: rendered, at: hiddenMarkerRange)
+        let revealedMarkerIsHidden = hiddenSyntaxValue(in: rendered, at: revealedMarkerRange)
 
-        XCTAssertEqual(hiddenMarkerIsSyntaxToken, true)
+        XCTAssertEqual(hiddenMarkerRule, .followsMode)
         XCTAssertEqual(hiddenMarkerIsHidden, true)
         XCTAssertNil(revealedMarkerIsHidden)
     }
@@ -182,6 +281,82 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
 
         XCTAssertEqual(firstLineMarkerIsHidden, true)
         XCTAssertNil(secondLineMarkerIsHidden)
+    }
+
+    @MainActor
+    func testHiddenSyntaxVisibilitySkipsNoOpInvalidation() {
+        let text = "Hidden **bold**\nRevealed _italic_"
+        let firstLineRange = renderer.revealedLineRange(
+            for: NSRange(location: (text as NSString).range(of: "Hidden").location, length: 0),
+            in: text
+        )
+        guard let firstLineRange else {
+            return XCTFail("Expected a revealed first-line range")
+        }
+        let rendered = NSTextStorage(
+            attributedString: renderer.render(
+                configuration: .init(
+                    text: text,
+                    baseFont: baseFont,
+                    syntaxMode: .hiddenOutsideCurrentLine,
+                    revealedRange: firstLineRange
+                )
+            )
+        )
+        let layoutManager = LayoutInvalidationSpy()
+        rendered.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(NSTextContainer(size: CGSize(width: 320, height: 640)))
+
+        renderer.updateHiddenSyntaxVisibility(
+            in: rendered,
+            previousRevealedRange: firstLineRange,
+            revealedRange: firstLineRange
+        )
+
+        XCTAssertTrue(layoutManager.invalidatedLayoutRanges.isEmpty)
+        XCTAssertTrue(layoutManager.invalidatedDisplayRanges.isEmpty)
+    }
+
+    @MainActor
+    func testHiddenSyntaxVisibilityInvalidatesOnlyChangedSyntaxRanges() {
+        let text = "Hidden **bold**\nRevealed _italic_"
+        let firstLineRange = renderer.revealedLineRange(
+            for: NSRange(location: (text as NSString).range(of: "Hidden").location, length: 0),
+            in: text
+        )
+        let secondLineRange = renderer.revealedLineRange(
+            for: NSRange(location: (text as NSString).range(of: "Revealed").location, length: 0),
+            in: text
+        )
+        guard let firstLineRange, let secondLineRange else {
+            return XCTFail("Expected revealed ranges for both lines")
+        }
+        let rendered = NSTextStorage(
+            attributedString: renderer.render(
+                configuration: .init(
+                    text: text,
+                    baseFont: baseFont,
+                    syntaxMode: .hiddenOutsideCurrentLine,
+                    revealedRange: firstLineRange
+                )
+            )
+        )
+        let layoutManager = LayoutInvalidationSpy()
+        rendered.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(NSTextContainer(size: CGSize(width: 320, height: 640)))
+
+        renderer.updateHiddenSyntaxVisibility(
+            in: rendered,
+            previousRevealedRange: firstLineRange,
+            revealedRange: secondLineRange
+        )
+
+        let affectedRangeLength = NSUnionRange(firstLineRange, secondLineRange).length
+        XCTAssertFalse(layoutManager.invalidatedLayoutRanges.isEmpty)
+        XCTAssertTrue(layoutManager.invalidatedLayoutRanges.allSatisfy { $0.length < affectedRangeLength })
+        XCTAssertTrue(
+            layoutManager.invalidatedLayoutRanges.allSatisfy { layoutManager.invalidatedDisplayRanges.contains($0) }
+        )
     }
 
     @MainActor
@@ -341,11 +516,89 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         let backgroundKind = rendered.attribute(.markdownCodeBackgroundKind, at: literalRange.location, effectiveRange: nil) as? Int
         let markerColor = rendered.attribute(.foregroundColor, at: nsString.range(of: "**").location, effectiveRange: nil) as? UIColor
 
-        XCTAssertEqual(fenceIsHidden, true)
+        XCTAssertNil(fenceIsHidden)
         XCTAssertEqual(literalFont?.fontDescriptor.symbolicTraits.contains(.traitMonoSpace), true)
         XCTAssertEqual(literalFont?.fontDescriptor.symbolicTraits.contains(.traitBold), false)
         XCTAssertEqual(backgroundKind, MarkdownCodeBackgroundKind.block.rawValue)
         XCTAssertEqual(markerColor, .label)
+    }
+
+    @MainActor
+    func testInlineCodeDelimitersFollowSyntaxModeAndRevealOnCurrentLine() {
+        let text = "Use `code` today."
+        let visibleRendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .visible,
+                revealedRange: nil
+            )
+        )
+        let hiddenOffLineRendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .hiddenOutsideCurrentLine,
+                revealedRange: nil
+            )
+        )
+        let hiddenRendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .hiddenOutsideCurrentLine,
+                revealedRange: renderer.revealedLineRange(for: NSRange(location: 0, length: 0), in: text)
+            )
+        )
+
+        let delimiterRange = (visibleRendered.string as NSString).range(of: "`")
+
+        XCTAssertEqual(syntaxVisibilityRule(in: visibleRendered, at: delimiterRange), .followsMode)
+        XCTAssertNil(hiddenSyntaxValue(in: visibleRendered, at: delimiterRange))
+        XCTAssertEqual(hiddenSyntaxValue(in: hiddenOffLineRendered, at: delimiterRange), true)
+        XCTAssertEqual(syntaxVisibilityRule(in: hiddenRendered, at: delimiterRange), .followsMode)
+        XCTAssertNil(hiddenSyntaxValue(in: hiddenRendered, at: delimiterRange))
+    }
+
+    @MainActor
+    func testFencedCodeFencesFollowSyntaxModeAndRevealOnCurrentLine() {
+        let text = """
+        ```
+        code
+        ```
+        """
+        let visibleRendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .visible,
+                revealedRange: nil
+            )
+        )
+        let hiddenOffLineRendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .hiddenOutsideCurrentLine,
+                revealedRange: nil
+            )
+        )
+        let hiddenRendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .hiddenOutsideCurrentLine,
+                revealedRange: renderer.revealedLineRange(for: NSRange(location: 0, length: 0), in: text)
+            )
+        )
+
+        let fenceRange = (visibleRendered.string as NSString).range(of: "```")
+
+        XCTAssertEqual(syntaxVisibilityRule(in: visibleRendered, at: fenceRange), .followsMode)
+        XCTAssertNil(hiddenSyntaxValue(in: visibleRendered, at: fenceRange))
+        XCTAssertEqual(hiddenSyntaxValue(in: hiddenOffLineRendered, at: fenceRange), true)
+        XCTAssertEqual(syntaxVisibilityRule(in: hiddenRendered, at: fenceRange), .followsMode)
+        XCTAssertNil(hiddenSyntaxValue(in: hiddenRendered, at: fenceRange))
     }
 
     @MainActor
@@ -368,7 +621,7 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         let backgroundKind = rendered.attribute(.markdownCodeBackgroundKind, at: contentRange.location, effectiveRange: nil) as? Int
 
         XCTAssertEqual(font?.fontDescriptor.symbolicTraits.contains(.traitMonoSpace), true)
-        XCTAssertEqual(markerIsHidden, true)
+        XCTAssertNil(markerIsHidden)
         XCTAssertEqual(backgroundKind, MarkdownCodeBackgroundKind.inline.rawValue)
     }
 
@@ -439,5 +692,20 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         XCTAssertEqual(markerIsHidden, true)
         XCTAssertTrue(altTextFont?.fontDescriptor.symbolicTraits.contains(.traitItalic) == true)
         XCTAssertEqual(sourceIsHidden, true)
+    }
+}
+
+private final class LayoutInvalidationSpy: NSLayoutManager {
+    var invalidatedLayoutRanges: [NSRange] = []
+    var invalidatedDisplayRanges: [NSRange] = []
+
+    override func invalidateLayout(forCharacterRange charRange: NSRange, actualCharacterRange actualCharRange: NSRangePointer?) {
+        invalidatedLayoutRanges.append(charRange)
+        super.invalidateLayout(forCharacterRange: charRange, actualCharacterRange: actualCharRange)
+    }
+
+    override func invalidateDisplay(forCharacterRange charRange: NSRange) {
+        invalidatedDisplayRanges.append(charRange)
+        super.invalidateDisplay(forCharacterRange: charRange)
     }
 }

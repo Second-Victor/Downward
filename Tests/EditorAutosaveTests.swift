@@ -299,6 +299,51 @@ final class EditorAutosaveTests: XCTestCase {
     }
 
     @MainActor
+    func testCanceledSupersededAutosaveDoesNotFireAtOriginalDeadline() async throws {
+        let documentManager = RecordingDocumentManager(saveDelay: .milliseconds(5))
+        let system = makeEditorSystem(
+            documentManager: documentManager,
+            autosaveDelay: .milliseconds(80)
+        )
+
+        system.viewModel.handleTextChange("First draft")
+        try await Task.sleep(for: .milliseconds(20))
+        system.viewModel.handleTextChange("Second draft")
+
+        try await Task.sleep(for: .milliseconds(70))
+
+        let savedTexts = await documentManager.savedTexts
+
+        XCTAssertTrue(
+            savedTexts.isEmpty,
+            "The canceled autosave must not request a save when its original delay expires."
+        )
+        XCTAssertEqual(system.session.openDocument?.text, "Second draft")
+        XCTAssertTrue(system.session.openDocument?.isDirty ?? false)
+    }
+
+    @MainActor
+    func testReplacingAutosaveTaskOnlySavesLatestSnapshot() async throws {
+        let documentManager = RecordingDocumentManager(saveDelay: .milliseconds(5))
+        let system = makeEditorSystem(
+            documentManager: documentManager,
+            autosaveDelay: .milliseconds(80)
+        )
+
+        system.viewModel.handleTextChange("First draft")
+        try await Task.sleep(for: .milliseconds(20))
+        system.viewModel.handleTextChange("Second draft")
+
+        try await Task.sleep(for: .milliseconds(140))
+
+        let savedTexts = await documentManager.savedTexts
+
+        XCTAssertEqual(savedTexts, ["Second draft"])
+        XCTAssertEqual(system.session.openDocument?.text, "Second draft")
+        XCTAssertFalse(system.viewModel.showsUnsavedIndicator)
+    }
+
+    @MainActor
     func testSaveOrderingRemainsSerializedWhenEditArrivesDuringSave() async throws {
         let documentManager = RecordingDocumentManager(saveDelay: .milliseconds(120))
         let system = makeEditorSystem(
@@ -423,6 +468,24 @@ final class EditorAutosaveTests: XCTestCase {
         system.viewModel.handleTextChange("Background flush")
         system.viewModel.handleScenePhaseChange(.background)
         try await Task.sleep(for: .milliseconds(40))
+
+        let savedTexts = await documentManager.savedTexts
+
+        XCTAssertEqual(savedTexts, ["Background flush"])
+        XCTAssertFalse(system.session.openDocument?.isDirty ?? true)
+    }
+
+    @MainActor
+    func testBackgroundFlushCancelDoesNotAllowDuplicateAutosaveAfterOriginalDelay() async throws {
+        let documentManager = RecordingDocumentManager(saveDelay: .milliseconds(10))
+        let system = makeEditorSystem(
+            documentManager: documentManager,
+            autosaveDelay: .milliseconds(120)
+        )
+
+        system.viewModel.handleTextChange("Background flush")
+        system.viewModel.handleScenePhaseChange(.background)
+        try await Task.sleep(for: .milliseconds(220))
 
         let savedTexts = await documentManager.savedTexts
 

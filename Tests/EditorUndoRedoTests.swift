@@ -433,6 +433,51 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorDefersMarkdownRerenderAfterTyping() async {
+        let textBox = MutableBox("Draft")
+        let topOverlayBox = MutableBox<CGFloat>(0)
+        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let configuration = MarkdownEditorTextView.Configuration(
+            text: textBox.value,
+            documentIdentity: PreviewSampleData.cleanDocument.url,
+            font: .preferredFont(forTextStyle: .body),
+            syntaxMode: .hiddenOutsideCurrentLine,
+            isEditable: true
+        )
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.text = "Draft **bold**"
+        textView.selectedRange = NSRange(location: (textView.text as NSString).length, length: 0)
+
+        coordinator.textViewDidChange(textView)
+        coordinator.textViewDidChangeSelection(textView)
+
+        let markerRange = (textView.text as NSString).range(of: "**")
+        XCTAssertEqual(
+            textView.textStorage.attribute(.markdownSyntaxToken, at: markerRange.location, effectiveRange: nil) as? Int,
+            nil,
+            "Typing should stay on the cheap path until the deferred rerender runs."
+        )
+
+        try? await Task.sleep(for: MarkdownEditorTextView.Coordinator.deferredRerenderDelay + .milliseconds(80))
+
+        XCTAssertEqual(
+            (textView.textStorage.attribute(.markdownSyntaxToken, at: markerRange.location, effectiveRange: nil) as? Int)
+                .flatMap(MarkdownSyntaxVisibilityRule.init(rawValue:)),
+            .followsMode
+        )
+    }
+
+    @MainActor
     private func makeCoordinator(
         text: MutableBox<String>,
         topOverlayClearance: MutableBox<CGFloat>

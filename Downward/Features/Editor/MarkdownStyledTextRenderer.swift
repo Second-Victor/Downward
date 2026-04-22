@@ -92,13 +92,13 @@ struct MarkdownStyledTextRenderer {
         styleFencedCodeBlocks(
             matches: fencedCodeBlockMatches,
             in: attributed,
-            text: nsText,
-            baseFont: configuration.baseFont
+            baseFont: configuration.baseFont,
+            syntaxMode: configuration.syntaxMode,
+            revealedRange: configuration.revealedRange
         )
         styleSetextHeadings(
             matches: setextMatches,
             in: attributed,
-            text: nsText,
             baseFont: configuration.baseFont,
             syntaxMode: configuration.syntaxMode,
             revealedRange: configuration.revealedRange
@@ -136,7 +136,6 @@ struct MarkdownStyledTextRenderer {
         styleInlineCode(
             matches: codeSpanMatches,
             in: attributed,
-            text: nsText,
             baseFont: configuration.baseFont,
             syntaxMode: configuration.syntaxMode,
             revealedRange: configuration.revealedRange
@@ -335,33 +334,63 @@ struct MarkdownStyledTextRenderer {
             return
         }
 
+        // Reuse the stored visibility rule so caret-line updates preserve each
+        // syntax token's contract without requiring a full rerender.
         var syntaxRanges: [NSRange] = []
+        var syntaxVisibilityRules: [MarkdownSyntaxVisibilityRule] = []
         for affectedRange in affectedRanges {
             textStorage.enumerateAttribute(.markdownSyntaxToken, in: affectedRange) { value, range, _ in
-                guard (value as? Bool) == true else {
+                guard
+                    let rawValue = value as? Int,
+                    let visibilityRule = MarkdownSyntaxVisibilityRule(rawValue: rawValue)
+                else {
                     return
                 }
 
                 syntaxRanges.append(range)
+                syntaxVisibilityRules.append(visibilityRule)
             }
         }
 
-        let rangesToUpdate = mergedRanges(syntaxRanges)
-        guard rangesToUpdate.isEmpty == false else {
+        guard syntaxRanges.isEmpty == false else {
             return
         }
 
+        var changedRanges: [NSRange] = []
         textStorage.beginEditing()
-        for syntaxRange in rangesToUpdate {
-            if let revealedRange, NSIntersectionRange(revealedRange, syntaxRange).length > 0 {
-                textStorage.removeAttribute(.markdownHiddenSyntax, range: syntaxRange)
-            } else {
-                textStorage.addAttribute(.markdownHiddenSyntax, value: true, range: syntaxRange)
+        for (syntaxRange, visibilityRule) in zip(syntaxRanges, syntaxVisibilityRules) {
+            let shouldHideSyntax: Bool
+            switch visibilityRule {
+            case .alwaysHidden:
+                shouldHideSyntax = true
+            case .followsMode:
+                if let revealedRange {
+                    shouldHideSyntax = NSIntersectionRange(revealedRange, syntaxRange).length == 0
+                } else {
+                    shouldHideSyntax = true
+                }
             }
+            let currentlyHidden = (textStorage.attribute(
+                .markdownHiddenSyntax,
+                at: syntaxRange.location,
+                longestEffectiveRange: nil,
+                in: syntaxRange
+            ) as? Bool) == true
+            guard currentlyHidden != shouldHideSyntax else {
+                continue
+            }
+
+            if shouldHideSyntax {
+                textStorage.addAttribute(.markdownHiddenSyntax, value: true, range: syntaxRange)
+            } else {
+                textStorage.removeAttribute(.markdownHiddenSyntax, range: syntaxRange)
+            }
+            changedRanges.append(syntaxRange)
         }
         textStorage.endEditing()
 
-        for affectedRange in affectedRanges {
+        let invalidationRanges = mergedRanges(changedRanges)
+        for affectedRange in invalidationRanges {
             for layoutManager in textStorage.layoutManagers {
                 layoutManager.invalidateLayout(forCharacterRange: affectedRange, actualCharacterRange: nil)
                 layoutManager.invalidateDisplay(forCharacterRange: affectedRange)
@@ -416,19 +445,17 @@ struct MarkdownStyledTextRenderer {
                 range: markerRange
             )
 
-            hideSyntaxIfNeeded(
+            applySyntaxVisibility(
                 markerRange,
+                rule: .followsMode,
                 in: attributed,
-                text: text,
-                baseFont: baseFont,
                 syntaxMode: syntaxMode,
                 revealedRange: revealedRange
             )
-            hideSyntaxIfNeeded(
+            applySyntaxVisibility(
                 spacerRange,
+                rule: .followsMode,
                 in: attributed,
-                text: text,
-                baseFont: baseFont,
                 syntaxMode: syntaxMode,
                 revealedRange: revealedRange
             )
@@ -438,7 +465,6 @@ struct MarkdownStyledTextRenderer {
     private func styleSetextHeadings(
         matches: [SetextHeadingMatch],
         in attributed: NSMutableAttributedString,
-        text: NSString,
         baseFont: UIFont,
         syntaxMode: MarkdownSyntaxMode,
         revealedRange: NSRange?
@@ -460,11 +486,10 @@ struct MarkdownStyledTextRenderer {
                 value: UIColor.secondaryLabel,
                 range: match.underlineRange
             )
-            hideSyntaxIfNeeded(
+            applySyntaxVisibility(
                 match.underlineRange,
+                rule: .followsMode,
                 in: attributed,
-                text: text,
-                baseFont: baseFont,
                 syntaxMode: syntaxMode,
                 revealedRange: revealedRange
             )
@@ -532,11 +557,10 @@ struct MarkdownStyledTextRenderer {
             paragraphStyle.headIndent = headIndent
             attributed.addAttribute(.paragraphStyle, value: paragraphStyle, range: lineRange)
 
-            hideSyntaxIfNeeded(
+            applySyntaxVisibility(
                 markerRange,
+                rule: .followsMode,
                 in: attributed,
-                text: text,
-                baseFont: baseFont,
                 syntaxMode: syntaxMode,
                 revealedRange: revealedRange
             )
@@ -615,8 +639,9 @@ struct MarkdownStyledTextRenderer {
     private func styleFencedCodeBlocks(
         matches: [FencedCodeBlockMatch],
         in attributed: NSMutableAttributedString,
-        text: NSString,
-        baseFont: UIFont
+        baseFont: UIFont,
+        syntaxMode: MarkdownSyntaxMode,
+        revealedRange: NSRange?
     ) {
         let codeFont = UIFont.monospacedSystemFont(ofSize: baseFont.pointSize * 0.95, weight: .regular)
         for match in matches {
@@ -631,19 +656,21 @@ struct MarkdownStyledTextRenderer {
                 )
             }
 
-            hideRange(
+            applySyntaxVisibility(
                 match.openingFenceRange,
+                rule: .followsMode,
                 in: attributed,
-                text: text,
-                baseFont: baseFont
+                syntaxMode: syntaxMode,
+                revealedRange: revealedRange
             )
 
             if let closingFenceRange = match.closingFenceRange {
-                hideRange(
+                applySyntaxVisibility(
                     closingFenceRange,
+                    rule: .followsMode,
                     in: attributed,
-                    text: text,
-                    baseFont: baseFont
+                    syntaxMode: syntaxMode,
+                    revealedRange: revealedRange
                 )
             }
         }
@@ -652,7 +679,6 @@ struct MarkdownStyledTextRenderer {
     private func styleInlineCode(
         matches: [CodeSpanMatch],
         in attributed: NSMutableAttributedString,
-        text: NSString,
         baseFont: UIFont,
         syntaxMode: MarkdownSyntaxMode,
         revealedRange: NSRange?
@@ -674,8 +700,20 @@ struct MarkdownStyledTextRenderer {
                 ],
                 range: match.contentRange
             )
-            hideRange(openMarkerRange, in: attributed, text: text, baseFont: baseFont)
-            hideRange(closeMarkerRange, in: attributed, text: text, baseFont: baseFont)
+            applySyntaxVisibility(
+                openMarkerRange,
+                rule: .followsMode,
+                in: attributed,
+                syntaxMode: syntaxMode,
+                revealedRange: revealedRange
+            )
+            applySyntaxVisibility(
+                closeMarkerRange,
+                rule: .followsMode,
+                in: attributed,
+                syntaxMode: syntaxMode,
+                revealedRange: revealedRange
+            )
         }
     }
 
@@ -724,19 +762,17 @@ struct MarkdownStyledTextRenderer {
 
             attributed.addAttribute(.foregroundColor, value: UIColor.secondaryLabel, range: leadingMarkerRange)
             attributed.addAttribute(.foregroundColor, value: UIColor.secondaryLabel, range: trailingMarkerRange)
-            hideSyntaxIfNeeded(
+            applySyntaxVisibility(
                 leadingMarkerRange,
+                rule: .followsMode,
                 in: attributed,
-                text: text,
-                baseFont: baseFont,
                 syntaxMode: syntaxMode,
                 revealedRange: revealedRange
             )
-            hideSyntaxIfNeeded(
+            applySyntaxVisibility(
                 trailingMarkerRange,
+                rule: .followsMode,
                 in: attributed,
-                text: text,
-                baseFont: baseFont,
                 syntaxMode: syntaxMode,
                 revealedRange: revealedRange
             )
@@ -790,11 +826,10 @@ struct MarkdownStyledTextRenderer {
             let markerRanges = [leadingOuterRange, leadingInnerRange, trailingInnerRange, trailingOuterRange]
             for markerRange in markerRanges where markerRange.length > 0 {
                 attributed.addAttribute(.foregroundColor, value: UIColor.secondaryLabel, range: markerRange)
-                hideSyntaxIfNeeded(
+                applySyntaxVisibility(
                     markerRange,
+                    rule: .followsMode,
                     in: attributed,
-                    text: text,
-                    baseFont: baseFont,
                     syntaxMode: syntaxMode,
                     revealedRange: revealedRange
                 )
@@ -877,11 +912,10 @@ struct MarkdownStyledTextRenderer {
             ]
             for hiddenRange in hiddenRanges {
                 attributed.addAttribute(.foregroundColor, value: UIColor.secondaryLabel, range: hiddenRange)
-                hideSyntaxIfNeeded(
+                applySyntaxVisibility(
                     hiddenRange,
+                    rule: .followsMode,
                     in: attributed,
-                    text: text,
-                    baseFont: attributed.attribute(.font, at: titleRange.location, effectiveRange: nil) as? UIFont ?? UIFont.systemFont(ofSize: 16),
                     syntaxMode: syntaxMode,
                     revealedRange: revealedRange
                 )
@@ -934,11 +968,10 @@ struct MarkdownStyledTextRenderer {
             ]
             for hiddenRange in hiddenRanges {
                 attributed.addAttribute(.foregroundColor, value: UIColor.tertiaryLabel, range: hiddenRange)
-                hideSyntaxIfNeeded(
+                applySyntaxVisibility(
                     hiddenRange,
+                    rule: .followsMode,
                     in: attributed,
-                    text: text,
-                    baseFont: baseFont,
                     syntaxMode: syntaxMode,
                     revealedRange: revealedRange
                 )
@@ -1400,11 +1433,12 @@ struct MarkdownStyledTextRenderer {
         }
     }
 
-    private func hideSyntaxIfNeeded(
+    // Keep one visibility decision point so new markdown features do not guess
+    // between mode-controlled syntax and syntax that should always stay hidden.
+    private func applySyntaxVisibility(
         _ range: NSRange,
+        rule: MarkdownSyntaxVisibilityRule,
         in attributed: NSMutableAttributedString,
-        text: NSString,
-        baseFont: UIFont,
         syntaxMode: MarkdownSyntaxMode,
         revealedRange: NSRange?
     ) {
@@ -1412,37 +1446,37 @@ struct MarkdownStyledTextRenderer {
             return
         }
 
-        attributed.addAttribute(.markdownSyntaxToken, value: true, range: range)
+        attributed.addAttribute(.markdownSyntaxToken, value: rule.rawValue, range: range)
 
-        guard syntaxMode == .hiddenOutsideCurrentLine else {
-            return
+        let shouldHideSyntax: Bool
+        switch rule {
+        case .alwaysHidden:
+            shouldHideSyntax = true
+        case .followsMode:
+            if syntaxMode != .hiddenOutsideCurrentLine {
+                shouldHideSyntax = false
+            } else if let revealedRange, NSIntersectionRange(revealedRange, range).length > 0 {
+                shouldHideSyntax = false
+            } else {
+                shouldHideSyntax = true
+            }
         }
 
-        if let revealedRange, NSIntersectionRange(revealedRange, range).length > 0 {
+        if shouldHideSyntax {
+            applyHiddenSyntaxAttributes(range, in: attributed)
+        } else {
             attributed.removeAttribute(.markdownHiddenSyntax, range: range)
-            return
         }
-
-        hideRange(
-            range,
-            in: attributed,
-            text: text,
-            baseFont: baseFont
-        )
     }
 
-    private func hideRange(
+    private func applyHiddenSyntaxAttributes(
         _ range: NSRange,
-        in attributed: NSMutableAttributedString,
-        text: NSString,
-        baseFont: UIFont
+        in attributed: NSMutableAttributedString
     ) {
         guard range.length > 0 else {
             return
         }
 
-        _ = text
-        _ = baseFont
         attributed.addAttribute(.markdownHiddenSyntax, value: true, range: range)
         attributed.removeAttribute(.kern, range: range)
     }

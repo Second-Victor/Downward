@@ -125,6 +125,8 @@ extension MarkdownEditorTextView {
 
     @MainActor
     final class Coordinator: NSObject, UITextViewDelegate {
+        nonisolated static let deferredRerenderDelay: Duration = .milliseconds(120)
+
         struct ViewportInsetsSnapshot: Equatable {
             let keyboardOverlapInset: CGFloat
             let contentInsetBottom: CGFloat
@@ -150,6 +152,8 @@ extension MarkdownEditorTextView {
         private var pendingTextChangeTouchesLineBreaks = false
         private var lastTextChangeTouchedLineBreaks = false
         private var hasUnrenderedTextMutation = false
+        private var deferredRerenderTask: Task<Void, Never>?
+        private var deferredRerenderGeneration = 0
 
         init(
             text: Binding<String>,
@@ -164,6 +168,7 @@ extension MarkdownEditorTextView {
         }
 
         deinit {
+            deferredRerenderTask?.cancel()
             if isObservingKeyboard {
                 NotificationCenter.default.removeObserver(self)
             }
@@ -192,6 +197,7 @@ extension MarkdownEditorTextView {
             }
 
             if previousIdentity != configuration.documentIdentity {
+                cancelDeferredRerender()
                 textView.selectedRange = NSRange(location: 0, length: 0)
                 lastRevealedLineRange = nil
                 hasUnrenderedTextMutation = false
@@ -238,6 +244,7 @@ extension MarkdownEditorTextView {
                 return
             }
 
+            cancelDeferredRerender()
             applyRenderedText(to: textView, using: configuration)
             handlePendingEditorCommands(
                 in: textView,
@@ -281,6 +288,7 @@ extension MarkdownEditorTextView {
             )
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
+            scheduleDeferredRerender(in: textView)
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
@@ -320,7 +328,8 @@ extension MarkdownEditorTextView {
             )
 
             if hasUnrenderedTextMutation {
-                applyRenderedText(to: textView, using: updatedConfiguration)
+                self.configuration = updatedConfiguration
+                scheduleDeferredRerender(in: textView)
             } else {
                 updateRevealedSyntax(
                     in: textView,
@@ -500,7 +509,7 @@ extension MarkdownEditorTextView {
             )
 
             isApplyingProgrammaticChange = true
-            textView.attributedText = attributedText
+            applyAttributedTextInPlace(attributedText, to: textView)
             textView.typingAttributes = [
                 .font: configuration.font,
                 .foregroundColor: UIColor.label
@@ -537,6 +546,85 @@ extension MarkdownEditorTextView {
             isApplyingProgrammaticChange = false
             lastRevealedLineRange = revealedLineRange
             self.configuration = configuration
+        }
+
+        /// Update the existing text storage in place so TextKit keeps its backing objects,
+        /// selection, and undo state steadier than replacing `attributedText` wholesale.
+        private func applyAttributedTextInPlace(
+            _ attributedText: NSAttributedString,
+            to textView: UITextView
+        ) {
+            let textStorage = textView.textStorage
+            guard textStorage.isEqual(attributedText) == false else {
+                return
+            }
+
+            textStorage.beginEditing()
+            if textStorage.string == attributedText.string {
+                // Preserve the live character buffer when only markdown presentation changed.
+                // Replacing the whole attributed string here can reset UITextView undo availability.
+                let fullRange = NSRange(location: 0, length: attributedText.length)
+                textStorage.setAttributes(nil, range: fullRange)
+                attributedText.enumerateAttributes(in: fullRange) { attributes, range, _ in
+                    textStorage.setAttributes(attributes, range: range)
+                }
+            } else {
+                textStorage.setAttributedString(attributedText)
+            }
+            textStorage.endEditing()
+        }
+
+        /// Coalesce expensive full markdown passes so rapid typing and caret movement stay on
+        /// the cheaper live TextKit path until the user briefly pauses.
+        private func scheduleDeferredRerender(in textView: UITextView) {
+            guard let configuration else {
+                return
+            }
+
+            deferredRerenderTask?.cancel()
+            deferredRerenderGeneration += 1
+            let generation = deferredRerenderGeneration
+            let documentIdentity = configuration.documentIdentity
+
+            deferredRerenderTask = Task { @MainActor [weak self, weak textView] in
+                do {
+                    try await Task.sleep(for: Self.deferredRerenderDelay)
+                } catch {
+                    return
+                }
+
+                guard
+                    let self,
+                    let textView,
+                    self.deferredRerenderGeneration == generation,
+                    self.hasUnrenderedTextMutation,
+                    textView.markedTextRange == nil,
+                    let latestConfiguration = self.configuration,
+                    latestConfiguration.documentIdentity == documentIdentity
+                else {
+                    return
+                }
+
+                self.deferredRerenderTask = nil
+                let currentText = textView.text ?? latestConfiguration.text
+                self.applyRenderedText(
+                    to: textView,
+                    using: Configuration(
+                        text: currentText,
+                        documentIdentity: latestConfiguration.documentIdentity,
+                        font: latestConfiguration.font,
+                        syntaxMode: latestConfiguration.syntaxMode,
+                        isEditable: latestConfiguration.isEditable
+                    )
+                )
+                self.publishUndoRedoAvailability(for: textView)
+                self.updateKeyboardAccessoryState(for: textView)
+            }
+        }
+
+        private func cancelDeferredRerender() {
+            deferredRerenderTask?.cancel()
+            deferredRerenderTask = nil
         }
 
         private func handlePendingEditorCommands(

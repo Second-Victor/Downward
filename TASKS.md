@@ -3,7 +3,7 @@
 ## Purpose
 
 This file is the active backlog and steering summary for Downward.
-It intentionally replaces the older split between separate plans, debt, review, and QA steering docs.
+It intentionally stays short. Use `PLANS.md` for the detailed technical checklist, performance roadmap, and code-review findings behind this backlog.
 
 ---
 
@@ -15,11 +15,12 @@ The strongest current foundations are:
 - the workspace trust boundary,
 - relative-path-first open identity,
 - restore and reconnect behavior,
-- quiet autosave and calmer revalidation,
+- quiet autosave, explicit autosave cancellation, and calmer revalidation,
+- an explicit markdown syntax visibility contract for future renderer work,
 - recent files and editor appearance persistence,
 - a broad test suite around risky behaviors.
 
-The main risks now are **maintainability**, **large-file pressure**, and **real-device UI polish**, not basic correctness.
+The main risks now are **maintainability**, **large-file pressure**, **renderer/theme extensibility**, and **real-device UI polish**, not basic correctness.
 
 ---
 
@@ -57,25 +58,7 @@ These are not backlog items. They are shipping expectations.
 - `Tests/MarkdownWorkspaceAppSmokeTests.swift`
 - new focused test files in `Tests/`
 
-### 2. Remove repeated whole-tree relative-path lookup from hot paths
-
-**Why**
-
-`WorkspaceSearchEngine` and `RecentFilesStore` still do repeated snapshot-wide path re-resolution that is correct but unnecessarily expensive.
-
-**Success**
-
-- carry relative paths while traversing,
-- avoid repeated `snapshot.relativePath(for:)` work,
-- keep user-visible behavior unchanged.
-
-**Likely files**
-
-- `Downward/Features/Workspace/WorkspaceSearchEngine.swift`
-- `Downward/Domain/Persistence/RecentFilesStore.swift`
-- `Downward/Domain/Workspace/WorkspaceSnapshotPathResolver.swift`
-
-### 3. Stabilize editor top chrome and first-line placement on iPhone and iPad
+### 2. Stabilize editor top chrome and first-line placement on iPhone and iPad
 
 **Why**
 
@@ -95,7 +78,7 @@ This is now an active product issue, not a theoretical polish task.
 - `Downward/Features/Editor/EditorScreen.swift`
 - related editor tests if added
 
-### 4. Keep `AppCoordinator` from regaining feature logic
+### 3. Keep `AppCoordinator` from regaining feature logic
 
 **Why**
 
@@ -107,19 +90,22 @@ This is now an active product issue, not a theoretical polish task.
 - workspace-state application rules land in `WorkspaceSessionPolicy`,
 - the coordinator stays an orchestrator instead of becoming the architecture.
 
-### 5. Protect `PlainTextDocumentSession` and the renderer from feature creep
+### 4. Protect `PlainTextDocumentSession` and the renderer from feature creep
 
 **Why**
 
-`PlainTextDocumentSession.swift` and `MarkdownStyledTextRenderer.swift` are both real boundaries and easy places to overstuff.
+`PlainTextDocumentSession.swift` and `MarkdownStyledTextRenderer.swift` are both real boundaries and easy places to overstuff. Future markdown and JSON theme work will be much easier if parsing, styling, theme roles, and TextKit layout behavior stay separate.
 
 **Success**
 
 - session code stays focused on file truth,
 - rendering code stays focused on markdown presentation,
+- syntax recognition is separated from theme/style application before major new markdown features land,
+- future markdown work extends the explicit mode-controlled vs always-hidden syntax contract instead of inventing new visibility paths,
+- hidden syntax remains glyph-level layout behavior rather than font/kerning tricks,
 - new editor UX does not automatically land in either file.
 
-### 6. Ship the settings redesign as a real maintained surface
+### 5. Ship the settings redesign as a real maintained surface
 
 **Why**
 
@@ -140,18 +126,11 @@ The current settings screen works but still looks like a stopgap compared with t
 
 ## Secondary cleanup
 
-### 7. Remove stale editor bridge leftovers
-
-`EditorTextViewHostBridge.swift` and its tests appear to describe an older editor implementation path.
-The current shipping editor already uses `MarkdownEditorTextView` directly.
-
-Clean this up so the codebase and docs stop telling two different stories.
-
-### 8. Keep preview and sample data aligned with the real product model
+### 7. Keep preview and sample data aligned with the real product model
 
 Preview and sample identity should stay close to the same relative-path-first model used in production so visual testing stays useful.
 
-### 9. Keep docs truthful
+### 8. Keep docs truthful
 
 Any editor, navigation, or settings change should be reflected in:
 

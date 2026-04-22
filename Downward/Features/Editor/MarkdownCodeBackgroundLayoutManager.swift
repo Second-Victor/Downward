@@ -63,33 +63,26 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
             length: lastCharacterIndex - firstCharacterIndex + 1
         )
 
-        var hiddenRanges: [NSRange] = []
-        textStorage.enumerateAttribute(.markdownHiddenSyntax, in: characterRange) { value, range, _ in
-            guard (value as? Bool) == true else {
-                return
-            }
-            hiddenRanges.append(range)
-        }
-
-        guard hiddenRanges.isEmpty == false else {
-            return 0
-        }
-
-        var hiddenRangeIndex = 0
         var modifiedGlyphProperties = Array(repeating: NSLayoutManager.GlyphProperty(), count: glyphRange.length)
         var didModifyGlyphProperties = false
+        var currentHiddenRange = NSRange(location: NSNotFound, length: 0)
+        var isInHiddenRange = false
 
         for glyphOffset in 0 ..< glyphRange.length {
             let characterIndex = charIndexes[glyphOffset]
             var glyphProperties = props[glyphOffset]
 
-            while hiddenRangeIndex < hiddenRanges.count,
-                  NSMaxRange(hiddenRanges[hiddenRangeIndex]) <= characterIndex {
-                hiddenRangeIndex += 1
+            if currentHiddenRange.location == NSNotFound || NSLocationInRange(characterIndex, currentHiddenRange) == false {
+                let value = textStorage.attribute(
+                    .markdownHiddenSyntax,
+                    at: characterIndex,
+                    longestEffectiveRange: &currentHiddenRange,
+                    in: characterRange
+                ) as? Bool
+                isInHiddenRange = value == true
             }
 
-            if hiddenRangeIndex < hiddenRanges.count,
-               NSLocationInRange(characterIndex, hiddenRanges[hiddenRangeIndex]) {
+            if isInHiddenRange {
                 glyphProperties.insert(.null)
                 didModifyGlyphProperties = true
             }
