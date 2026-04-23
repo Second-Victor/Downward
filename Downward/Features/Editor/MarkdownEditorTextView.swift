@@ -3,7 +3,6 @@ import UIKit
 
 struct MarkdownEditorTextView: UIViewRepresentable {
     @Binding var text: String
-    @Binding var topOverlayClearance: CGFloat
 
     let documentIdentity: URL
     let font: UIFont
@@ -18,7 +17,6 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator(
             text: $text,
-            topOverlayClearance: $topOverlayClearance,
             onEditorFocusChange: onEditorFocusChange,
             onUndoRedoAvailabilityChange: onUndoRedoAvailabilityChange
         )
@@ -36,6 +34,8 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         textView.backgroundColor = .clear
         textView.isOpaque = false
         textView.delegate = context.coordinator
+        // Top chrome clearance is owned by the surrounding SwiftUI container. The text view keeps
+        // only its own internal padding and keyboard-driven bottom scroll insets.
         textView.textContainerInset = UIEdgeInsets(
             top: EditorTextViewLayout.contentTopInset,
             left: EditorTextViewLayout.horizontalInset,
@@ -55,9 +55,6 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         textView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         textView.setContentHuggingPriority(.defaultLow, for: .vertical)
-        textView.onViewportChromeChange = { [weak coordinator = context.coordinator] textView in
-            coordinator?.updateTopViewportInsets(for: textView)
-        }
         context.coordinator.configureKeyboardAccessory(for: textView)
         context.coordinator.apply(
             configuration: .init(
@@ -73,7 +70,6 @@ struct MarkdownEditorTextView: UIViewRepresentable {
             to: textView,
             force: true
         )
-        context.coordinator.updateTopViewportInsets(for: textView)
         return textView
     }
 
@@ -90,9 +86,6 @@ struct MarkdownEditorTextView: UIViewRepresentable {
 
     func updateUIView(_ uiView: UITextView, context: Context) {
         if let uiView = uiView as? EditorChromeAwareTextView {
-            uiView.onViewportChromeChange = { [weak coordinator = context.coordinator] textView in
-                coordinator?.updateTopViewportInsets(for: textView)
-            }
             context.coordinator.configureKeyboardAccessory(for: uiView)
         }
 
@@ -110,7 +103,6 @@ struct MarkdownEditorTextView: UIViewRepresentable {
             to: uiView,
             force: false
         )
-        context.coordinator.updateTopViewportInsets(for: uiView)
     }
 }
 
@@ -134,8 +126,6 @@ extension MarkdownEditorTextView {
         }
 
         @Binding private var text: String
-        @Binding private var topOverlayClearance: CGFloat
-
         private let onEditorFocusChange: @MainActor (Bool) -> Void
         private let onUndoRedoAvailabilityChange: @MainActor (Bool, Bool) -> Void
         private let renderer = MarkdownStyledTextRenderer()
@@ -146,8 +136,6 @@ extension MarkdownEditorTextView {
         private var lastHandledRedoCommandToken: Int?
         private var lastHandledDismissKeyboardCommandToken: Int?
         private weak var activeTextView: EditorChromeAwareTextView?
-        private var pendingTopOverlayClearance: CGFloat?
-        private var isTopOverlayClearanceUpdateScheduled = false
         private var isObservingKeyboard = false
         private var pendingTextChangeTouchesLineBreaks = false
         private var lastTextChangeTouchedLineBreaks = false
@@ -157,12 +145,10 @@ extension MarkdownEditorTextView {
 
         init(
             text: Binding<String>,
-            topOverlayClearance: Binding<CGFloat>,
             onEditorFocusChange: @escaping @MainActor (Bool) -> Void,
             onUndoRedoAvailabilityChange: @escaping @MainActor (Bool, Bool) -> Void
         ) {
             _text = text
-            _topOverlayClearance = topOverlayClearance
             self.onEditorFocusChange = onEditorFocusChange
             self.onUndoRedoAvailabilityChange = onUndoRedoAvailabilityChange
         }
@@ -347,36 +333,12 @@ extension MarkdownEditorTextView {
             onEditorFocusChange(true)
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
-            updateTopViewportInsets(for: textView)
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
             onEditorFocusChange(false)
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
-            updateTopViewportInsets(for: textView)
-        }
-
-        /// Keep general layout churn scoped to top chrome only. Bottom keyboard insets are owned
-        /// exclusively by keyboard frame notifications.
-        func updateTopViewportInsets(for textView: UITextView) {
-            let clearance = chromeOverlapTopInset(for: textView)
-
-            var updatedTextContainerInset = textView.textContainerInset
-            updatedTextContainerInset.top = EditorTextViewLayout.contentTopInset + clearance
-            updatedTextContainerInset.bottom = EditorTextViewLayout.bottomInset
-            updatedTextContainerInset.left = EditorTextViewLayout.horizontalInset
-            updatedTextContainerInset.right = EditorTextViewLayout.horizontalInset
-            if textView.textContainerInset != updatedTextContainerInset {
-                textView.textContainerInset = updatedTextContainerInset
-            }
-
-            var updatedVerticalScrollIndicatorInsets = textView.verticalScrollIndicatorInsets
-            updatedVerticalScrollIndicatorInsets.top = clearance
-            if textView.verticalScrollIndicatorInsets != updatedVerticalScrollIndicatorInsets {
-                textView.verticalScrollIndicatorInsets = updatedVerticalScrollIndicatorInsets
-            }
-            publishTopOverlayClearance(clearance)
         }
 
         /// Match the prototype behavior: reserve the full keyboard overlap in the scroll view
@@ -450,41 +412,6 @@ extension MarkdownEditorTextView {
             }
 
             return textView.text != configuration.text
-        }
-
-        /// SwiftUI warns if this representable mutates bound state during `updateUIView`.
-        /// Defer the placeholder clearance publication to the next main-actor turn while
-        /// still applying the UIKit inset changes synchronously to the live text view.
-        private func publishTopOverlayClearance(_ clearance: CGFloat) {
-            guard abs(topOverlayClearance - clearance) > 0.5 else {
-                pendingTopOverlayClearance = nil
-                return
-            }
-
-            pendingTopOverlayClearance = clearance
-            guard isTopOverlayClearanceUpdateScheduled == false else {
-                return
-            }
-
-            isTopOverlayClearanceUpdateScheduled = true
-            Task { @MainActor [weak self] in
-                guard let self else {
-                    return
-                }
-
-                self.isTopOverlayClearanceUpdateScheduled = false
-
-                guard let pendingTopOverlayClearance = self.pendingTopOverlayClearance else {
-                    return
-                }
-
-                self.pendingTopOverlayClearance = nil
-                guard abs(self.topOverlayClearance - pendingTopOverlayClearance) > 0.5 else {
-                    return
-                }
-
-                self.topOverlayClearance = pendingTopOverlayClearance
-            }
         }
 
         private func applyRenderedText(
@@ -827,25 +754,6 @@ extension MarkdownEditorTextView {
             textView.scrollRectToVisible(visibleRect, animated: true)
         }
 
-        private func chromeOverlapTopInset(for textView: UITextView) -> CGFloat {
-            guard let window = textView.window else {
-                return 0
-            }
-
-            let textViewFrameInWindow = textView.convert(textView.bounds, to: window)
-
-            if
-                let navigationBar = textView.nearestViewController?.navigationController?.navigationBar,
-                navigationBar.isHidden == false,
-                navigationBar.window === window
-            {
-                let navigationBarFrameInWindow = navigationBar.convert(navigationBar.bounds, to: window)
-                return max(0, ceil(navigationBarFrameInWindow.maxY - textViewFrameInWindow.minY))
-            }
-
-            return max(0, ceil(window.safeAreaInsets.top - textViewFrameInWindow.minY))
-        }
-
         private func safeSelectedRange(
             for textView: UITextView,
             text: String
@@ -865,27 +773,11 @@ extension MarkdownEditorTextView {
 }
 
 class EditorChromeAwareTextView: UITextView {
-    var onViewportChromeChange: ((UITextView) -> Void)?
     var keyboardAccessoryToolbarView: KeyboardAccessoryToolbarView?
     var undoAccessoryItem: UIBarButtonItem?
     var redoAccessoryItem: UIBarButtonItem?
     var dismissAccessoryItem: UIBarButtonItem?
     var keyboardOverlapInset: CGFloat = 0
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        onViewportChromeChange?(self)
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        onViewportChromeChange?(self)
-    }
-
-    override func safeAreaInsetsDidChange() {
-        super.safeAreaInsetsDidChange()
-        onViewportChromeChange?(self)
-    }
 }
 
 final class KeyboardAccessoryToolbarView: UIView {
@@ -928,8 +820,12 @@ final class KeyboardAccessoryToolbarView: UIView {
         autoresizingMask = [.flexibleWidth, .flexibleHeight]
 
         addSubview(toolbar)
+        toolbar.backgroundColor = .clear
+        toolbar.isOpaque = false
+        toolbar.isTranslucent = true
         toolbar.autoresizingMask = [.flexibleWidth]
         toolbar.items = [undoButton, redoButton, .flexibleSpace(), dismissButton]
+        applyTransparentToolbarAppearance()
     }
 
     required init?(coder: NSCoder) {
@@ -952,6 +848,16 @@ final class KeyboardAccessoryToolbarView: UIView {
         toolbar.frame = CGRect(x: 0, y: 0, width: bounds.width, height: toolbarHeight)
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        applyTransparentToolbarAppearance()
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyTransparentToolbarAppearance()
+    }
+
     func update(canUndo: Bool, canRedo: Bool, canDismiss: Bool) {
         undoButton.isEnabled = canUndo
         redoButton.isEnabled = canRedo
@@ -959,27 +865,29 @@ final class KeyboardAccessoryToolbarView: UIView {
         invalidateIntrinsicContentSize()
         setNeedsLayout()
     }
+
+    /// Keep the accessory visually transparent even when the keyboard host is recreated or traits
+    /// change. This is especially important once editor background colors become theme-driven.
+    private func applyTransparentToolbarAppearance() {
+        let appearance = UIToolbarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundColor = .clear
+        appearance.shadowColor = .clear
+
+        toolbar.standardAppearance = appearance
+        toolbar.compactAppearance = appearance
+        toolbar.scrollEdgeAppearance = appearance
+        if #available(iOS 15.0, *) {
+            toolbar.compactScrollEdgeAppearance = appearance
+        }
+
+        toolbar.setBackgroundImage(UIImage(), forToolbarPosition: .any, barMetrics: .default)
+        toolbar.setShadowImage(UIImage(), forToolbarPosition: .any)
+    }
 }
 
 private extension String {
     var containsLineBreak: Bool {
         contains("\n") || contains("\r")
-    }
-}
-
-private extension UIView {
-
-    var nearestViewController: UIViewController? {
-        var responder: UIResponder? = self
-
-        while let currentResponder = responder {
-            if let viewController = currentResponder as? UIViewController {
-                return viewController
-            }
-
-            responder = currentResponder.next
-        }
-
-        return nil
     }
 }

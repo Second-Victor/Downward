@@ -16,11 +16,13 @@ The strongest current foundations are:
 - relative-path-first open identity,
 - restore and reconnect behavior,
 - quiet autosave, explicit autosave cancellation, and calmer revalidation,
+- explicit keyboard-safe-area underlap for the editor,
+- SwiftUI-owned top chrome clearance with fixed internal editor padding,
 - an explicit markdown syntax visibility contract for future renderer work,
 - recent files and editor appearance persistence,
 - a broad test suite around risky behaviors.
 
-The main risks now are **maintainability**, **large-file pressure**, **renderer/theme extensibility**, and **real-device UI polish**, not basic correctness.
+The main risks now are **maintainability**, **large-file pressure**, **renderer/theme extensibility**, and **real-device UI polish**, not basic correctness. The main editor-specific risk is that custom themes/backgrounds are not wired end-to-end yet, so keyboard accessory polish can still regress when non-default colors return.
 
 ---
 
@@ -58,25 +60,25 @@ These are not backlog items. They are shipping expectations.
 - `Tests/MarkdownWorkspaceAppSmokeTests.swift`
 - new focused test files in `Tests/`
 
-### 2. Stabilize editor top chrome and first-line placement on iPhone and iPad
+### 2. Harden keyboard accessory transparency before theme work resumes
 
 **Why**
 
-The current `MarkdownEditorTextView` top-clearance behavior is still fragile on real devices.
-This is now an active product issue, not a theoretical polish task.
+The current safe-area fix is in place, but the accessory still depends on editor-underlay behavior and platform toolbar rendering details. That is acceptable for default system backgrounds, but custom themed editor backgrounds are the most likely place for the old opaque-bar regression to return.
 
 **Success**
 
-- the first visible line is not hidden under top chrome,
-- placeholder and caret start position stay aligned,
-- behavior remains correct on iPhone and iPad,
-- the solution is dynamic rather than device-specific magic numbers.
+- accessory transparency is configured explicitly instead of relying on defaults,
+- editor background, TextKit background drawing, and accessory underlay use the same theme roles,
+- the bug does not reappear when the editor background is neither pure system white nor pure system black,
+- there is regression coverage for the accessory view configuration.
 
 **Likely files**
 
 - `Downward/Features/Editor/MarkdownEditorTextView.swift`
-- `Downward/Features/Editor/EditorScreen.swift`
-- related editor tests if added
+- `Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift`
+- `Downward/Domain/Persistence/EditorAppearanceStore.swift`
+- `Tests/EditorUndoRedoTests.swift`
 
 ### 3. Keep `AppCoordinator` from regaining feature logic
 
@@ -109,12 +111,13 @@ This is now an active product issue, not a theoretical polish task.
 
 **Why**
 
-The current settings screen works but still looks like a stopgap compared with the desired product direction.
+The current settings screen works but still looks like a stopgap compared with the desired product direction. On iPad it is still just another detail state inside the split view, not a dedicated settings surface.
 
 **Success**
 
 - replace the plain `Form` presentation with the card-style settings flow,
 - wire existing editor and workspace settings to the redesigned UI,
+- decide and implement the intended iPad presentation model,
 - keep undeveloped sections as explicit placeholders rather than fake-complete settings.
 
 **Likely files**
@@ -126,11 +129,11 @@ The current settings screen works but still looks like a stopgap compared with t
 
 ## Secondary cleanup
 
-### 7. Keep preview and sample data aligned with the real product model
+### 6. Keep preview and sample data aligned with the real product model
 
 Preview and sample identity should stay close to the same relative-path-first model used in production so visual testing stays useful.
 
-### 8. Keep docs truthful
+### 7. Keep docs truthful
 
 Any editor, navigation, or settings change should be reflected in:
 

@@ -14,13 +14,14 @@ Reviewed current project shape across:
 
 - editor rendering and hidden syntax handling,
 - `MarkdownEditorTextView` and TextKit layout behavior,
+- keyboard accessory behavior and themed-background risk areas,
 - renderer tests,
 - workspace search and recent-file path lookup,
 - workspace/document view-model task lifecycles,
 - document observation and save paths,
 - architecture docs and stale editor bridge code.
 
-Current state is good enough to continue product work, but large-file rendering, renderer structure, stale bridge code, and path lookup hot paths should be cleaned up before adding more markdown features or themes.
+Current state is good enough to continue product work, but large-file rendering, renderer structure, keyboard accessory/theme integration, and path lookup hot paths should be cleaned up before adding more markdown features or themes.
 
 ---
 
@@ -34,16 +35,16 @@ Current state is good enough to continue product work, but large-file rendering,
 
 ## P0 — immediate fixes before new markdown/theme features
 
-### 1. Reapply the current hidden-syntax optimization layer to this tree
+### 1. Keep the current hidden-syntax optimization layer in place
 
 **Current finding**
 
-The uploaded code has the clean glyph-level hidden-syntax model, but the later optimization layer is not present in this tree. In the current code:
+The current tree already contains the important optimization layer. In the current code:
 
-- `MarkdownEditorTextView.Coordinator.applyRenderedText(...)` still assigns `textView.attributedText = attributedText`.
-- `textViewDidChangeSelection(...)` still performs a full render after a text mutation when `hasUnrenderedTextMutation` is true.
-- `MarkdownCodeBackgroundLayoutManager.shouldGenerateGlyphs(...)` still builds a `hiddenRanges` array for each glyph-generation pass.
-- `MarkdownStyledTextRenderer.updateHiddenSyntaxVisibility(...)` updates attributes even when the hidden/revealed state is already correct.
+- `MarkdownEditorTextView.Coordinator.applyRenderedText(...)` updates `textStorage` in place instead of replacing `attributedText` wholesale.
+- `textViewDidChangeSelection(...)` stays on the cheaper reveal/hide path unless a pending text mutation still needs a deferred full pass.
+- `MarkdownCodeBackgroundLayoutManager.shouldGenerateGlyphs(...)` walks effective `.markdownHiddenSyntax` runs instead of allocating a hidden-range array per glyph batch.
+- `MarkdownStyledTextRenderer.updateHiddenSyntaxVisibility(...)` skips no-op attribute changes and invalidates only the changed ranges.
 
 **Plan**
 
@@ -161,6 +162,35 @@ Note: `.visible` remains the rendered editing mode, not a fully raw markdown mod
 - `Downward/Domain/Persistence/EditorAppearanceStore.swift`
 - `Downward/Features/Settings/SettingsScreen.swift`
 - new editor theme model file
+
+---
+
+### 5a. Make keyboard accessory transparency explicit before custom backgrounds return
+
+**Current finding**
+
+The current safe-area fix in `EditorScreen` is necessary, but it is not the whole story once themed editor backgrounds return. The accessory bar sits at the intersection of:
+
+- the SwiftUI editor underlay,
+- the `UITextView` background and TextKit drawing stack,
+- the embedded `UIToolbar` used by `KeyboardAccessoryToolbarView`.
+
+That means the old opaque-bar regression can still come back if toolbar transparency is treated as an implicit platform default instead of a deliberate accessory contract.
+
+**Plan**
+
+- [x] Reintroduce explicit transparent `UIToolbarAppearance` configuration for the keyboard accessory.
+- [x] Reapply that appearance when the accessory moves into a window or traits change.
+- [x] Add a regression test proving the wrapper and toolbar are transparent by configuration.
+- [ ] When editor themes are added, drive the editor background, TextKit background drawing, and accessory underlay from the same resolved theme model.
+- [ ] Add manual QA coverage for light, dark, and at least one non-standard editor background color.
+
+**Likely files**
+
+- `Downward/Features/Editor/MarkdownEditorTextView.swift`
+- `Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift`
+- `Downward/Domain/Persistence/EditorAppearanceStore.swift`
+- `Tests/EditorUndoRedoTests.swift`
 
 ---
 
@@ -441,11 +471,14 @@ Theme switches should eventually avoid reparsing markdown.
 
 ### 20. Real-device UI QA
 
+- [x] Simplify top-clearance ownership so SwiftUI owns top chrome and `MarkdownEditorTextView` owns only internal padding plus keyboard bottom insets.
 - [ ] Verify first-line placement below top chrome on iPhone.
 - [ ] Verify first-line placement below top chrome on iPad.
 - [ ] Verify keyboard accessory behavior and keyboard dismissal.
 - [ ] Verify scroll indicators with top chrome and keyboard visible.
 - [ ] Verify the editor remains usable in iCloud Drive and local Files workspaces.
+
+Note: the code path no longer reconstructs top clearance from navigation-bar/window geometry, and targeted editor layout tests now assert a fixed internal top inset with zero extra scroll-view top compensation. Real-device verification is still required before closing the remaining QA bullets above.
 
 ---
 

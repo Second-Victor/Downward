@@ -45,8 +45,7 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     func testCoordinatorConfiguresKeyboardAccessoryToolbar() {
         let textBox = MutableBox("Draft")
-        let topOverlayBox = MutableBox<CGFloat>(0)
-        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let configuration = makeConfiguration(text: textBox.value)
 
@@ -93,8 +92,7 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     func testKeyboardOverlapUpdatesBottomInsetsLikePrototype() {
         let textBox = MutableBox("Draft")
-        let topOverlayBox = MutableBox<CGFloat>(0)
-        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let configuration = makeConfiguration(text: textBox.value)
 
@@ -124,8 +122,7 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     func testKeyboardOverlapDoesNotCompensateContentOffsetForAccessoryHeight() {
         let textBox = MutableBox("Draft")
-        let topOverlayBox = MutableBox<CGFloat>(0)
-        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let configuration = makeConfiguration(text: textBox.value)
 
@@ -155,10 +152,9 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
-    func testTopViewportUpdatesDoNotRewriteBottomKeyboardInsets() {
+    func testRepeatedAccessoryStateUpdatesDoNotRewriteBottomKeyboardInsets() {
         let textBox = MutableBox("Draft")
-        let topOverlayBox = MutableBox<CGFloat>(0)
-        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let configuration = makeConfiguration(text: textBox.value)
 
@@ -175,7 +171,14 @@ final class EditorUndoRedoTests: XCTestCase {
         let originalBottomInset = textView.contentInset.bottom
         let originalIndicatorBottomInset = textView.verticalScrollIndicatorInsets.bottom
 
-        coordinator.updateTopViewportInsets(for: textView)
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: false
+        )
 
         XCTAssertEqual(textView.contentInset.bottom, originalBottomInset, accuracy: 0.5)
         XCTAssertEqual(textView.verticalScrollIndicatorInsets.bottom, originalIndicatorBottomInset, accuracy: 0.5)
@@ -184,8 +187,7 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     func testAccessoryLayoutDoesNotRewriteBottomKeyboardInsets() {
         let textBox = MutableBox("Draft")
-        let topOverlayBox = MutableBox<CGFloat>(0)
-        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let configuration = makeConfiguration(text: textBox.value)
 
@@ -230,23 +232,24 @@ final class EditorUndoRedoTests: XCTestCase {
 
         XCTAssertGreaterThan(fittedSize.height, 0)
         XCTAssertClear(accessoryView.backgroundColor)
+        XCTAssertClear(accessoryView.toolbar.backgroundColor)
+        XCTAssertTrue(accessoryView.toolbar.isTranslucent)
+        XCTAssertNilOrClear(accessoryView.toolbar.standardAppearance.backgroundColor)
+        XCTAssertNilOrClear(accessoryView.toolbar.compactAppearance?.backgroundColor)
+        XCTAssertNilOrClear(accessoryView.toolbar.scrollEdgeAppearance?.backgroundColor)
+        XCTAssertNilOrClear(accessoryView.toolbar.standardAppearance.shadowColor)
         XCTAssertGreaterThan(accessoryView.intrinsicContentSize.height, 0)
     }
 
     @MainActor
     func testCoordinatorExecutesPendingUndoCommand() {
         let textBox = MutableBox("Draft")
-        let topOverlayBox = MutableBox<CGFloat>(0)
         var focusEvents: [Bool] = []
         var availabilityEvents: [(Bool, Bool)] = []
         let coordinator = MarkdownEditorTextView.Coordinator(
             text: Binding(
                 get: { textBox.value },
                 set: { textBox.value = $0 }
-            ),
-            topOverlayClearance: Binding(
-                get: { topOverlayBox.value },
-                set: { topOverlayBox.value = $0 }
             ),
             onEditorFocusChange: { focusEvents.append($0) },
             onUndoRedoAvailabilityChange: { canUndo, canRedo in
@@ -287,8 +290,7 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     func testCoordinatorExecutesPendingRedoCommand() {
         let textBox = MutableBox("Draft")
-        let topOverlayBox = MutableBox<CGFloat>(0)
-        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let configuration = makeConfiguration(text: textBox.value)
 
@@ -320,8 +322,7 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     func testCoordinatorExecutesPendingKeyboardDismissCommand() {
         let textBox = MutableBox("Draft")
-        let topOverlayBox = MutableBox<CGFloat>(0)
-        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let configuration = makeConfiguration(text: textBox.value)
 
@@ -351,8 +352,7 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     func testCoordinatorConfiguresNativeKeyboardAccessoryToolbar() {
         let textBox = MutableBox("Draft")
-        let topOverlayBox = MutableBox<CGFloat>(0)
-        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         textView.simulatedIsFirstResponder = true
         textView.trackingUndoManager.simulatedCanUndo = true
@@ -385,8 +385,7 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     func testSameLineTypingDoesNotForceHiddenSyntaxRerender() {
         let textBox = MutableBox("First line\nSecond line")
-        let topOverlayBox = MutableBox<CGFloat>(0)
-        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let coordinator = makeCoordinator(text: textBox)
 
         let previousLine = NSRange(location: 11, length: 11)
         let sameLineAfterTyping = NSRange(location: 11, length: 12)
@@ -435,8 +434,7 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     func testCoordinatorDefersMarkdownRerenderAfterTyping() async {
         let textBox = MutableBox("Draft")
-        let topOverlayBox = MutableBox<CGFloat>(0)
-        let coordinator = makeCoordinator(text: textBox, topOverlayClearance: topOverlayBox)
+        let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let configuration = MarkdownEditorTextView.Configuration(
             text: textBox.value,
@@ -479,20 +477,14 @@ final class EditorUndoRedoTests: XCTestCase {
 
     @MainActor
     private func makeCoordinator(
-        text: MutableBox<String>,
-        topOverlayClearance: MutableBox<CGFloat>
+        text: MutableBox<String>
     ) -> MarkdownEditorTextView.Coordinator {
         let textBinding = Binding(
             get: { text.value },
             set: { text.value = $0 }
         )
-        let topOverlayBinding = Binding(
-            get: { topOverlayClearance.value },
-            set: { topOverlayClearance.value = $0 }
-        )
         return MarkdownEditorTextView.Coordinator(
             text: textBinding,
-            topOverlayClearance: topOverlayBinding,
             onEditorFocusChange: { _ in },
             onUndoRedoAvailabilityChange: { _, _ in }
         )
@@ -617,4 +609,16 @@ private func XCTAssertClear(
 
     let resolvedColor = color.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
     XCTAssertEqual(resolvedColor.cgColor.alpha, 0, accuracy: 0.001, file: file, line: line)
+}
+
+private func XCTAssertNilOrClear(
+    _ color: UIColor?,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    guard let color else {
+        return
+    }
+
+    XCTAssertClear(color, file: file, line: line)
 }

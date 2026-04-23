@@ -4,8 +4,6 @@ struct EditorScreen: View {
     let viewModel: EditorViewModel
     let documentURL: URL
 
-    @State private var topOverlayClearance: CGFloat = 0
-
     var body: some View {
         editorContent
             .background(.background)
@@ -51,7 +49,6 @@ struct EditorScreen: View {
             ZStack(alignment: .topLeading) {
                 MarkdownEditorTextView(
                     text: viewModel.textBinding,
-                    topOverlayClearance: $topOverlayClearance,
                     documentIdentity: documentURL,
                     font: viewModel.editorUIFont,
                     syntaxMode: viewModel.markdownSyntaxMode,
@@ -70,14 +67,17 @@ struct EditorScreen: View {
                     Text("Start typing…")
                         .font(viewModel.editorFont)
                         .foregroundStyle(.secondary)
-                        .padding(.top, topOverlayClearance + EditorTextViewLayout.contentTopInset)
+                        .padding(.top, EditorTextViewLayout.contentTopInset)
                         .padding(.leading, EditorTextViewLayout.horizontalInset)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .ignoresSafeArea(.container, edges: [.top, .bottom])
+            // Let SwiftUI own top chrome / safe-area clearance so the first line and placeholder
+            // naturally sit below the navigation bar on both iPhone and iPad. The editor only
+            // underlaps at the bottom where keyboard handling needs a full-height surface.
+            .ignoresSafeArea(.container, edges: .bottom)
             .ignoresSafeArea(.keyboard, edges: .bottom)
         } else if let error = viewModel.loadError {
             ContentUnavailableView(

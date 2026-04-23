@@ -7,22 +7,25 @@
 - I could not run `xcodebuild` or launch the app in this environment, so anything marked **runtime verification needed** is based on source inspection plus the screenshots you provided.
 
 
-## 2026-04-21 review refresh
+## 2026-04-23 review refresh
 
-This refresh was done against the latest uploaded `Downward.zip` after the keyboard safe-area fix and before/with the large-file typing-latency patch in this review.
+This refresh was done against the latest uploaded `Downward.zip` after the repo was reverted back to a stable baseline.
 
 ### Checked off in this refresh
 
 - **P0 editor height / clipping** — fixed in current code. `MarkdownEditorTextView` now uses an effectively unbounded text container, tracks width, implements `sizeThatFits`, lowers vertical layout priorities, and has `MarkdownEditorTextViewSizingTests`.
-- **P0 keyboard accessory transparency** — fixed in current code. The root cause was the SwiftUI editor container ignoring only `.container` safe area, not `.keyboard`; `EditorScreen` now includes `.ignoresSafeArea(.keyboard, edges: .bottom)`.
+- **P0 keyboard accessory underlay** — fixed in current code. The root cause was the SwiftUI editor container ignoring only `.container` safe area, not `.keyboard`; `EditorScreen` now includes `.ignoresSafeArea(.keyboard, edges: .bottom)`.
 - **P0 initial keyboard underlap** — closed as obsolete. The current implementation no longer uses accessory-height underlap subtraction; it matches the prototype model by reserving the full keyboard overlap and letting the accessory overlay the full-height editor.
+- **P1 top chrome / first-line placement in code** — fixed in current code. `EditorScreen` now leaves top chrome avoidance to SwiftUI safe-area layout, and `MarkdownEditorTextView` no longer reconstructs top clearance from navigation-bar/window geometry.
 - **P1 dead `showsKeyboardToolbar` state** — fixed. The property is gone and tests now target the actual UIKit accessory view.
-- **P1 accessory appearance lifecycle hooks** — closed as obsolete. The remaining transparency issue was not solved by toolbar appearance hooks; the final fix was the keyboard safe-area underlay. The current accessory intentionally matches the prototype-style passive `UIToolbar` wrapper.
+- **P1 accessory appearance hardening** — restored in current code. The accessory wrapper and embedded `UIToolbar` now configure transparent appearance explicitly again and the tests assert that configuration.
 
 ### Still relevant after this refresh
 
 - Undo/redo/dismiss still have two command paths: visible accessory actions plus token commands.
-- Top-chrome safe-area math still needs real-device verification.
+- Real-device verification is still needed for top chrome / first-line placement on iPhone and iPad.
+- Theme/background work is still not wired end-to-end: the renderer, TextKit background drawing, editor surface, and accessory underlay do not yet share one resolved theme model.
+- Settings are still a plain `Form` and iPad settings are still just another split-view detail state, not a dedicated settings surface.
 - Workspace snapshot path lookup, search, recents pruning, and document read/write memory churn are still relevant performance items.
 - Large files now have a separate P0 typing-latency item because the uploaded `large_test_file.md` exposed multi-second keypress lag.
 - Large files/editor performance needs real device verification and, ideally, regression coverage.
@@ -39,10 +42,11 @@ The project has **good bones**:
 
 The biggest current risks are not basic data safety. They are:
 
-1. **editor layout / keyboard accessory geometry instability**,
+1. **editor chrome and theming integration still being only partially explicit**,
 2. **duplicate or stale editor paths left over from earlier implementations**,
 3. **hot-path performance on larger workspaces and larger files**,
-4. **oversized files that are becoming hard to reason about safely**.
+4. **oversized files that are becoming hard to reason about safely**,
+5. **settings/UI polish work still lacking its final product shell**.
 
 ## Project metrics from this snapshot
 
@@ -53,10 +57,10 @@ The biggest current risks are not basic data safety. They are:
   - `Tests/MarkdownWorkspaceAppSmokeTests.swift` — **3946 lines**
   - `Downward/App/AppCoordinator.swift` — **1732 lines**
   - `Downward/Domain/Workspace/WorkspaceManager.swift` — **1509 lines**
-  - `Downward/Features/Editor/MarkdownStyledTextRenderer.swift` — **1436 lines**
+  - `Downward/Features/Editor/MarkdownStyledTextRenderer.swift` — **1536 lines**
   - `Downward/Features/Workspace/WorkspaceViewModel.swift` — **1049 lines**
+  - `Downward/Features/Editor/MarkdownEditorTextView.swift` — **1018 lines**
   - `Downward/Domain/Document/PlainTextDocumentSession.swift` — **978 lines**
-  - `Downward/Features/Editor/MarkdownEditorTextView.swift` — **807 lines**
 
 ## What is already strong and should be preserved
 
@@ -278,7 +282,7 @@ The biggest current risks are not basic data safety. They are:
 
 ---
 
-## [ ] P1 — Re-test and harden top-chrome safe-area math on device
+## [x] P1 — Simplify top-chrome clearance ownership in code and move the remaining risk into real-device QA
 
 **Files**
 - `Downward/Features/Editor/EditorScreen.swift:79-80`
@@ -286,31 +290,33 @@ The biggest current risks are not basic data safety. They are:
 - `Downward/Features/Editor/MarkdownEditorTextView.swift:638-655`
 
 **Problem**
-- The editor ignores container safe areas and then manually reconstructs top clearance from navigation-bar / safe-area geometry.
-- This is workable, but it is fragile and is already called out in `TASKS.md` as a real product issue.
+- The old implementation ignored the top container safe area and then manually reconstructed clearance from navigation-bar / safe-area geometry inside the text view.
+- That split ownership was fragile and had already become a real product issue.
 
 **Why this matters**
 - This is exactly the sort of geometry code that looks correct on simulator and still fails on a real iPhone or iPad.
 
 **Recommended change**
-- Keep the dynamic approach, but verify it on:
-  - iPhone portrait
-  - iPhone landscape
-  - iPad split view
-  - large dynamic type
-- Add at least one dedicated regression test or diagnostic harness around the resulting top inset.
+- Let SwiftUI own top chrome avoidance by staying inside the top safe area.
+- Keep `MarkdownEditorTextView` responsible only for internal content padding and keyboard-driven bottom insets.
+- Add regression coverage that the text view keeps a fixed top inset and does not add extra top scroll-view compensation.
 
 **Done when**
-- The first visible line, placeholder, and caret start position all align on iPhone and iPad.
-- No device-specific magic offsets are required.
+- The first visible line, placeholder, and caret start position align in code without device-specific magic offsets.
+- The remaining work is explicit real-device QA, not more top-clearance math inside the editor.
+
+**Status after 2026-04-23 refresh**
+- Fixed in code: `EditorScreen` no longer ignores the top container safe area, `MarkdownEditorTextView` no longer reconstructs top clearance from navigation-bar/window geometry, and the placeholder/text view now share the same fixed internal top inset.
+- Targeted regression coverage now asserts the fixed top inset and zero top scroll-view compensation.
+- Keep real-device verification in `PLANS.md` before treating the UI QA gate as fully closed on shipping devices.
 
 ---
 
 ## [x] P1 — Re-apply keyboard accessory appearance on attachment and trait changes
 
 **Files**
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:734-745`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:775-789`
+- `Downward/Features/Editor/MarkdownEditorTextView.swift:891-997`
+- `Tests/EditorUndoRedoTests.swift:220-239`
 
 **Problem**
 - Transparent appearance is configured only in `KeyboardAccessoryToolbarView.init(...)`.
@@ -328,8 +334,9 @@ The biggest current risks are not basic data safety. They are:
 - The accessory appearance is stable across presentation, dismissal, and appearance changes.
 
 **Status after 2026-04-21 refresh**
-- Closed as obsolete for the current implementation. The final transparency bug was not caused by missing toolbar lifecycle hooks.
-- The accessory now intentionally behaves like the prototype: a passive clear wrapper hosting a stock `UIToolbar`; the editor underlay is provided by ignoring the keyboard safe area.
+- Reopened and now fixed as hardening work in the current tree.
+- This was not the original root cause of the first opaque-bar bug, but it is still the right defensive move before non-default themed editor backgrounds return.
+- The accessory now keeps explicit transparent toolbar appearance across keyboard-host attachment and trait changes.
 
 ---
 
