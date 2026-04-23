@@ -193,6 +193,10 @@ The current editor stack is:
 - `EditorScreen`
 - `EditorViewModel`
 - `MarkdownEditorTextView`
+- `MarkdownEditorTextViewCoordinator`
+- `EditorKeyboardAccessoryToolbarView`
+- `EditorKeyboardGeometryController`
+- `EditorChromeAwareTextView`
 - `MarkdownStyledTextRenderer`
 - `MarkdownCodeBackgroundLayoutManager`
 
@@ -202,6 +206,8 @@ Important realities:
 - markdown syntax display is a presentation layer concern,
 - editor appearance is driven by `EditorAppearanceStore`,
 - the document session remains responsible for file truth, not rich editor UI.
+
+`MarkdownEditorTextView` should stay a thin representable boundary. Text syncing, viewport reset, keyboard accessory behavior, and keyboard geometry now live in focused editor collaborators rather than being re-accumulated into one bridge file.
 
 The editor currently has a sensitive layout boundary around top chrome, safe areas, and the first visible line.
 Treat that as real product behavior, not cosmetic trivia.

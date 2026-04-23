@@ -343,6 +343,38 @@ Most long-lived tasks are tracked and canceled, but some UI event tasks in `Root
 
 ---
 
+### 10a. Split the editor bridge by responsibility
+
+**Current finding**
+
+`MarkdownEditorTextView` is no longer one giant mixed-responsibility file. The representable surface now stays small, while the shipping bridge behavior is split across dedicated editor UIKit collaborators.
+
+**Plan**
+
+- [x] Keep `MarkdownEditorTextView.swift` focused on the SwiftUI representable surface and wiring.
+- [x] Move text syncing, selection preservation, rerendering, and viewport reset behavior into `MarkdownEditorTextViewCoordinator.swift`.
+- [x] Move the accessory view UI and transparent appearance logic into `EditorKeyboardAccessoryToolbarView.swift`.
+- [x] Move keyboard notification and inset logic into `EditorKeyboardGeometryController.swift`.
+- [x] Move the custom `UITextView` subclass into `EditorChromeAwareTextView.swift`.
+- [x] Preserve the current test-facing coordinator API and current shipping editor behavior.
+- [x] Add narrow regression coverage for the extracted keyboard geometry helper while keeping the broader editor tests green.
+- [ ] Manually verify the editor on device after the split, especially top underlay, viewport reset, keyboard accessory transparency, and undo/redo commands.
+
+**Likely files**
+
+- `Downward/Features/Editor/MarkdownEditorTextView.swift`
+- `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
+- `Downward/Features/Editor/EditorKeyboardAccessoryToolbarView.swift`
+- `Downward/Features/Editor/EditorKeyboardGeometryController.swift`
+- `Downward/Features/Editor/EditorChromeAwareTextView.swift`
+- `Tests/EditorUndoRedoTests.swift`
+- `Tests/MarkdownEditorTextViewSizingTests.swift`
+- `Tests/EditorKeyboardGeometryControllerTests.swift`
+
+Note: this was a pure responsibility split. The current top underlay, first-line placement, document-open viewport reset, keyboard accessory transparency, and resolved theme pipeline are intentionally unchanged.
+
+---
+
 ## P1 — markdown feature architecture preparation
 
 ### 11. Add semantic token types before adding more markdown features

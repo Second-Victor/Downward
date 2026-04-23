@@ -20,6 +20,7 @@ The strongest current foundations are:
 - explicit keyboard-safe-area underlap for the editor,
 - seamless top editor underlay with a shared safe-area-driven first-line inset, an outer-geometry top-clearance source, and explicit document-open viewport reset,
 - a shared resolved editor theme pipeline for renderer colors, TextKit backgrounds, and a transparent-by-default keyboard accessory host,
+- a split editor bridge where the representable, coordinator, accessory view, keyboard geometry, and `UITextView` subclass now live in focused files,
 - an explicit markdown syntax visibility contract for future renderer work,
 - a maintained card-style settings shell with compact push navigation and a dedicated regular-width iPad sheet,
 - recent files and editor appearance persistence,

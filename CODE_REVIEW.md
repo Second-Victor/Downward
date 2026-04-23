@@ -21,6 +21,7 @@ This refresh was done against the latest uploaded `Downward.zip` after the repo 
 - **P1 dead `showsKeyboardToolbar` state** — fixed. The property is gone and tests now target the actual UIKit accessory view.
 - **P1 accessory appearance hardening** — fixed in current code. The accessory wrapper and embedded `UIToolbar` configure transparent appearance explicitly again, and the default accessory host underlay is transparent instead of painting an opaque system background.
 - **P1 resolved editor theme pipeline** — fixed in current code. The editor surface, renderer text colors, TextKit code/blockquote drawing, caret tint, and keyboard accessory styling now resolve from one runtime theme model with focused regression coverage.
+- **P1 editor bridge split** — fixed in current code. `MarkdownEditorTextView.swift` is now a thin representable file, while the coordinator, accessory view, keyboard geometry, and `UITextView` subclass live in focused collaborators with the existing editor regressions still covered by tests.
 
 ### Still relevant after this refresh
 
@@ -48,14 +49,14 @@ The biggest current risks are not basic data safety. They are:
 1. **editor chrome and theming integration still being only partially explicit**,
 2. **duplicate or stale editor paths left over from earlier implementations**,
 3. **hot-path performance on larger workspaces and larger files**,
-4. **oversized coordinator/editor files that are becoming hard to reason about safely**,
+4. **oversized coordinator/renderer files that are becoming hard to reason about safely**,
 5. **theme/customization surfaces still need to grow on top of the new settings shell**.
 
 ## Project metrics from this snapshot
 
-- **86 Swift files total**
-  - **64 app files**
-  - **22 test files**
+- **92 Swift files total**
+  - **68 app files**
+  - **24 test files**
 - Largest files:
   - `Downward/App/AppCoordinator.swift` — **1732 lines**
   - `Downward/Features/Editor/MarkdownStyledTextRenderer.swift` — **1600 lines**
@@ -64,8 +65,8 @@ The biggest current risks are not basic data safety. They are:
   - `Tests/DocumentManagerTests.swift` — **1138 lines**
   - `Downward/Features/Workspace/WorkspaceViewModel.swift` — **1049 lines**
   - `Downward/Domain/Document/PlainTextDocumentSession.swift` — **978 lines**
-  - `Downward/Features/Editor/MarkdownEditorTextView.swift` — **973 lines**
   - `Tests/EditorAutosaveTests.swift` — **888 lines**
+  - `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift` — **661 lines**
 
 ## What is already strong and should be preserved
 
@@ -460,13 +461,17 @@ The biggest current risks are not basic data safety. They are:
 
 # 4) P1/P2 architecture and maintainability
 
-## [ ] P1 — Split `MarkdownEditorTextView.swift` by responsibility
+## [x] P1 — Split `MarkdownEditorTextView.swift` by responsibility
 
-**File**
-- `Downward/Features/Editor/MarkdownEditorTextView.swift` (**807 lines**)
+**Files**
+- `Downward/Features/Editor/MarkdownEditorTextView.swift` (**142 lines**)
+- `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift` (**661 lines**)
+- `Downward/Features/Editor/EditorKeyboardAccessoryToolbarView.swift`
+- `Downward/Features/Editor/EditorKeyboardGeometryController.swift`
+- `Downward/Features/Editor/EditorChromeAwareTextView.swift`
 
 **Problem**
-This file currently owns all of these responsibilities at once:
+The old bridge file used to own all of these responsibilities at once:
 
 - SwiftUI `UIViewRepresentable` construction
 - coordinator lifecycle
@@ -479,12 +484,11 @@ This file currently owns all of these responsibilities at once:
 - custom `UITextView` subclass
 - custom accessory view class
 
-**Why this matters**
-- This is now the highest-risk UI file in the app.
-- Small changes in one area can easily break another.
-- It is already hard to review and even harder to debug quickly.
+**Why this mattered**
+- Small changes in one area could easily break another.
+- The editor bridge had become hard to review and even harder to debug quickly.
 
-**Recommended split**
+**Implemented split**
 - `MarkdownEditorTextView.swift` — representable surface only
 - `MarkdownEditorTextViewCoordinator.swift` — text sync / selection / rendering
 - `EditorKeyboardAccessoryToolbarView.swift` — accessory UI only
@@ -493,6 +497,10 @@ This file currently owns all of these responsibilities at once:
 
 **Done when**
 - No single editor file owns both rendering and keyboard geometry and accessory UI.
+
+**Status after 2026-04-23 refactor**
+- Done in current code.
+- Focused coverage still passes for sizing, viewport reset, same-document scroll preservation, transparent accessory behavior, deferred rerendering, and the extracted keyboard geometry helper.
 
 ---
 
