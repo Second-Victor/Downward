@@ -273,6 +273,34 @@ Note: the remaining smoke file is now 738 lines and the focused suites keep rest
 
 ---
 
+### 8a. Ship the settings redesign as a real maintained surface
+
+**Current finding**
+
+The settings surface is now a custom card-style screen instead of a plain `Form`. Compact width still uses the existing push-style settings route, while regular width presents settings as a dedicated sheet over the split view so iPad no longer treats settings as just another detail replacement.
+
+**Plan**
+
+- [x] Replace the plain `Form` with a maintained card-style settings shell.
+- [x] Keep the shipping workspace, editor font, editor font size, and markdown display settings fully functional.
+- [x] Use the existing `.settings` navigation state in compact width without adding coordinator-only presentation branches.
+- [x] Present regular-width settings as a dedicated sheet while keeping the editor or placeholder detail visible underneath.
+- [x] Keep future theme/import work as explicit placeholders instead of fake-complete controls.
+- [x] Add focused session-level coverage for the regular-width settings presentation fallback behavior.
+- [x] Add representative previews for loaded workspace, no workspace, large Dynamic Type, and the regular-width sheet presentation.
+- [ ] Manually verify iPhone flow, iPad flow, reconnect, clear confirmation, editor font changes, markdown mode changes, and Dynamic Type on device.
+
+**Likely files**
+
+- `Downward/Features/Settings/SettingsScreen.swift`
+- `Downward/Features/Root/RootScreen.swift`
+- `Downward/App/AppSession.swift`
+- `Tests/AppSessionSettingsPresentationTests.swift`
+
+Note: the shipping settings surface is now a maintained shell, but theme management and JSON import/export are still future work and stay labeled as such.
+
+---
+
 ### 9. Make fire-and-forget tasks explicit
 
 **Current finding**
@@ -487,7 +515,8 @@ Theme switches should eventually avoid reparsing markdown.
 - [ ] Verify scroll indicators with top chrome and keyboard visible.
 - [ ] Verify the editor remains usable in iCloud Drive and local Files workspaces.
 
-Note: the code path no longer reconstructs top clearance from navigation-bar/window geometry. The editor surface now underlaps the top chrome again, while `MarkdownEditorTextView` and the placeholder share one safe-area-driven top inset helper and still keep zero extra scroll-view top compensation. Real-device verification is still required before closing the remaining QA bullets above.
+Note: the code path no longer reconstructs top clearance from navigation-bar/window geometry. The editor surface now underlaps the top chrome again, while `MarkdownEditorTextView` and the placeholder share one safe-area-driven top inset helper and still keep zero extra scroll-view top compensation. The final top-offset fix also measures `topViewportInset` outside the ignored-safe-area editor subtree, so the editor does not accidentally see zero top clearance on open. Real-device verification is still required before closing the remaining QA bullets above.
+New-document opens also reset the text view viewport to the document-start resting position instead of preserving a stale scroll offset across document switches, while same-document rerenders still keep the current scroll position.
 
 ---
 

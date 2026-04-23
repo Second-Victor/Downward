@@ -16,7 +16,8 @@ This refresh was done against the latest uploaded `Downward.zip` after the repo 
 - **P0 editor height / clipping** — fixed in current code. `MarkdownEditorTextView` now uses an effectively unbounded text container, tracks width, implements `sizeThatFits`, lowers vertical layout priorities, and has `MarkdownEditorTextViewSizingTests`.
 - **P0 keyboard accessory underlay** — fixed in current code. The root cause was the SwiftUI editor container ignoring only `.container` safe area, not `.keyboard`; `EditorScreen` now includes `.ignoresSafeArea(.keyboard, edges: .bottom)`.
 - **P0 initial keyboard underlap** — closed as obsolete. The current implementation no longer uses accessory-height underlap subtraction; it matches the prototype model by reserving the full keyboard overlap and letting the accessory overlay the full-height editor.
-- **P1 top chrome / first-line placement in code** — fixed in current code. The editor surface underlaps the top chrome again, while `EditorScreen` and `MarkdownEditorTextView` now share one safe-area-driven top inset contract for the first line and placeholder instead of reconstructing clearance from navigation-bar/window geometry.
+- **P1 top chrome / first-line placement in code** — fixed in current code. The editor surface underlaps the top chrome again, while `EditorScreen` and `MarkdownEditorTextView` now share one safe-area-driven top inset contract for the first line and placeholder instead of reconstructing clearance from navigation-bar/window geometry. The final regression fix also moved the `topViewportInset` measurement out of the ignored-safe-area editor subtree so document opens do not accidentally see zero top clearance.
+- **P1 initial document-open viewport anchoring** — fixed in current code. `MarkdownEditorTextView` no longer preserves stale `contentOffset` values across document identity changes, and top-inset changes only re-anchor the viewport when the editor is already resting at document start.
 - **P1 dead `showsKeyboardToolbar` state** — fixed. The property is gone and tests now target the actual UIKit accessory view.
 - **P1 accessory appearance hardening** — fixed in current code. The accessory wrapper and embedded `UIToolbar` configure transparent appearance explicitly again, and the default accessory host underlay is transparent instead of painting an opaque system background.
 - **P1 resolved editor theme pipeline** — fixed in current code. The editor surface, renderer text colors, TextKit code/blockquote drawing, caret tint, and keyboard accessory styling now resolve from one runtime theme model with focused regression coverage.
@@ -27,7 +28,7 @@ This refresh was done against the latest uploaded `Downward.zip` after the repo 
 - Real-device verification is still needed for top chrome / first-line placement on iPhone and iPad.
 - Real-device verification is still needed for light, dark, and non-standard editor backgrounds now that the shared theme/accessory pipeline exists and the accessory host is transparent-by-default again.
 - User-facing custom theme management and JSON import/export are still future work.
-- Settings are still a plain `Form` and iPad settings are still just another split-view detail state, not a dedicated settings surface.
+- Settings now ship as a maintained card-style shell, and regular-width iPad settings present as a dedicated sheet instead of replacing the split-view detail pane.
 - Workspace snapshot path lookup, search, recents pruning, and document read/write memory churn are still relevant performance items.
 - Large files now have a separate P0 typing-latency item because the uploaded `large_test_file.md` exposed multi-second keypress lag.
 - Large files/editor performance needs real device verification and, ideally, regression coverage.
@@ -48,7 +49,7 @@ The biggest current risks are not basic data safety. They are:
 2. **duplicate or stale editor paths left over from earlier implementations**,
 3. **hot-path performance on larger workspaces and larger files**,
 4. **oversized coordinator/editor files that are becoming hard to reason about safely**,
-5. **settings/UI polish work still lacking its final product shell**.
+5. **theme/customization surfaces still need to grow on top of the new settings shell**.
 
 ## Project metrics from this snapshot
 
@@ -314,7 +315,9 @@ The biggest current risks are not basic data safety. They are:
 
 **Status after 2026-04-23 refresh**
 - Fixed in code: `EditorScreen` underlaps the top chrome again, `MarkdownEditorTextView` still avoids navigation-bar/window geometry math, and the placeholder/text view now share the same safe-area-driven top inset helper.
-- Targeted regression coverage now asserts the shared top inset helper and zero top scroll-view compensation.
+- The final first-line regression fix measures top clearance from an outer geometry scope instead of from inside the underlapped editor subtree, which prevents newly opened documents from starting behind the navigation chrome.
+- The document-open regression is also fixed in code: new document identities normalize the viewport back to the document-start resting position instead of preserving a stale scroll offset from the previous document or layout pass.
+- Targeted regression coverage now asserts the shared top inset helper, zero top scroll-view compensation, document-switch viewport reset, and same-document scroll preservation.
 - Keep real-device verification in `PLANS.md` before treating the UI QA gate as fully closed on shipping devices.
 
 ---

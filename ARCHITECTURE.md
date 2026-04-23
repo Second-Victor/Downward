@@ -91,6 +91,12 @@ It holds:
 - user-facing alerts and workspace alerts,
 - recent-file and settings presentation state.
 
+Settings presentation still lives in the app/session navigation seam:
+
+- compact width pushes `.settings` in the navigation path,
+- regular width uses the same `.settings` state to drive a dedicated settings sheet over the split view,
+- `SettingsScreen` remains a feature view and should not absorb coordinator or file-system logic.
+
 It should stay declarative and lightweight.
 It is not the place for file-system rules.
 

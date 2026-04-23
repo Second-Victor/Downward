@@ -167,6 +167,7 @@ extension MarkdownEditorTextView {
         private var hasUnrenderedTextMutation = false
         private var deferredRerenderTask: Task<Void, Never>?
         private var deferredRerenderGeneration = 0
+        private var viewportResetTask: Task<Void, Never>?
 
         init(
             text: Binding<String>,
@@ -180,6 +181,7 @@ extension MarkdownEditorTextView {
 
         deinit {
             deferredRerenderTask?.cancel()
+            viewportResetTask?.cancel()
             if isObservingKeyboard {
                 NotificationCenter.default.removeObserver(self)
             }
@@ -195,6 +197,7 @@ extension MarkdownEditorTextView {
         ) {
             let previousConfiguration = self.configuration
             let previousIdentity = previousConfiguration?.documentIdentity
+            let resetsViewportToDocumentStart = previousIdentity != nil && previousIdentity != configuration.documentIdentity
             let liveText = textView.text ?? ""
             textView.isEditable = configuration.isEditable
             textView.isSelectable = true
@@ -211,6 +214,7 @@ extension MarkdownEditorTextView {
 
             if previousIdentity != configuration.documentIdentity {
                 cancelDeferredRerender()
+                cancelViewportReset()
                 textView.selectedRange = NSRange(location: 0, length: 0)
                 lastRevealedLineRange = nil
                 hasUnrenderedTextMutation = false
@@ -259,7 +263,11 @@ extension MarkdownEditorTextView {
             }
 
             cancelDeferredRerender()
-            applyRenderedText(to: textView, using: configuration)
+            applyRenderedText(
+                to: textView,
+                using: configuration,
+                preserveViewport: resetsViewportToDocumentStart == false
+            )
             handlePendingEditorCommands(
                 in: textView,
                 undoCommandToken: undoCommandToken,
@@ -271,6 +279,7 @@ extension MarkdownEditorTextView {
         }
 
         func applyTopViewportInset(_ topViewportInset: CGFloat, to textView: UITextView) {
+            let wasAtDocumentStart = isNearDocumentStart(in: textView)
             var updatedTextContainerInset = textView.textContainerInset
             let resolvedTopInset = EditorTextViewLayout.effectiveTopInset(topViewportInset: topViewportInset)
             guard updatedTextContainerInset.top != resolvedTopInset else {
@@ -279,6 +288,9 @@ extension MarkdownEditorTextView {
 
             updatedTextContainerInset.top = resolvedTopInset
             textView.textContainerInset = updatedTextContainerInset
+            if wasAtDocumentStart {
+                normalizeViewportToDocumentStart(in: textView)
+            }
         }
 
         private func applyResolvedTheme(_ resolvedTheme: ResolvedEditorTheme, to textView: UITextView) {
@@ -478,10 +490,11 @@ extension MarkdownEditorTextView {
 
         private func applyRenderedText(
             to textView: UITextView,
-            using configuration: Configuration
+            using configuration: Configuration,
+            preserveViewport: Bool
         ) {
             let selectedRange = safeSelectedRange(for: textView, text: configuration.text)
-            let contentOffset = textView.contentOffset
+            let preservedContentOffset = textView.contentOffset
             let revealedLineRange = renderer.revealedLineRange(
                 for: selectedRange,
                 in: configuration.text
@@ -502,7 +515,17 @@ extension MarkdownEditorTextView {
             applyAttributedTextInPlace(attributedText, to: textView)
             updateTypingAttributes(for: textView, font: configuration.font, resolvedTheme: configuration.resolvedTheme)
             textView.selectedRange = safeRange(selectedRange, forTextLength: textView.textStorage.length)
-            textView.setContentOffset(contentOffset, animated: false)
+            if preserveViewport {
+                textView.setContentOffset(preservedContentOffset, animated: false)
+            } else {
+                // A newly opened document should start from the resting top position instead of
+                // inheriting whatever scroll offset the previous document or layout pass used.
+                normalizeViewportToDocumentStart(in: textView)
+                scheduleViewportResetToDocumentStart(
+                    in: textView,
+                    documentIdentity: configuration.documentIdentity
+                )
+            }
             isApplyingProgrammaticChange = false
             lastRevealedLineRange = revealedLineRange
             hasUnrenderedTextMutation = false
@@ -600,7 +623,8 @@ extension MarkdownEditorTextView {
                         resolvedTheme: latestConfiguration.resolvedTheme,
                         syntaxMode: latestConfiguration.syntaxMode,
                         isEditable: latestConfiguration.isEditable
-                    )
+                    ),
+                    preserveViewport: true
                 )
                 self.publishUndoRedoAvailability(for: textView)
                 self.updateKeyboardAccessoryState(for: textView)
@@ -610,6 +634,11 @@ extension MarkdownEditorTextView {
         private func cancelDeferredRerender() {
             deferredRerenderTask?.cancel()
             deferredRerenderTask = nil
+        }
+
+        private func cancelViewportReset() {
+            viewportResetTask?.cancel()
+            viewportResetTask = nil
         }
 
         private func handlePendingEditorCommands(
@@ -829,6 +858,36 @@ extension MarkdownEditorTextView {
             let location = min(max(range.location, 0), textLength)
             let length = min(max(range.length, 0), textLength - location)
             return NSRange(location: location, length: length)
+        }
+
+        func normalizeViewportToDocumentStart(in textView: UITextView) {
+            textView.layoutIfNeeded()
+            textView.setContentOffset(.zero, animated: false)
+        }
+
+        func isNearDocumentStart(in textView: UITextView, tolerance: CGFloat = 1) -> Bool {
+            textView.contentOffset.y <= tolerance
+                && textView.contentOffset.x <= tolerance
+        }
+
+        private func scheduleViewportResetToDocumentStart(
+            in textView: UITextView,
+            documentIdentity: URL
+        ) {
+            cancelViewportReset()
+            viewportResetTask = Task { @MainActor [weak self, weak textView] in
+                await Task.yield()
+                guard
+                    let self,
+                    let textView,
+                    self.configuration?.documentIdentity == documentIdentity
+                else {
+                    return
+                }
+
+                self.normalizeViewportToDocumentStart(in: textView)
+                self.viewportResetTask = nil
+            }
         }
     }
 }

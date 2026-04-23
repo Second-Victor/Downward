@@ -185,6 +185,112 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorResetsViewportToDocumentStartWhenSwitchingDocuments() {
+        let textBox = MutableBox(String(repeating: "Line\n", count: 120))
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let initialConfiguration = makeConfiguration(
+            text: textBox.value,
+            documentIdentity: PreviewSampleData.cleanDocument.url
+        )
+
+        coordinator.apply(
+            configuration: initialConfiguration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.contentSize = CGSize(width: 320, height: 2400)
+        textView.contentOffset = CGPoint(x: 0, y: 120)
+        textView.selectedRange = NSRange(location: 18, length: 0)
+
+        coordinator.apply(
+            configuration: makeConfiguration(
+                text: "Replacement document",
+                documentIdentity: PreviewSampleData.dirtyDocument.url
+            ),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: false
+        )
+
+        XCTAssertTrue(coordinator.isNearDocumentStart(in: textView))
+        XCTAssertLessThan(textView.contentOffset.y, 40)
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 0, length: 0))
+    }
+
+    @MainActor
+    func testCoordinatorPreservesViewportForSameDocumentRerender() {
+        let textBox = MutableBox(String(repeating: "Line\n", count: 120))
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let configuration = makeConfiguration(
+            text: textBox.value,
+            documentIdentity: PreviewSampleData.cleanDocument.url
+        )
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.contentSize = CGSize(width: 320, height: 2400)
+        textView.contentOffset = CGPoint(x: 0, y: 120)
+
+        coordinator.apply(
+            configuration: makeConfiguration(
+                text: textBox.value + "\nAppended line",
+                documentIdentity: PreviewSampleData.cleanDocument.url
+            ),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: false
+        )
+
+        XCTAssertEqual(textView.contentOffset.y, 120, accuracy: 0.5)
+    }
+
+    @MainActor
+    func testTopViewportInsetChangeKeepsScrolledDocumentStableAwayFromTop() {
+        let textBox = MutableBox(String(repeating: "Line\n", count: 120))
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let configuration = makeConfiguration(text: textBox.value)
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.contentSize = CGSize(width: 320, height: 2400)
+        textView.contentOffset = CGPoint(x: 0, y: 120)
+
+        coordinator.applyTopViewportInset(92, to: textView)
+
+        XCTAssertEqual(textView.contentOffset.y, 120, accuracy: 0.5)
+        XCTAssertEqual(
+            textView.textContainerInset.top,
+            EditorTextViewLayout.effectiveTopInset(topViewportInset: 92),
+            accuracy: 0.5
+        )
+    }
+
+    @MainActor
     func testAccessoryLayoutDoesNotRewriteBottomKeyboardInsets() {
         let textBox = MutableBox("Draft")
         let coordinator = makeCoordinator(text: textBox)
@@ -609,9 +715,17 @@ final class EditorUndoRedoTests: XCTestCase {
 
     @MainActor
     private func makeConfiguration(text: String) -> MarkdownEditorTextView.Configuration {
+        makeConfiguration(text: text, documentIdentity: PreviewSampleData.cleanDocument.url)
+    }
+
+    @MainActor
+    private func makeConfiguration(
+        text: String,
+        documentIdentity: URL
+    ) -> MarkdownEditorTextView.Configuration {
         MarkdownEditorTextView.Configuration(
             text: text,
-            documentIdentity: PreviewSampleData.cleanDocument.url,
+            documentIdentity: documentIdentity,
             font: .preferredFont(forTextStyle: .body),
             syntaxMode: .visible,
             isEditable: true

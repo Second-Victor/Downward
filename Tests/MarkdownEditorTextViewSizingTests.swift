@@ -53,9 +53,14 @@ final class MarkdownEditorTextViewSizingTests: XCTestCase {
         XCTAssertEqual(textView.textContainerInset.right, EditorTextViewLayout.horizontalInset)
         XCTAssertEqual(textView.textContainerInset.bottom, EditorTextViewLayout.bottomInset)
         XCTAssertEqual(textView.contentInset.top, 0)
+        XCTAssertEqual(textView.contentOffset.y, 0, accuracy: 0.5)
         XCTAssertEqual(textView.verticalScrollIndicatorInsets.top, 0)
         XCTAssertEqual(textView.contentCompressionResistancePriority(for: .vertical), .defaultLow)
         XCTAssertEqual(textView.contentHuggingPriority(for: .vertical), .defaultLow)
+        XCTAssertGreaterThanOrEqual(
+            visibleTopOfFirstGlyph(in: textView),
+            EditorTextViewLayout.effectiveTopInset(topViewportInset: topViewportInset) - 1
+        )
     }
 
     @MainActor
@@ -83,6 +88,17 @@ final class MarkdownEditorTextViewSizingTests: XCTestCase {
         }
 
         return nil
+    }
+
+    @MainActor
+    private func visibleTopOfFirstGlyph(in textView: UITextView) -> CGFloat {
+        textView.layoutIfNeeded()
+        let glyphRange = textView.layoutManager.glyphRange(
+            forCharacterRange: NSRange(location: 0, length: min(1, textView.textStorage.length)),
+            actualCharacterRange: nil
+        )
+        let glyphRect = textView.layoutManager.boundingRect(forGlyphRange: glyphRange, in: textView.textContainer)
+        return glyphRect.minY + textView.textContainerInset.top - textView.contentOffset.y
     }
 }
 

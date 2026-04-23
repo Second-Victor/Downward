@@ -18,13 +18,14 @@ The strongest current foundations are:
 - quiet autosave, explicit autosave cancellation, and calmer revalidation,
 - a split app-level test stack with a short smoke suite plus focused restore, mutation, and trusted-open/recent suites,
 - explicit keyboard-safe-area underlap for the editor,
-- seamless top editor underlay with a shared safe-area-driven first-line inset,
+- seamless top editor underlay with a shared safe-area-driven first-line inset, an outer-geometry top-clearance source, and explicit document-open viewport reset,
 - a shared resolved editor theme pipeline for renderer colors, TextKit backgrounds, and a transparent-by-default keyboard accessory host,
 - an explicit markdown syntax visibility contract for future renderer work,
+- a maintained card-style settings shell with compact push navigation and a dedicated regular-width iPad sheet,
 - recent files and editor appearance persistence,
 - a broad test suite around risky behaviors.
 
-The main risks now are **maintainability**, **large-file pressure**, **renderer/theme extensibility**, and **real-device UI polish**, not basic correctness. The main editor-specific risk is still real-device verification of the shared theme/accessory pipeline on non-standard backgrounds; user-facing custom theme management and JSON import/export are still future work.
+The main risks now are **maintainability**, **large-file pressure**, **renderer/theme extensibility**, and **real-device UI polish**, not basic correctness. The main editor-specific risks are still real-device verification of initial first-line placement on iPhone/iPad and of the shared theme/accessory pipeline on non-standard backgrounds; the settings shell is now real, but theme management and JSON import/export are still future work.
 
 ---
 
@@ -72,23 +73,23 @@ These are not backlog items. They are shipping expectations.
 - hidden syntax remains glyph-level layout behavior rather than font/kerning tricks,
 - new editor UX does not automatically land in either file.
 
-### 3. Ship the settings redesign as a real maintained surface
+### 3. Turn the redesigned settings shell into fuller theme management later
 
 **Why**
 
-The current settings screen works but still looks like a stopgap compared with the desired product direction. On iPad it is still just another detail state inside the split view, not a dedicated settings surface.
+The settings shell is now a real product surface, but its theme and import sections are still explicit placeholders. Future work should extend that shell instead of replacing it.
 
 **Success**
 
-- replace the plain `Form` presentation with the card-style settings flow,
-- wire existing editor and workspace settings to the redesigned UI,
-- decide and implement the intended iPad presentation model,
-- keep undeveloped sections as explicit placeholders rather than fake-complete settings.
+- add real theme management on top of the existing shell,
+- keep compact settings as a push and regular-width settings as the dedicated sheet,
+- preserve the existing working workspace/editor controls,
+- keep import/export honest until the JSON theme model actually ships.
 
 **Likely files**
 
 - `Downward/Features/Settings/SettingsScreen.swift`
-- small dedicated settings subviews if needed
+- future dedicated theme settings views if needed
 
 ---
 

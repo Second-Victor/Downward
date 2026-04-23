@@ -9,81 +9,80 @@ struct EditorScreen: View {
     }
 
     var body: some View {
-        editorContent
-            .background(Color(uiColor: resolvedTheme.editorBackground))
-            .navigationTitle(viewModel.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .editorNavigationSubtitle(viewModel.documentLocationText)
-            .task(id: documentURL) {
-                viewModel.handleAppear(for: documentURL)
-            }
-            .onDisappear {
-                viewModel.handleDisappear(for: documentURL)
-            }
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if viewModel.showsConflictResolveAction {
-                        Button("Resolve") {
-                            viewModel.presentConflictResolution()
+        GeometryReader { proxy in
+            editorContent(topViewportInset: proxy.safeAreaInsets.top)
+                .background(Color(uiColor: resolvedTheme.editorBackground))
+                .navigationTitle(viewModel.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .editorNavigationSubtitle(viewModel.documentLocationText)
+                .task(id: documentURL) {
+                    viewModel.handleAppear(for: documentURL)
+                }
+                .onDisappear {
+                    viewModel.handleDisappear(for: documentURL)
+                }
+                .toolbar {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        if viewModel.showsConflictResolveAction {
+                            Button("Resolve") {
+                                viewModel.presentConflictResolution()
+                            }
+                            .accessibilityHint("Review options for the current file conflict.")
                         }
-                        .accessibilityHint("Review options for the current file conflict.")
-                    }
 
-                    if viewModel.showsSaveStatusIndicator {
-                        EditorOverlayChrome(viewModel: viewModel)
+                        if viewModel.showsSaveStatusIndicator {
+                            EditorOverlayChrome(viewModel: viewModel)
+                        }
                     }
                 }
-            }
-            .sheet(isPresented: conflictSheetBinding) {
-                ConflictResolutionView(viewModel: viewModel)
-            }
-            .alert(item: editorAlertBinding) { error in
-                Alert(
-                    title: Text(error.title),
-                    message: Text([error.message, error.recoverySuggestion].compactMap { $0 }.joined(separator: "\n\n")),
-                    dismissButton: .default(Text("OK")) {
-                        viewModel.dismissAlert()
-                    }
-                )
-            }
-    }
-    @ViewBuilder
-    private var editorContent: some View {
-        if viewModel.currentRouteDocument != nil {
-            GeometryReader { proxy in
-                let topViewportInset = proxy.safeAreaInsets.top
-
-                ZStack(alignment: .topLeading) {
-                    MarkdownEditorTextView(
-                        text: viewModel.textBinding,
-                        documentIdentity: documentURL,
-                        topViewportInset: topViewportInset,
-                        font: viewModel.editorUIFont,
-                        resolvedTheme: resolvedTheme,
-                        syntaxMode: viewModel.markdownSyntaxMode,
-                        isEditable: viewModel.isResolvingConflict == false
-                            && viewModel.isShowingConflictResolution == false,
-                        undoCommandToken: viewModel.undoCommandToken,
-                        redoCommandToken: viewModel.redoCommandToken,
-                        dismissKeyboardCommandToken: viewModel.dismissKeyboardCommandToken,
-                        onEditorFocusChange: viewModel.handleEditorFocusChange(_:),
-                        onUndoRedoAvailabilityChange: viewModel.updateUndoRedoAvailability(canUndo:canRedo:)
+                .sheet(isPresented: conflictSheetBinding) {
+                    ConflictResolutionView(viewModel: viewModel)
+                }
+                .alert(item: editorAlertBinding) { error in
+                    Alert(
+                        title: Text(error.title),
+                        message: Text([error.message, error.recoverySuggestion].compactMap { $0 }.joined(separator: "\n\n")),
+                        dismissButton: .default(Text("OK")) {
+                            viewModel.dismissAlert()
+                        }
                     )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
-
-                    if viewModel.showsEmptyDocumentPlaceholder {
-                        Text("Start typing…")
-                            .font(viewModel.editorFont)
-                            .foregroundStyle(Color(uiColor: resolvedTheme.secondaryText))
-                            .padding(.top, EditorTextViewLayout.effectiveTopInset(topViewportInset: topViewportInset))
-                            .padding(.leading, EditorTextViewLayout.horizontalInset)
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+
+    @ViewBuilder
+    private func editorContent(topViewportInset: CGFloat) -> some View {
+        if viewModel.currentRouteDocument != nil {
+            ZStack(alignment: .topLeading) {
+                MarkdownEditorTextView(
+                    text: viewModel.textBinding,
+                    documentIdentity: documentURL,
+                    topViewportInset: topViewportInset,
+                    font: viewModel.editorUIFont,
+                    resolvedTheme: resolvedTheme,
+                    syntaxMode: viewModel.markdownSyntaxMode,
+                    isEditable: viewModel.isResolvingConflict == false
+                        && viewModel.isShowingConflictResolution == false,
+                    undoCommandToken: viewModel.undoCommandToken,
+                    redoCommandToken: viewModel.redoCommandToken,
+                    dismissKeyboardCommandToken: viewModel.dismissKeyboardCommandToken,
+                    onEditorFocusChange: viewModel.handleEditorFocusChange(_:),
+                    onUndoRedoAvailabilityChange: viewModel.updateUndoRedoAvailability(canUndo:canRedo:)
+                )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
+
+                if viewModel.showsEmptyDocumentPlaceholder {
+                    Text("Start typing…")
+                        .font(viewModel.editorFont)
+                        .foregroundStyle(Color(uiColor: resolvedTheme.secondaryText))
+                        .padding(.top, EditorTextViewLayout.effectiveTopInset(topViewportInset: topViewportInset))
+                        .padding(.leading, EditorTextViewLayout.horizontalInset)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             // Keep the editor surface visually continuous under the top chrome, but derive the
             // visible first-line/placeholder position from the live safe-area inset in one place.
             .ignoresSafeArea(.container, edges: [.top, .bottom])

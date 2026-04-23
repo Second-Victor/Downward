@@ -85,6 +85,28 @@ final class AppSession {
         )
     }
 
+    /// Regular-width settings present as a dedicated sheet, but the split-view detail should keep
+    /// rendering the current editor or placeholder beneath that sheet instead of blanking out.
+    var regularWorkspaceDisplayDetail: RegularWorkspaceDetail {
+        guard regularDetailSelection == .settings else {
+            return regularWorkspaceDetail
+        }
+
+        if let openDocument {
+            return .editor(openDocument.url)
+        }
+
+        if let pendingEditorPresentation {
+            return .editor(pendingEditorPresentation.routeURL)
+        }
+
+        return .placeholder
+    }
+
+    var isShowingRegularSettingsSurface: Bool {
+        navigationLayout == .regular && regularDetailSelection == .settings
+    }
+
     var visibleDetailSelection: RegularWorkspaceDetailSelection {
         switch navigationLayout {
         case .compact:
@@ -137,6 +159,24 @@ final class AppSession {
 
     func applyNavigationState(_ navigationState: WorkspaceNavigationState) {
         self.navigationState = navigationState
+    }
+
+    func dismissRegularSettingsSurface() {
+        guard isShowingRegularSettingsSurface else {
+            return
+        }
+
+        if let openDocument {
+            regularDetailSelection = .editor(openDocument.relativePath)
+            return
+        }
+
+        if let pendingEditorPresentation {
+            regularDetailSelection = .editor(pendingEditorPresentation.relativePath)
+            return
+        }
+
+        regularDetailSelection = .placeholder
     }
 }
 

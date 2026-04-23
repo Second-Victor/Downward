@@ -122,6 +122,8 @@ private struct RegularWorkspaceShell: View {
     let viewModel: RootViewModel
 
     var body: some View {
+        @Bindable var session = viewModel.session
+
         NavigationSplitView {
             WorkspaceScreen(
                 viewModel: viewModel.workspaceViewModel,
@@ -132,6 +134,33 @@ private struct RegularWorkspaceShell: View {
             RegularWorkspaceDetailView(viewModel: viewModel)
         }
         .navigationSplitViewStyle(.balanced)
+        // Regular-width settings are a dedicated surface over the split view rather than a detail
+        // replacement, but they still reuse the existing `.settings` navigation state.
+        .sheet(isPresented: regularSettingsPresentationBinding) {
+            NavigationStack {
+                SettingsScreen(
+                    workspaceName: viewModel.workspaceName,
+                    accessState: viewModel.workspaceAccessState,
+                    editorAppearanceStore: viewModel.editorAppearanceStore,
+                    reconnectWorkspaceAction: viewModel.presentFolderPicker,
+                    clearWorkspaceAction: viewModel.clearWorkspace,
+                    dismissAction: {
+                        session.dismissRegularSettingsSurface()
+                    }
+                )
+            }
+        }
+    }
+
+    private var regularSettingsPresentationBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.session.isShowingRegularSettingsSurface },
+            set: { isPresented in
+                if isPresented == false {
+                    viewModel.session.dismissRegularSettingsSurface()
+                }
+            }
+        )
     }
 }
 
@@ -140,17 +169,11 @@ private struct RegularWorkspaceDetailView: View {
 
     var body: some View {
         NavigationStack {
-            switch viewModel.session.regularWorkspaceDetail {
+            switch viewModel.session.regularWorkspaceDisplayDetail {
             case .placeholder:
                 WorkspacePlaceholderDetailView()
             case .settings:
-                SettingsScreen(
-                    workspaceName: viewModel.workspaceName,
-                    accessState: viewModel.workspaceAccessState,
-                    editorAppearanceStore: viewModel.editorAppearanceStore,
-                    reconnectWorkspaceAction: viewModel.presentFolderPicker,
-                    clearWorkspaceAction: viewModel.clearWorkspace
-                )
+                WorkspacePlaceholderDetailView()
             case let .editor(documentURL):
                 EditorScreen(
                     viewModel: viewModel.editorViewModel,
