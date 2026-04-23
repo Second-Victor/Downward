@@ -16,7 +16,7 @@ This refresh was done against the latest uploaded `Downward.zip` after the repo 
 - **P0 editor height / clipping** — fixed in current code. `MarkdownEditorTextView` now uses an effectively unbounded text container, tracks width, implements `sizeThatFits`, lowers vertical layout priorities, and has `MarkdownEditorTextViewSizingTests`.
 - **P0 keyboard accessory underlay** — fixed in current code. The root cause was the SwiftUI editor container ignoring only `.container` safe area, not `.keyboard`; `EditorScreen` now includes `.ignoresSafeArea(.keyboard, edges: .bottom)`.
 - **P0 initial keyboard underlap** — closed as obsolete. The current implementation no longer uses accessory-height underlap subtraction; it matches the prototype model by reserving the full keyboard overlap and letting the accessory overlay the full-height editor.
-- **P1 top chrome / first-line placement in code** — fixed in current code. `EditorScreen` now leaves top chrome avoidance to SwiftUI safe-area layout, and `MarkdownEditorTextView` no longer reconstructs top clearance from navigation-bar/window geometry.
+- **P1 top chrome / first-line placement in code** — fixed in current code. The editor surface underlaps the top chrome again, while `EditorScreen` and `MarkdownEditorTextView` now share one safe-area-driven top inset contract for the first line and placeholder instead of reconstructing clearance from navigation-bar/window geometry.
 - **P1 dead `showsKeyboardToolbar` state** — fixed. The property is gone and tests now target the actual UIKit accessory view.
 - **P1 accessory appearance hardening** — restored in current code. The accessory wrapper and embedded `UIToolbar` now configure transparent appearance explicitly again and the tests assert that configuration.
 
@@ -290,24 +290,27 @@ The biggest current risks are not basic data safety. They are:
 - `Downward/Features/Editor/MarkdownEditorTextView.swift:638-655`
 
 **Problem**
-- The old implementation ignored the top container safe area and then manually reconstructed clearance from navigation-bar / safe-area geometry inside the text view.
-- That split ownership was fragile and had already become a real product issue.
+- The original implementation ignored the top container safe area and then manually reconstructed clearance from navigation-bar / safe-area geometry inside the text view.
+- The first cleanup removed that geometry probing by keeping the editor inside the top safe area, but it also introduced a visible top band because the editor surface no longer underlapped the navigation chrome.
+- The real goal is both: seamless top underlay and correct first-line placement.
 
 **Why this matters**
 - This is exactly the sort of geometry code that looks correct on simulator and still fails on a real iPhone or iPad.
 
 **Recommended change**
-- Let SwiftUI own top chrome avoidance by staying inside the top safe area.
-- Keep `MarkdownEditorTextView` responsible only for internal content padding and keyboard-driven bottom insets.
-- Add regression coverage that the text view keeps a fixed top inset and does not add extra top scroll-view compensation.
+- Keep the editor surface under the top chrome so the background stays visually continuous.
+- Derive the visible first-line/placeholder start from one shared safe-area-driven inset helper instead of from nav-bar/window geometry.
+- Keep `MarkdownEditorTextView` responsible for internal content padding and keyboard-driven bottom insets, and avoid extra top scroll-view compensation.
+- Add regression coverage for the shared top inset helper and the unchanged scroll-view top insets.
 
 **Done when**
 - The first visible line, placeholder, and caret start position align in code without device-specific magic offsets.
+- The editor still feels visually continuous beneath the back button/document-title chrome.
 - The remaining work is explicit real-device QA, not more top-clearance math inside the editor.
 
 **Status after 2026-04-23 refresh**
-- Fixed in code: `EditorScreen` no longer ignores the top container safe area, `MarkdownEditorTextView` no longer reconstructs top clearance from navigation-bar/window geometry, and the placeholder/text view now share the same fixed internal top inset.
-- Targeted regression coverage now asserts the fixed top inset and zero top scroll-view compensation.
+- Fixed in code: `EditorScreen` underlaps the top chrome again, `MarkdownEditorTextView` still avoids navigation-bar/window geometry math, and the placeholder/text view now share the same safe-area-driven top inset helper.
+- Targeted regression coverage now asserts the shared top inset helper and zero top scroll-view compensation.
 - Keep real-device verification in `PLANS.md` before treating the UI QA gate as fully closed on shipping devices.
 
 ---

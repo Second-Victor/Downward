@@ -46,38 +46,42 @@ struct EditorScreen: View {
     @ViewBuilder
     private var editorContent: some View {
         if viewModel.currentRouteDocument != nil {
-            ZStack(alignment: .topLeading) {
-                MarkdownEditorTextView(
-                    text: viewModel.textBinding,
-                    documentIdentity: documentURL,
-                    font: viewModel.editorUIFont,
-                    syntaxMode: viewModel.markdownSyntaxMode,
-                    isEditable: viewModel.isResolvingConflict == false
-                        && viewModel.isShowingConflictResolution == false,
-                    undoCommandToken: viewModel.undoCommandToken,
-                    redoCommandToken: viewModel.redoCommandToken,
-                    dismissKeyboardCommandToken: viewModel.dismissKeyboardCommandToken,
-                    onEditorFocusChange: viewModel.handleEditorFocusChange(_:),
-                    onUndoRedoAvailabilityChange: viewModel.updateUndoRedoAvailability(canUndo:canRedo:)
-                )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
+            GeometryReader { proxy in
+                let topViewportInset = proxy.safeAreaInsets.top
 
-                if viewModel.showsEmptyDocumentPlaceholder {
-                    Text("Start typing…")
-                        .font(viewModel.editorFont)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, EditorTextViewLayout.contentTopInset)
-                        .padding(.leading, EditorTextViewLayout.horizontalInset)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
+                ZStack(alignment: .topLeading) {
+                    MarkdownEditorTextView(
+                        text: viewModel.textBinding,
+                        documentIdentity: documentURL,
+                        topViewportInset: topViewportInset,
+                        font: viewModel.editorUIFont,
+                        syntaxMode: viewModel.markdownSyntaxMode,
+                        isEditable: viewModel.isResolvingConflict == false
+                            && viewModel.isShowingConflictResolution == false,
+                        undoCommandToken: viewModel.undoCommandToken,
+                        redoCommandToken: viewModel.redoCommandToken,
+                        dismissKeyboardCommandToken: viewModel.dismissKeyboardCommandToken,
+                        onEditorFocusChange: viewModel.handleEditorFocusChange(_:),
+                        onUndoRedoAvailabilityChange: viewModel.updateUndoRedoAvailability(canUndo:canRedo:)
+                    )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
+
+                    if viewModel.showsEmptyDocumentPlaceholder {
+                        Text("Start typing…")
+                            .font(viewModel.editorFont)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, EditorTextViewLayout.effectiveTopInset(topViewportInset: topViewportInset))
+                            .padding(.leading, EditorTextViewLayout.horizontalInset)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            // Let SwiftUI own top chrome / safe-area clearance so the first line and placeholder
-            // naturally sit below the navigation bar on both iPhone and iPad. The editor only
-            // underlaps at the bottom where keyboard handling needs a full-height surface.
-            .ignoresSafeArea(.container, edges: .bottom)
+            // Keep the editor surface visually continuous under the top chrome, but derive the
+            // visible first-line/placeholder position from the live safe-area inset in one place.
+            .ignoresSafeArea(.container, edges: [.top, .bottom])
             .ignoresSafeArea(.keyboard, edges: .bottom)
         } else if let error = viewModel.loadError {
             ContentUnavailableView(

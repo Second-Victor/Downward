@@ -7,12 +7,14 @@ final class MarkdownEditorTextViewSizingTests: XCTestCase {
     @MainActor
     func testHostedEditorFillsFixedContainerHeight() {
         let text = MutableBox(String(repeating: "Line\n", count: 200))
+        let topViewportInset: CGFloat = 64
         let editor = MarkdownEditorTextView(
             text: Binding(
                 get: { text.value },
                 set: { text.value = $0 }
             ),
             documentIdentity: PreviewSampleData.cleanDocument.url,
+            topViewportInset: topViewportInset,
             font: .preferredFont(forTextStyle: .body),
             syntaxMode: .visible,
             isEditable: true,
@@ -42,7 +44,10 @@ final class MarkdownEditorTextViewSizingTests: XCTestCase {
         XCTAssertEqual(textView.frame.height, 480, accuracy: 1)
         XCTAssertEqual(textView.frame.width, 320, accuracy: 1)
         XCTAssertTrue(textView.textContainer.widthTracksTextView)
-        XCTAssertEqual(textView.textContainerInset.top, EditorTextViewLayout.contentTopInset)
+        XCTAssertEqual(
+            textView.textContainerInset.top,
+            EditorTextViewLayout.effectiveTopInset(topViewportInset: topViewportInset)
+        )
         XCTAssertEqual(textView.textContainerInset.left, EditorTextViewLayout.horizontalInset)
         XCTAssertEqual(textView.textContainerInset.right, EditorTextViewLayout.horizontalInset)
         XCTAssertEqual(textView.textContainerInset.bottom, EditorTextViewLayout.bottomInset)
@@ -50,6 +55,18 @@ final class MarkdownEditorTextViewSizingTests: XCTestCase {
         XCTAssertEqual(textView.verticalScrollIndicatorInsets.top, 0)
         XCTAssertEqual(textView.contentCompressionResistancePriority(for: .vertical), .defaultLow)
         XCTAssertEqual(textView.contentHuggingPriority(for: .vertical), .defaultLow)
+    }
+
+    @MainActor
+    func testEffectiveTopInsetAddsViewportClearanceToInternalPadding() {
+        XCTAssertEqual(
+            EditorTextViewLayout.effectiveTopInset(topViewportInset: 0),
+            EditorTextViewLayout.contentTopInset
+        )
+        XCTAssertEqual(
+            EditorTextViewLayout.effectiveTopInset(topViewportInset: 52),
+            52 + EditorTextViewLayout.contentTopInset
+        )
     }
 
     @MainActor

@@ -17,7 +17,7 @@ The strongest current foundations are:
 - restore and reconnect behavior,
 - quiet autosave, explicit autosave cancellation, and calmer revalidation,
 - explicit keyboard-safe-area underlap for the editor,
-- SwiftUI-owned top chrome clearance with fixed internal editor padding,
+- seamless top editor underlay with a shared safe-area-driven first-line inset,
 - an explicit markdown syntax visibility contract for future renderer work,
 - recent files and editor appearance persistence,
 - a broad test suite around risky behaviors.

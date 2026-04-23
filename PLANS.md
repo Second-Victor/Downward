@@ -471,14 +471,14 @@ Theme switches should eventually avoid reparsing markdown.
 
 ### 20. Real-device UI QA
 
-- [x] Simplify top-clearance ownership so SwiftUI owns top chrome and `MarkdownEditorTextView` owns only internal padding plus keyboard bottom insets.
+- [x] Restore seamless editor underlay beneath the top chrome while using one shared safe-area-driven inset for the first visible line and placeholder.
 - [ ] Verify first-line placement below top chrome on iPhone.
 - [ ] Verify first-line placement below top chrome on iPad.
 - [ ] Verify keyboard accessory behavior and keyboard dismissal.
 - [ ] Verify scroll indicators with top chrome and keyboard visible.
 - [ ] Verify the editor remains usable in iCloud Drive and local Files workspaces.
 
-Note: the code path no longer reconstructs top clearance from navigation-bar/window geometry, and targeted editor layout tests now assert a fixed internal top inset with zero extra scroll-view top compensation. Real-device verification is still required before closing the remaining QA bullets above.
+Note: the code path no longer reconstructs top clearance from navigation-bar/window geometry. The editor surface now underlaps the top chrome again, while `MarkdownEditorTextView` and the placeholder share one safe-area-driven top inset helper and still keep zero extra scroll-view top compensation. Real-device verification is still required before closing the remaining QA bullets above.
 
 ---
 

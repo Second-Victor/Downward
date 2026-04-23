@@ -5,6 +5,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     @Binding var text: String
 
     let documentIdentity: URL
+    let topViewportInset: CGFloat
     let font: UIFont
     let syntaxMode: MarkdownSyntaxMode
     let isEditable: Bool
@@ -34,10 +35,10 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         textView.backgroundColor = .clear
         textView.isOpaque = false
         textView.delegate = context.coordinator
-        // Top chrome clearance is owned by the surrounding SwiftUI container. The text view keeps
-        // only its own internal padding and keyboard-driven bottom scroll insets.
+        // Keep the editor surface continuous under the top chrome, but derive the visible first
+        // line from the current safe-area/navigation clearance in one place.
         textView.textContainerInset = UIEdgeInsets(
-            top: EditorTextViewLayout.contentTopInset,
+            top: EditorTextViewLayout.effectiveTopInset(topViewportInset: topViewportInset),
             left: EditorTextViewLayout.horizontalInset,
             bottom: EditorTextViewLayout.bottomInset,
             right: EditorTextViewLayout.horizontalInset
@@ -88,6 +89,8 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         if let uiView = uiView as? EditorChromeAwareTextView {
             context.coordinator.configureKeyboardAccessory(for: uiView)
         }
+
+        context.coordinator.applyTopViewportInset(topViewportInset, to: uiView)
 
         context.coordinator.apply(
             configuration: .init(
@@ -240,6 +243,17 @@ extension MarkdownEditorTextView {
             )
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
+        }
+
+        func applyTopViewportInset(_ topViewportInset: CGFloat, to textView: UITextView) {
+            var updatedTextContainerInset = textView.textContainerInset
+            let resolvedTopInset = EditorTextViewLayout.effectiveTopInset(topViewportInset: topViewportInset)
+            guard updatedTextContainerInset.top != resolvedTopInset else {
+                return
+            }
+
+            updatedTextContainerInset.top = resolvedTopInset
+            textView.textContainerInset = updatedTextContainerInset
         }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
