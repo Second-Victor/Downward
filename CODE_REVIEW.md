@@ -18,13 +18,15 @@ This refresh was done against the latest uploaded `Downward.zip` after the repo 
 - **P0 initial keyboard underlap** — closed as obsolete. The current implementation no longer uses accessory-height underlap subtraction; it matches the prototype model by reserving the full keyboard overlap and letting the accessory overlay the full-height editor.
 - **P1 top chrome / first-line placement in code** — fixed in current code. The editor surface underlaps the top chrome again, while `EditorScreen` and `MarkdownEditorTextView` now share one safe-area-driven top inset contract for the first line and placeholder instead of reconstructing clearance from navigation-bar/window geometry.
 - **P1 dead `showsKeyboardToolbar` state** — fixed. The property is gone and tests now target the actual UIKit accessory view.
-- **P1 accessory appearance hardening** — restored in current code. The accessory wrapper and embedded `UIToolbar` now configure transparent appearance explicitly again and the tests assert that configuration.
+- **P1 accessory appearance hardening** — fixed in current code. The accessory wrapper and embedded `UIToolbar` configure transparent appearance explicitly again, and the default accessory host underlay is transparent instead of painting an opaque system background.
+- **P1 resolved editor theme pipeline** — fixed in current code. The editor surface, renderer text colors, TextKit code/blockquote drawing, caret tint, and keyboard accessory styling now resolve from one runtime theme model with focused regression coverage.
 
 ### Still relevant after this refresh
 
 - Undo/redo/dismiss still have two command paths: visible accessory actions plus token commands.
 - Real-device verification is still needed for top chrome / first-line placement on iPhone and iPad.
-- Theme/background work is still not wired end-to-end: the renderer, TextKit background drawing, editor surface, and accessory underlay do not yet share one resolved theme model.
+- Real-device verification is still needed for light, dark, and non-standard editor backgrounds now that the shared theme/accessory pipeline exists and the accessory host is transparent-by-default again.
+- User-facing custom theme management and JSON import/export are still future work.
 - Settings are still a plain `Form` and iPad settings are still just another split-view detail state, not a dedicated settings surface.
 - Workspace snapshot path lookup, search, recents pruning, and document read/write memory churn are still relevant performance items.
 - Large files now have a separate P0 typing-latency item because the uploaded `large_test_file.md` exposed multi-second keypress lag.
@@ -45,22 +47,24 @@ The biggest current risks are not basic data safety. They are:
 1. **editor chrome and theming integration still being only partially explicit**,
 2. **duplicate or stale editor paths left over from earlier implementations**,
 3. **hot-path performance on larger workspaces and larger files**,
-4. **oversized files that are becoming hard to reason about safely**,
+4. **oversized coordinator/editor files that are becoming hard to reason about safely**,
 5. **settings/UI polish work still lacking its final product shell**.
 
 ## Project metrics from this snapshot
 
-- **80 Swift files total**
-  - **63 app files**
-  - **17 test files**
+- **86 Swift files total**
+  - **64 app files**
+  - **22 test files**
 - Largest files:
-  - `Tests/MarkdownWorkspaceAppSmokeTests.swift` — **3946 lines**
   - `Downward/App/AppCoordinator.swift` — **1732 lines**
+  - `Downward/Features/Editor/MarkdownStyledTextRenderer.swift` — **1600 lines**
   - `Downward/Domain/Workspace/WorkspaceManager.swift` — **1509 lines**
-  - `Downward/Features/Editor/MarkdownStyledTextRenderer.swift` — **1536 lines**
+  - `Tests/WorkspaceManagerRestoreTests.swift` — **1318 lines**
+  - `Tests/DocumentManagerTests.swift` — **1138 lines**
   - `Downward/Features/Workspace/WorkspaceViewModel.swift` — **1049 lines**
-  - `Downward/Features/Editor/MarkdownEditorTextView.swift` — **1018 lines**
   - `Downward/Domain/Document/PlainTextDocumentSession.swift` — **978 lines**
+  - `Downward/Features/Editor/MarkdownEditorTextView.swift` — **973 lines**
+  - `Tests/EditorAutosaveTests.swift` — **888 lines**
 
 ## What is already strong and should be preserved
 
@@ -557,10 +561,14 @@ This file currently owns all of these responsibilities at once:
 
 ---
 
-## [ ] P2 — Split the giant smoke-test suite into true smoke flows plus targeted suites
+## [x] P2 — Split the giant smoke-test suite into true smoke flows plus targeted suites
 
-**File**
-- `Tests/MarkdownWorkspaceAppSmokeTests.swift` (**3946 lines**)
+**Files**
+- `Tests/MarkdownWorkspaceAppSmokeTests.swift` (**738 lines**)
+- `Tests/MarkdownWorkspaceAppRestoreFlowTests.swift`
+- `Tests/MarkdownWorkspaceAppMutationFlowTests.swift`
+- `Tests/MarkdownWorkspaceAppTrustedOpenAndRecentTests.swift`
+- `Tests/MarkdownWorkspaceAppTestSupport.swift`
 
 **Problem**
 - The file is extremely valuable, but now too large to stay healthy.
@@ -575,6 +583,10 @@ This file currently owns all of these responsibilities at once:
 **Done when**
 - The smoke suite is short enough to scan quickly.
 - Failing tests identify a specific feature area immediately.
+
+**Status after 2026-04-23 split**
+- Done in current code. Restore/reconnect flows, mutation/winner-policy flows, and trusted-relative open/recent-file flows now live in focused suites with shared support extracted out of the smoke file.
+- Smoke coverage remains end-to-end and the focused split passed in one targeted test run.
 
 ---
 

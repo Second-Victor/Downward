@@ -23,6 +23,7 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
     private let blockquoteBarCornerRadius: CGFloat = 2
     private let blockquoteBackgroundInset = UIEdgeInsets(top: 2, left: 2, bottom: 2, right: 2)
     private let blockquoteBackgroundCornerRadius: CGFloat = 4
+    nonisolated(unsafe) var resolvedTheme: ResolvedEditorTheme = .default
 
     nonisolated override init() {
         super.init()
@@ -181,7 +182,7 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
                 roundedRect: expandedRect,
                 cornerRadius: self.cornerRadius
             )
-            UIColor.secondarySystemFill.setFill()
+            self.resolvedTheme.inlineCodeBackground.setFill()
             path.fill()
         }
     }
@@ -210,7 +211,7 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
             roundedRect: expandedRect,
             cornerRadius: cornerRadius
         )
-        UIColor.secondarySystemFill.setFill()
+        resolvedTheme.codeBlockBackground.setFill()
         path.fill()
     }
 
@@ -295,7 +296,7 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
             roundedRect: backgroundRect,
             cornerRadius: blockquoteBackgroundCornerRadius
         )
-        UIColor.secondarySystemFill.setFill()
+        resolvedTheme.blockquoteBackground.setFill()
         backgroundPath.fill()
 
         let maxDepth = fragments.map(\.depth).max() ?? 0
@@ -331,7 +332,7 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
                 roundedRect: finalGuideRect,
                 cornerRadius: blockquoteBarCornerRadius
             )
-            UIColor.tertiaryLabel.setFill()
+            resolvedTheme.blockquoteBar.setFill()
             guidePath.fill()
         }
     }

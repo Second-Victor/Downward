@@ -160,6 +160,10 @@ final class EditorViewModel {
         editorAppearanceStore.markdownSyntaxMode
     }
 
+    var resolvedEditorTheme: ResolvedEditorTheme {
+        editorAppearanceStore.resolvedTheme
+    }
+
     func handleTextChange(_ text: String) {
         guard currentRouteDocument != nil else {
             return

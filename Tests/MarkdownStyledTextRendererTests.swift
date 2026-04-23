@@ -5,6 +5,29 @@ import XCTest
 final class MarkdownStyledTextRendererTests: XCTestCase {
     private let renderer = MarkdownStyledTextRenderer()
     private let baseFont = UIFont.systemFont(ofSize: 16)
+    private let customTheme = ResolvedEditorTheme(
+        editorBackground: .black,
+        keyboardAccessoryUnderlayBackground: .brown,
+        accent: .orange,
+        primaryText: .red,
+        secondaryText: .green,
+        tertiaryText: .blue,
+        headingText: .purple,
+        emphasisText: .magenta,
+        strikethroughText: .brown,
+        syntaxMarkerText: .cyan,
+        subtleSyntaxMarkerText: .yellow,
+        linkText: .orange,
+        imageAltText: .systemPink,
+        inlineCodeText: .systemTeal,
+        inlineCodeBackground: .darkGray,
+        codeBlockText: .white,
+        codeBlockBackground: .gray,
+        blockquoteText: .systemMint,
+        blockquoteBackground: .lightGray,
+        blockquoteBar: .systemIndigo,
+        horizontalRuleText: .systemGray
+    )
 
     private func syntaxVisibilityRule(
         in attributed: NSAttributedString,
@@ -55,6 +78,53 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         XCTAssertTrue(italicFont?.fontDescriptor.symbolicTraits.contains(.traitItalic) == true)
         XCTAssertFalse(italicFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
         XCTAssertEqual(syntaxColor, .secondaryLabel)
+    }
+
+    @MainActor
+    func testRendererUsesResolvedThemeRolesForMarkdownStyling() {
+        let text = """
+        # Heading
+        This is **bold** and ~~gone~~ and `code`.
+        > Quote
+        [Site](https://example.com)
+        ![Alt](/image.png)
+        """
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                resolvedTheme: customTheme,
+                syntaxMode: .visible,
+                revealedRange: nil
+            )
+        )
+
+        let nsString = rendered.string as NSString
+        let headingRange = nsString.range(of: "Heading")
+        let headingMarkerRange = nsString.range(of: "#")
+        let boldRange = nsString.range(of: "bold")
+        let boldMarkerRange = nsString.range(of: "**")
+        let strikethroughRange = nsString.range(of: "gone")
+        let codeRange = nsString.range(of: "code")
+        let quoteMarkerRange = nsString.range(of: ">")
+        let quoteTextRange = nsString.range(of: "Quote")
+        let linkRange = nsString.range(of: "Site")
+        let imageAltRange = nsString.range(of: "Alt")
+
+        XCTAssertEqual(rendered.attribute(.foregroundColor, at: headingRange.location, effectiveRange: nil) as? UIColor, customTheme.headingText)
+        XCTAssertEqual(rendered.attribute(.foregroundColor, at: headingMarkerRange.location, effectiveRange: nil) as? UIColor, customTheme.syntaxMarkerText)
+        XCTAssertEqual(rendered.attribute(.foregroundColor, at: boldRange.location, effectiveRange: nil) as? UIColor, customTheme.emphasisText)
+        XCTAssertEqual(rendered.attribute(.foregroundColor, at: boldMarkerRange.location, effectiveRange: nil) as? UIColor, customTheme.syntaxMarkerText)
+        XCTAssertEqual(rendered.attribute(.foregroundColor, at: strikethroughRange.location, effectiveRange: nil) as? UIColor, customTheme.strikethroughText)
+        XCTAssertEqual(rendered.attribute(.foregroundColor, at: codeRange.location, effectiveRange: nil) as? UIColor, customTheme.inlineCodeText)
+        XCTAssertEqual(rendered.attribute(.foregroundColor, at: quoteMarkerRange.location, effectiveRange: nil) as? UIColor, customTheme.subtleSyntaxMarkerText)
+        XCTAssertEqual(rendered.attribute(.foregroundColor, at: quoteTextRange.location, effectiveRange: nil) as? UIColor, customTheme.blockquoteText)
+        XCTAssertEqual(rendered.attribute(.foregroundColor, at: linkRange.location, effectiveRange: nil) as? UIColor, customTheme.linkText)
+        XCTAssertEqual(rendered.attribute(.foregroundColor, at: imageAltRange.location, effectiveRange: nil) as? UIColor, customTheme.imageAltText)
+        XCTAssertEqual(
+            rendered.attribute(.markdownCodeBackgroundKind, at: codeRange.location, effectiveRange: nil) as? Int,
+            MarkdownCodeBackgroundKind.inline.rawValue
+        )
     }
 
     @MainActor

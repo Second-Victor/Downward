@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import Downward
 
@@ -88,6 +89,20 @@ final class EditorAppearanceStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testEditorAppearanceStoreExposesDefaultResolvedTheme() {
+        let store = EditorAppearanceStore(initialPreferences: .default)
+        let theme = store.resolvedTheme
+
+        XCTAssertSameResolvedColor(theme.editorBackground, .systemBackground)
+        XCTAssertSameResolvedColor(theme.keyboardAccessoryUnderlayBackground, .clear)
+        XCTAssertSameResolvedColor(theme.primaryText, .label)
+        XCTAssertSameResolvedColor(theme.syntaxMarkerText, .secondaryLabel)
+        XCTAssertSameResolvedColor(theme.subtleSyntaxMarkerText, .tertiaryLabel)
+        XCTAssertSameResolvedColor(theme.inlineCodeBackground, .secondarySystemFill)
+        XCTAssertSameResolvedColor(theme.blockquoteBar, .tertiaryLabel)
+    }
+
+    @MainActor
     private func makeIsolatedUserDefaults(suiteName: String) throws -> UserDefaults {
         guard let userDefaults = UserDefaults(suiteName: suiteName) else {
             throw XCTSkip("Unable to create isolated UserDefaults suite.")
@@ -95,5 +110,28 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         userDefaults.removePersistentDomain(forName: suiteName)
         return userDefaults
+    }
+
+    private func XCTAssertSameResolvedColor(
+        _ actual: UIColor,
+        _ expected: UIColor,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let lightTraits = UITraitCollection(userInterfaceStyle: .light)
+        let darkTraits = UITraitCollection(userInterfaceStyle: .dark)
+
+        XCTAssertEqual(
+            actual.resolvedColor(with: lightTraits),
+            expected.resolvedColor(with: lightTraits),
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            actual.resolvedColor(with: darkTraits),
+            expected.resolvedColor(with: darkTraits),
+            file: file,
+            line: line
+        )
     }
 }

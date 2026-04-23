@@ -16,6 +16,7 @@ final class MarkdownEditorTextViewSizingTests: XCTestCase {
             documentIdentity: PreviewSampleData.cleanDocument.url,
             topViewportInset: topViewportInset,
             font: .preferredFont(forTextStyle: .body),
+            resolvedTheme: .default,
             syntaxMode: .visible,
             isEditable: true,
             undoCommandToken: 0,

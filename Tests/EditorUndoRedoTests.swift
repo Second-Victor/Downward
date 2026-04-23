@@ -221,11 +221,13 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     func testKeyboardAccessoryReportsToolbarSizedHeight() {
         let actionTarget = AccessoryActionTarget()
+        let theme = ResolvedEditorTheme.default
         let accessoryView = KeyboardAccessoryToolbarView(
             target: actionTarget,
             undoAction: #selector(AccessoryActionTarget.performAction),
             redoAction: #selector(AccessoryActionTarget.performAction),
-            dismissAction: #selector(AccessoryActionTarget.performAction)
+            dismissAction: #selector(AccessoryActionTarget.performAction),
+            resolvedTheme: theme
         )
 
         let fittedSize = accessoryView.sizeThatFits(CGSize(width: 320, height: UIView.noIntrinsicMetric))
@@ -234,11 +236,126 @@ final class EditorUndoRedoTests: XCTestCase {
         XCTAssertClear(accessoryView.backgroundColor)
         XCTAssertClear(accessoryView.toolbar.backgroundColor)
         XCTAssertTrue(accessoryView.toolbar.isTranslucent)
+        XCTAssertEqual(accessoryView.toolbar.tintColor, theme.accent)
         XCTAssertNilOrClear(accessoryView.toolbar.standardAppearance.backgroundColor)
         XCTAssertNilOrClear(accessoryView.toolbar.compactAppearance?.backgroundColor)
         XCTAssertNilOrClear(accessoryView.toolbar.scrollEdgeAppearance?.backgroundColor)
         XCTAssertNilOrClear(accessoryView.toolbar.standardAppearance.shadowColor)
         XCTAssertGreaterThan(accessoryView.intrinsicContentSize.height, 0)
+    }
+
+    @MainActor
+    func testDefaultThemeReapplicationRestoresTransparentAccessoryHost() {
+        let actionTarget = AccessoryActionTarget()
+        let accessoryView = KeyboardAccessoryToolbarView(
+            target: actionTarget,
+            undoAction: #selector(AccessoryActionTarget.performAction),
+            redoAction: #selector(AccessoryActionTarget.performAction),
+            dismissAction: #selector(AccessoryActionTarget.performAction),
+            resolvedTheme: .default
+        )
+        let customTheme = ResolvedEditorTheme(
+            editorBackground: .black,
+            keyboardAccessoryUnderlayBackground: .brown,
+            accent: .orange,
+            primaryText: .red,
+            secondaryText: .green,
+            tertiaryText: .blue,
+            headingText: .purple,
+            emphasisText: .magenta,
+            strikethroughText: .brown,
+            syntaxMarkerText: .cyan,
+            subtleSyntaxMarkerText: .yellow,
+            linkText: .orange,
+            imageAltText: .systemPink,
+            inlineCodeText: .systemTeal,
+            inlineCodeBackground: .darkGray,
+            codeBlockText: .white,
+            codeBlockBackground: .gray,
+            blockquoteText: .systemMint,
+            blockquoteBackground: .lightGray,
+            blockquoteBar: .systemIndigo,
+            horizontalRuleText: .systemGray
+        )
+
+        accessoryView.applyResolvedTheme(customTheme)
+        XCTAssertEqual(accessoryView.backgroundColor, customTheme.keyboardAccessoryUnderlayBackground)
+
+        accessoryView.applyResolvedTheme(.default)
+
+        XCTAssertClear(accessoryView.backgroundColor)
+        XCTAssertClear(accessoryView.toolbar.backgroundColor)
+        XCTAssertNilOrClear(accessoryView.toolbar.standardAppearance.backgroundColor)
+        XCTAssertNilOrClear(accessoryView.toolbar.compactAppearance?.backgroundColor)
+        XCTAssertNilOrClear(accessoryView.toolbar.scrollEdgeAppearance?.backgroundColor)
+    }
+
+    @MainActor
+    func testCoordinatorPropagatesResolvedThemeToAccessoryAndLayoutManager() {
+        let textBox = MutableBox("Draft `code`\n> Quote")
+        let coordinator = makeCoordinator(text: textBox)
+        let textStorage = NSTextStorage()
+        let layoutManager = MarkdownCodeBackgroundLayoutManager()
+        let textContainer = NSTextContainer(size: CGSize(width: 320, height: CGFloat.greatestFiniteMagnitude))
+        textStorage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(textContainer)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480), textContainer: textContainer)
+        let theme = ResolvedEditorTheme(
+            editorBackground: .black,
+            keyboardAccessoryUnderlayBackground: .brown,
+            accent: .orange,
+            primaryText: .red,
+            secondaryText: .green,
+            tertiaryText: .blue,
+            headingText: .purple,
+            emphasisText: .magenta,
+            strikethroughText: .brown,
+            syntaxMarkerText: .cyan,
+            subtleSyntaxMarkerText: .yellow,
+            linkText: .orange,
+            imageAltText: .systemPink,
+            inlineCodeText: .systemTeal,
+            inlineCodeBackground: .darkGray,
+            codeBlockText: .white,
+            codeBlockBackground: .gray,
+            blockquoteText: .systemMint,
+            blockquoteBackground: .lightGray,
+            blockquoteBar: .systemIndigo,
+            horizontalRuleText: .systemGray
+        )
+        let configuration = MarkdownEditorTextView.Configuration(
+            text: textBox.value,
+            documentIdentity: PreviewSampleData.cleanDocument.url,
+            font: .preferredFont(forTextStyle: .body),
+            resolvedTheme: theme,
+            syntaxMode: .visible,
+            isEditable: true
+        )
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        guard let accessoryView = textView.inputAccessoryView as? KeyboardAccessoryToolbarView else {
+            return XCTFail("Expected a keyboard accessory toolbar view")
+        }
+        guard let layoutManager = textView.layoutManager as? MarkdownCodeBackgroundLayoutManager else {
+            return XCTFail("Expected markdown layout manager")
+        }
+
+        XCTAssertEqual(accessoryView.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
+        XCTAssertEqual(accessoryView.toolbar.tintColor, theme.accent)
+        XCTAssertEqual(layoutManager.resolvedTheme, theme)
+        XCTAssertEqual(textView.tintColor, theme.accent)
+        XCTAssertEqual(
+            textView.typingAttributes[.foregroundColor] as? UIColor,
+            theme.primaryText
+        )
     }
 
     @MainActor
@@ -359,7 +476,7 @@ final class EditorUndoRedoTests: XCTestCase {
         textView.trackingUndoManager.simulatedCanRedo = false
         let configuration = makeConfiguration(text: textBox.value)
 
-        coordinator.configureKeyboardAccessory(for: textView)
+        coordinator.configureKeyboardAccessory(for: textView, resolvedTheme: .default)
         coordinator.apply(
             configuration: configuration,
             undoCommandToken: 0,
@@ -621,4 +738,20 @@ private func XCTAssertNilOrClear(
     }
 
     XCTAssertClear(color, file: file, line: line)
+}
+
+private func XCTAssertSameResolvedColor(
+    _ actual: UIColor?,
+    _ expected: UIColor,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    guard let actual else {
+        return XCTFail("Expected a color", file: file, line: line)
+    }
+
+    let lightTraits = UITraitCollection(userInterfaceStyle: .light)
+    let darkTraits = UITraitCollection(userInterfaceStyle: .dark)
+    XCTAssertEqual(actual.resolvedColor(with: lightTraits), expected.resolvedColor(with: lightTraits), file: file, line: line)
+    XCTAssertEqual(actual.resolvedColor(with: darkTraits), expected.resolvedColor(with: darkTraits), file: file, line: line)
 }

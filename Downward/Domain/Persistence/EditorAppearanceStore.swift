@@ -64,6 +64,12 @@ final class EditorAppearanceStore {
         effectivePreferences.markdownSyntaxMode
     }
 
+    var resolvedTheme: ResolvedEditorTheme {
+        // Persisted appearance is still limited to font and syntax mode. Future custom themes and
+        // imported JSON palettes should resolve into this same runtime theme seam.
+        .default
+    }
+
     var effectivePreferences: EditorAppearancePreferences {
         Self.normalize(preferences, using: resolver)
     }

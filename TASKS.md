@@ -16,13 +16,15 @@ The strongest current foundations are:
 - relative-path-first open identity,
 - restore and reconnect behavior,
 - quiet autosave, explicit autosave cancellation, and calmer revalidation,
+- a split app-level test stack with a short smoke suite plus focused restore, mutation, and trusted-open/recent suites,
 - explicit keyboard-safe-area underlap for the editor,
 - seamless top editor underlay with a shared safe-area-driven first-line inset,
+- a shared resolved editor theme pipeline for renderer colors, TextKit backgrounds, and a transparent-by-default keyboard accessory host,
 - an explicit markdown syntax visibility contract for future renderer work,
 - recent files and editor appearance persistence,
 - a broad test suite around risky behaviors.
 
-The main risks now are **maintainability**, **large-file pressure**, **renderer/theme extensibility**, and **real-device UI polish**, not basic correctness. The main editor-specific risk is that custom themes/backgrounds are not wired end-to-end yet, so keyboard accessory polish can still regress when non-default colors return.
+The main risks now are **maintainability**, **large-file pressure**, **renderer/theme extensibility**, and **real-device UI polish**, not basic correctness. The main editor-specific risk is still real-device verification of the shared theme/accessory pipeline on non-standard backgrounds; user-facing custom theme management and JSON import/export are still future work.
 
 ---
 
@@ -43,44 +45,7 @@ These are not backlog items. They are shipping expectations.
 
 ## Highest-priority work
 
-### 1. Split the giant smoke-test suite
-
-**Why**
-
-`Tests/MarkdownWorkspaceAppSmokeTests.swift` is valuable but too large to stay healthy.
-
-**Success**
-
-- preserve current cross-feature coverage,
-- move feature-specific cases into smaller suites,
-- keep only true end-to-end smoke flows in the remaining file.
-
-**Likely files**
-
-- `Tests/MarkdownWorkspaceAppSmokeTests.swift`
-- new focused test files in `Tests/`
-
-### 2. Harden keyboard accessory transparency before theme work resumes
-
-**Why**
-
-The current safe-area fix is in place, but the accessory still depends on editor-underlay behavior and platform toolbar rendering details. That is acceptable for default system backgrounds, but custom themed editor backgrounds are the most likely place for the old opaque-bar regression to return.
-
-**Success**
-
-- accessory transparency is configured explicitly instead of relying on defaults,
-- editor background, TextKit background drawing, and accessory underlay use the same theme roles,
-- the bug does not reappear when the editor background is neither pure system white nor pure system black,
-- there is regression coverage for the accessory view configuration.
-
-**Likely files**
-
-- `Downward/Features/Editor/MarkdownEditorTextView.swift`
-- `Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift`
-- `Downward/Domain/Persistence/EditorAppearanceStore.swift`
-- `Tests/EditorUndoRedoTests.swift`
-
-### 3. Keep `AppCoordinator` from regaining feature logic
+### 1. Keep `AppCoordinator` from regaining feature logic
 
 **Why**
 
@@ -92,7 +57,7 @@ The current safe-area fix is in place, but the accessory still depends on editor
 - workspace-state application rules land in `WorkspaceSessionPolicy`,
 - the coordinator stays an orchestrator instead of becoming the architecture.
 
-### 4. Protect `PlainTextDocumentSession` and the renderer from feature creep
+### 2. Protect `PlainTextDocumentSession` and the renderer from feature creep
 
 **Why**
 
@@ -107,7 +72,7 @@ The current safe-area fix is in place, but the accessory still depends on editor
 - hidden syntax remains glyph-level layout behavior rather than font/kerning tricks,
 - new editor UX does not automatically land in either file.
 
-### 5. Ship the settings redesign as a real maintained surface
+### 3. Ship the settings redesign as a real maintained surface
 
 **Why**
 
@@ -129,11 +94,11 @@ The current settings screen works but still looks like a stopgap compared with t
 
 ## Secondary cleanup
 
-### 6. Keep preview and sample data aligned with the real product model
+### 5. Keep preview and sample data aligned with the real product model
 
 Preview and sample identity should stay close to the same relative-path-first model used in production so visual testing stays useful.
 
-### 7. Keep docs truthful
+### 6. Keep docs truthful
 
 Any editor, navigation, or settings change should be reflected in:
 

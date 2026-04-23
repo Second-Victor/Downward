@@ -7,6 +7,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     let documentIdentity: URL
     let topViewportInset: CGFloat
     let font: UIFont
+    let resolvedTheme: ResolvedEditorTheme
     let syntaxMode: MarkdownSyntaxMode
     let isEditable: Bool
     let undoCommandToken: Int
@@ -26,6 +27,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextView {
         let textStorage = NSTextStorage()
         let layoutManager = MarkdownCodeBackgroundLayoutManager()
+        layoutManager.resolvedTheme = resolvedTheme
         let textContainer = NSTextContainer(size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
         textContainer.widthTracksTextView = true
         textStorage.addLayoutManager(layoutManager)
@@ -34,6 +36,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         let textView = EditorChromeAwareTextView(frame: .zero, textContainer: textContainer)
         textView.backgroundColor = .clear
         textView.isOpaque = false
+        textView.tintColor = resolvedTheme.accent
         textView.delegate = context.coordinator
         // Keep the editor surface continuous under the top chrome, but derive the visible first
         // line from the current safe-area/navigation clearance in one place.
@@ -56,12 +59,13 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         textView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         textView.setContentHuggingPriority(.defaultLow, for: .vertical)
-        context.coordinator.configureKeyboardAccessory(for: textView)
+        context.coordinator.configureKeyboardAccessory(for: textView, resolvedTheme: resolvedTheme)
         context.coordinator.apply(
             configuration: .init(
                 text: text,
                 documentIdentity: documentIdentity,
                 font: font,
+                resolvedTheme: resolvedTheme,
                 syntaxMode: syntaxMode,
                 isEditable: isEditable
             ),
@@ -87,7 +91,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
 
     func updateUIView(_ uiView: UITextView, context: Context) {
         if let uiView = uiView as? EditorChromeAwareTextView {
-            context.coordinator.configureKeyboardAccessory(for: uiView)
+            context.coordinator.configureKeyboardAccessory(for: uiView, resolvedTheme: resolvedTheme)
         }
 
         context.coordinator.applyTopViewportInset(topViewportInset, to: uiView)
@@ -97,6 +101,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 text: text,
                 documentIdentity: documentIdentity,
                 font: font,
+                resolvedTheme: resolvedTheme,
                 syntaxMode: syntaxMode,
                 isEditable: isEditable
             ),
@@ -114,8 +119,25 @@ extension MarkdownEditorTextView {
         let text: String
         let documentIdentity: URL
         let font: UIFont
+        let resolvedTheme: ResolvedEditorTheme
         let syntaxMode: MarkdownSyntaxMode
         let isEditable: Bool
+
+        init(
+            text: String,
+            documentIdentity: URL,
+            font: UIFont,
+            resolvedTheme: ResolvedEditorTheme = .default,
+            syntaxMode: MarkdownSyntaxMode,
+            isEditable: Bool
+        ) {
+            self.text = text
+            self.documentIdentity = documentIdentity
+            self.font = font
+            self.resolvedTheme = resolvedTheme
+            self.syntaxMode = syntaxMode
+            self.isEditable = isEditable
+        }
     }
 
     @MainActor
@@ -178,10 +200,12 @@ extension MarkdownEditorTextView {
             textView.isSelectable = true
             textView.accessibilityLabel = "Document Text"
             textView.accessibilityHint = "Edits the current text document."
+            applyResolvedTheme(configuration.resolvedTheme, to: textView)
+            updateTypingAttributes(for: textView, font: configuration.font, resolvedTheme: configuration.resolvedTheme)
 
             if let textView = textView as? EditorChromeAwareTextView {
                 activeTextView = textView
-                configureKeyboardAccessory(for: textView)
+                configureKeyboardAccessory(for: textView, resolvedTheme: configuration.resolvedTheme)
                 subscribeToKeyboardNotificationsIfNeeded()
             }
 
@@ -206,6 +230,7 @@ extension MarkdownEditorTextView {
                     text: liveText,
                     documentIdentity: configuration.documentIdentity,
                     font: configuration.font,
+                    resolvedTheme: configuration.resolvedTheme,
                     syntaxMode: configuration.syntaxMode,
                     isEditable: configuration.isEditable
                 )
@@ -256,6 +281,27 @@ extension MarkdownEditorTextView {
             textView.textContainerInset = updatedTextContainerInset
         }
 
+        private func applyResolvedTheme(_ resolvedTheme: ResolvedEditorTheme, to textView: UITextView) {
+            textView.tintColor = resolvedTheme.accent
+            if let layoutManager = textView.layoutManager as? MarkdownCodeBackgroundLayoutManager {
+                layoutManager.resolvedTheme = resolvedTheme
+            }
+            if let textView = textView as? EditorChromeAwareTextView {
+                textView.keyboardAccessoryToolbarView?.applyResolvedTheme(resolvedTheme)
+            }
+        }
+
+        private func updateTypingAttributes(
+            for textView: UITextView,
+            font: UIFont,
+            resolvedTheme: ResolvedEditorTheme
+        ) {
+            textView.typingAttributes = [
+                .font: font,
+                .foregroundColor: resolvedTheme.primaryText
+            ]
+        }
+
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
             let currentText = (textView.text ?? "") as NSString
             let removedRange = safeRange(range, forTextLength: currentText.length)
@@ -283,6 +329,7 @@ extension MarkdownEditorTextView {
                 text: updatedText,
                 documentIdentity: configuration.documentIdentity,
                 font: configuration.font,
+                resolvedTheme: configuration.resolvedTheme,
                 syntaxMode: configuration.syntaxMode,
                 isEditable: configuration.isEditable
             )
@@ -323,6 +370,7 @@ extension MarkdownEditorTextView {
                 text: currentText,
                 documentIdentity: configuration.documentIdentity,
                 font: configuration.font,
+                resolvedTheme: configuration.resolvedTheme,
                 syntaxMode: configuration.syntaxMode,
                 isEditable: configuration.isEditable
             )
@@ -442,6 +490,7 @@ extension MarkdownEditorTextView {
                 configuration: .init(
                     text: configuration.text,
                     baseFont: configuration.font,
+                    resolvedTheme: configuration.resolvedTheme,
                     syntaxMode: configuration.syntaxMode,
                     revealedRange: configuration.syntaxMode == .hiddenOutsideCurrentLine
                         ? revealedLineRange
@@ -451,10 +500,7 @@ extension MarkdownEditorTextView {
 
             isApplyingProgrammaticChange = true
             applyAttributedTextInPlace(attributedText, to: textView)
-            textView.typingAttributes = [
-                .font: configuration.font,
-                .foregroundColor: UIColor.label
-            ]
+            updateTypingAttributes(for: textView, font: configuration.font, resolvedTheme: configuration.resolvedTheme)
             textView.selectedRange = safeRange(selectedRange, forTextLength: textView.textStorage.length)
             textView.setContentOffset(contentOffset, animated: false)
             isApplyingProgrammaticChange = false
@@ -478,10 +524,7 @@ extension MarkdownEditorTextView {
                 previousRevealedRange: previousRevealedRange,
                 revealedRange: revealedLineRange
             )
-            textView.typingAttributes = [
-                .font: configuration.font,
-                .foregroundColor: UIColor.label
-            ]
+            updateTypingAttributes(for: textView, font: configuration.font, resolvedTheme: configuration.resolvedTheme)
             textView.selectedRange = safeRange(selectedRange, forTextLength: textView.textStorage.length)
             textView.setContentOffset(contentOffset, animated: false)
             isApplyingProgrammaticChange = false
@@ -554,6 +597,7 @@ extension MarkdownEditorTextView {
                         text: currentText,
                         documentIdentity: latestConfiguration.documentIdentity,
                         font: latestConfiguration.font,
+                        resolvedTheme: latestConfiguration.resolvedTheme,
                         syntaxMode: latestConfiguration.syntaxMode,
                         isEditable: latestConfiguration.isEditable
                     )
@@ -609,13 +653,14 @@ extension MarkdownEditorTextView {
             )
         }
 
-        func configureKeyboardAccessory(for textView: EditorChromeAwareTextView) {
+        func configureKeyboardAccessory(for textView: EditorChromeAwareTextView, resolvedTheme: ResolvedEditorTheme) {
             if textView.keyboardAccessoryToolbarView == nil {
                 let accessoryView = KeyboardAccessoryToolbarView(
                     target: self,
                     undoAction: #selector(handleAccessoryUndo),
                     redoAction: #selector(handleAccessoryRedo),
-                    dismissAction: #selector(handleAccessoryDismissKeyboard)
+                    dismissAction: #selector(handleAccessoryDismissKeyboard),
+                    resolvedTheme: resolvedTheme
                 )
                 textView.keyboardAccessoryToolbarView = accessoryView
                 textView.undoAccessoryItem = accessoryView.undoButton
@@ -631,6 +676,8 @@ extension MarkdownEditorTextView {
                     textView.reloadInputViews()
                 }
             }
+
+            textView.keyboardAccessoryToolbarView?.applyResolvedTheme(resolvedTheme)
 
             updateKeyboardAccessoryState(for: textView)
         }
@@ -801,8 +848,16 @@ final class KeyboardAccessoryToolbarView: UIView {
     let undoButton: UIBarButtonItem
     let redoButton: UIBarButtonItem
     let dismissButton: UIBarButtonItem
+    private var resolvedTheme: ResolvedEditorTheme
 
-    init(target: AnyObject, undoAction: Selector, redoAction: Selector, dismissAction: Selector) {
+    init(
+        target: AnyObject,
+        undoAction: Selector,
+        redoAction: Selector,
+        dismissAction: Selector,
+        resolvedTheme: ResolvedEditorTheme
+    ) {
+        self.resolvedTheme = resolvedTheme
         undoButton = UIBarButtonItem(
             image: UIImage(systemName: "arrow.uturn.backward"),
             style: .plain,
@@ -829,17 +884,15 @@ final class KeyboardAccessoryToolbarView: UIView {
 
         super.init(frame: .zero)
 
-        backgroundColor = .clear
         isOpaque = false
         autoresizingMask = [.flexibleWidth, .flexibleHeight]
 
         addSubview(toolbar)
-        toolbar.backgroundColor = .clear
         toolbar.isOpaque = false
         toolbar.isTranslucent = true
         toolbar.autoresizingMask = [.flexibleWidth]
         toolbar.items = [undoButton, redoButton, .flexibleSpace(), dismissButton]
-        applyTransparentToolbarAppearance()
+        applyResolvedTheme(resolvedTheme)
     }
 
     required init?(coder: NSCoder) {
@@ -864,12 +917,12 @@ final class KeyboardAccessoryToolbarView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        applyTransparentToolbarAppearance()
+        applyResolvedTheme(resolvedTheme)
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        applyTransparentToolbarAppearance()
+        applyResolvedTheme(resolvedTheme)
     }
 
     func update(canUndo: Bool, canRedo: Bool, canDismiss: Bool) {
@@ -878,6 +931,19 @@ final class KeyboardAccessoryToolbarView: UIView {
         dismissButton.isEnabled = canDismiss
         invalidateIntrinsicContentSize()
         setNeedsLayout()
+    }
+
+    func applyResolvedTheme(_ resolvedTheme: ResolvedEditorTheme) {
+        self.resolvedTheme = resolvedTheme
+        isOpaque = false
+        // Keep the accessory host visually transparent unless a future theme opts into painting
+        // its own underlay on purpose.
+        backgroundColor = resolvedTheme.keyboardAccessoryUnderlayBackground
+        toolbar.backgroundColor = .clear
+        toolbar.barTintColor = .clear
+        toolbar.isOpaque = false
+        toolbar.tintColor = resolvedTheme.accent
+        applyTransparentToolbarAppearance()
     }
 
     /// Keep the accessory visually transparent even when the keyboard host is recreated or traits

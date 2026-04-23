@@ -4,9 +4,13 @@ struct EditorScreen: View {
     let viewModel: EditorViewModel
     let documentURL: URL
 
+    private var resolvedTheme: ResolvedEditorTheme {
+        viewModel.resolvedEditorTheme
+    }
+
     var body: some View {
         editorContent
-            .background(.background)
+            .background(Color(uiColor: resolvedTheme.editorBackground))
             .navigationTitle(viewModel.title)
             .navigationBarTitleDisplayMode(.inline)
             .editorNavigationSubtitle(viewModel.documentLocationText)
@@ -55,6 +59,7 @@ struct EditorScreen: View {
                         documentIdentity: documentURL,
                         topViewportInset: topViewportInset,
                         font: viewModel.editorUIFont,
+                        resolvedTheme: resolvedTheme,
                         syntaxMode: viewModel.markdownSyntaxMode,
                         isEditable: viewModel.isResolvingConflict == false
                             && viewModel.isShowingConflictResolution == false,
@@ -70,7 +75,7 @@ struct EditorScreen: View {
                     if viewModel.showsEmptyDocumentPlaceholder {
                         Text("Start typing…")
                             .font(viewModel.editorFont)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color(uiColor: resolvedTheme.secondaryText))
                             .padding(.top, EditorTextViewLayout.effectiveTopInset(topViewportInset: topViewportInset))
                             .padding(.leading, EditorTextViewLayout.horizontalInset)
                             .allowsHitTesting(false)

@@ -148,12 +148,14 @@ Note: `.visible` remains the rendered editing mode, not a fully raw markdown mod
 
 **Plan**
 
-- [ ] Add an internal editor theme/style model before importing JSON themes.
-- [ ] Map semantic roles to concrete UIKit values in one place.
-- [ ] Replace direct renderer references to `UIColor.label`, `.secondaryLabel`, `.tertiaryLabel`, `.link`, and `.secondarySystemFill` with theme roles.
-- [ ] Keep code background and blockquote drawing colors in the same theme pipeline as attributed text.
-- [ ] Add fallback/default theme values matching the current UI exactly.
-- [ ] Add tests that default theme output matches current expected styling.
+- [x] Add an internal editor theme/style model before importing JSON themes.
+- [x] Map semantic roles to concrete UIKit values in one place.
+- [x] Replace direct renderer references to `UIColor.label`, `.secondaryLabel`, `.tertiaryLabel`, `.link`, and `.secondarySystemFill` with theme roles.
+- [x] Keep code background and blockquote drawing colors in the same theme pipeline as attributed text.
+- [x] Add fallback/default theme values matching the current UI exactly.
+- [x] Add tests that default theme output matches current expected styling.
+
+Note: the shipping editor now resolves one runtime theme object for the editor background, text roles, syntax roles, code backgrounds, blockquote drawing, caret tint, and keyboard accessory styling. The accessory host stays transparent by default, and any future painted underlay should be an explicit opt-in through this same seam. JSON import/export and editable custom themes should map into this same seam later.
 
 **Likely files**
 
@@ -182,8 +184,10 @@ That means the old opaque-bar regression can still come back if toolbar transpar
 - [x] Reintroduce explicit transparent `UIToolbarAppearance` configuration for the keyboard accessory.
 - [x] Reapply that appearance when the accessory moves into a window or traits change.
 - [x] Add a regression test proving the wrapper and toolbar are transparent by configuration.
-- [ ] When editor themes are added, drive the editor background, TextKit background drawing, and accessory underlay from the same resolved theme model.
+- [x] When editor themes are added, drive the editor background, TextKit background drawing, and accessory underlay from the same resolved theme model.
 - [ ] Add manual QA coverage for light, dark, and at least one non-standard editor background color.
+
+Note: the resolved theme pipeline now treats the accessory host underlay as transparent by default. A non-clear accessory underlay is reserved for an explicit future theme decision instead of being the shipping default.
 
 **Likely files**
 
@@ -247,20 +251,25 @@ That means the old opaque-bar regression can still come back if toolbar transpar
 
 **Current finding**
 
-`Tests/MarkdownWorkspaceAppSmokeTests.swift` is still the largest test file by far. It is useful, but it is becoming difficult to scan and maintain.
+The app-level coverage is now split across one short smoke suite plus focused restore, mutation, and trusted-open/recent suites. `MarkdownWorkspaceAppSmokeTests.swift` is back to representing true end-to-end journeys instead of acting as the catch-all file for every coordinator behavior.
 
 **Plan**
 
-- [ ] Keep true end-to-end smoke flows in `MarkdownWorkspaceAppSmokeTests.swift`.
-- [ ] Move restore/reconnect cases into a focused restore suite.
-- [ ] Move mutation/navigation cases into focused coordinator or workspace suites.
+- [x] Keep true end-to-end smoke flows in `MarkdownWorkspaceAppSmokeTests.swift`.
+- [x] Move restore/reconnect cases into a focused restore suite.
+- [x] Move mutation/navigation cases into focused coordinator or workspace suites.
 - [ ] Move editor save/conflict flows into focused editor suites.
-- [ ] Preserve existing coverage before adding new feature tests.
+- [x] Preserve existing coverage before adding new feature tests.
 
 **Likely files**
 
 - `Tests/MarkdownWorkspaceAppSmokeTests.swift`
-- new focused test files under `Tests/`
+- `Tests/MarkdownWorkspaceAppRestoreFlowTests.swift`
+- `Tests/MarkdownWorkspaceAppMutationFlowTests.swift`
+- `Tests/MarkdownWorkspaceAppTrustedOpenAndRecentTests.swift`
+- `Tests/MarkdownWorkspaceAppTestSupport.swift`
+
+Note: the remaining smoke file is now 738 lines and the focused suites keep restore/reconnect, mutation/winner-policy, and trusted-relative open/recent-file coverage in files that fail with feature-specific names.
 
 ---
 
@@ -489,7 +498,7 @@ Note: the code path no longer reconstructs top clearance from navigation-bar/win
 - [ ] Deferred rerender happens after edits and does not break undo/redo.
 - [x] Canceled autosave tasks do not start stale saves.
 - [x] Search and recents keep the same relative-path identity after path traversal optimization.
-- [ ] Theme defaults reproduce current colors and fonts.
+- [x] Theme defaults reproduce current colors and fonts.
 
 ---
 
