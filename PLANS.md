@@ -2,629 +2,333 @@
 
 ## Purpose
 
-This is the detailed technical plan for work that should happen before Downward grows a larger markdown feature set or a JSON-driven theme system.
+This file is the deeper engineering plan for Downward. It explains how to pay down the current review findings while keeping work checkable. `TASKS.md` is the short active backlog. `CODE_REVIEW.md` records review findings and rationale.
 
-`TASKS.md` remains the short active backlog. This file is the deeper engineering checklist: performance plans, code-review findings, sequencing, and QA gates.
+## Review baseline
 
----
+Baseline: 2026-04-24 static review of the uploaded `Downward.zip` project.
+
+- [x] Static review completed.
+- [x] Steering docs refreshed.
+- [ ] Xcode build completed.
+- [ ] XCTest suites completed.
+- [ ] Simulator/device QA completed.
 
-## Review scope
+The codebase has moved out of emergency hardening. The current foundations are good enough to continue product work only if validation remains disciplined. The main risks are now renderer scale, runtime keyboard/accessory behavior, theme exchange polish, large-workspace lookup cost, and preventing coordinator/view-model files from regrowing.
+
+## Status legend
+
+- [x] Completed or currently satisfied by the reviewed code.
+- [ ] Open work.
+
+## Completed foundation checklist
+
+### Workspace and document safety
+
+- [x] Keep final trust decisions inside `WorkspaceManager` and `WorkspaceRelativePath`.
+- [x] Prefer workspace-relative paths for document routing, recents, search results, and restore flows.
+- [x] Keep document display names out of routing identity.
+- [x] Keep normal `.json` files openable as text documents.
+- [x] Keep theme import as an explicit settings action.
+- [x] Guard restore/reconnect flows against stale async results.
+- [x] Preserve newer editor edits when save acknowledgements arrive after additional typing.
+- [x] Cancel autosave tasks cleanly when editor sessions are replaced or closed.
+
+### Editor architecture
+
+- [x] Keep `MarkdownEditorTextView` as a thin SwiftUI/UITextView boundary.
+- [x] Keep text syncing and selection behavior in `MarkdownEditorTextViewCoordinator`.
+- [x] Keep keyboard accessory UI in `EditorKeyboardAccessoryToolbarView`.
+- [x] Keep keyboard geometry in `EditorKeyboardGeometryController`.
+- [x] Keep custom `UITextView` chrome behavior in `EditorChromeAwareTextView`.
+- [x] Preserve full-height editor sizing.
+- [x] Preserve top underlay and first-visible-line spacing as product behavior.
+- [x] Preserve document-open viewport reset.
+- [x] Keep syntax visibility explicit through editor appearance state.
+- [x] Keep same-line current-line restyling as the fast typing path.
+
+### Theme and settings foundation
+
+- [x] Persist built-in editor theme selection.
+- [x] Persist custom themes.
+- [x] Support custom theme create/edit/delete flows.
+- [x] Support JSON theme import/export through a dedicated theme exchange document.
+- [x] Keep settings as a sheet-based hierarchy on compact and regular-width layouts.
+- [x] Keep placeholder-backed future features visibly disabled or clearly non-final.
+
+### Code ownership
+
+- [x] Push workspace navigation decisions into `WorkspaceNavigationPolicy`.
+- [x] Push workspace mutation decisions into `WorkspaceMutationPolicy`.
+- [x] Keep workspace restore coordination behind a focused helper.
+- [x] Keep settings display summaries behind settings model/store seams.
+
+## P0 plan — validation before release
+
+No new static-review P0 was found. The P0 work is therefore validation, not a known code patch.
+
+### Build and test gate
+
+- [ ] Build the app in Xcode.
+- [ ] Run all available unit tests.
+- [ ] Run focused workspace restore/reconnect tests.
+- [ ] Run focused document manager tests.
+- [ ] Run focused editor autosave tests.
+- [ ] Run focused editor undo/redo tests.
+- [ ] Run focused markdown renderer tests.
+- [ ] Run focused settings/theme tests.
+- [ ] Run focused keyboard geometry/editor sizing tests.
+- [ ] Record failures in `TASKS.md` and add new review findings if needed.
+
+### Manual app gate
+
+- [ ] Fresh install opens cleanly with no workspace.
+- [ ] Workspace picker opens and grants access.
+- [ ] Workspace restore works after relaunch.
+- [ ] Reconnect flow works when access is stale or missing.
+- [ ] Recent files reopen by relative path.
+- [ ] Open document survives app background/foreground.
+- [ ] Autosave survives rapid typing and document switching.
+- [ ] Rename/move/delete flows leave the editor in a safe state.
+- [ ] Settings sheet works on compact and regular width.
+
+## P1 plan — keyboard accessory and theme contract
+
+### Current finding
+
+The current code deliberately keeps the keyboard accessory wrapper clear and non-opaque, then themes toolbar controls/tint. Earlier steering docs described a painted accessory underlay matching the editor surface, but that is not the current contract. Painting the accessory host can create wider UIKit keyboard-host side effects, so the code should stay explicit and tested.
+
+### Implementation plan
+
+- [ ] Keep the accessory wrapper background clear.
+- [ ] Keep the accessory wrapper non-opaque.
+- [ ] Keep toolbar background/shadow treatment explicit.
+- [ ] Apply resolved theme tint to accessory controls.
+- [ ] Do not paint private keyboard host/container backgrounds unless a future device QA pass proves it is safe.
+- [x] Add tests for clear/non-opaque wrapper behavior.
+- [x] Add tests for toolbar tint following the resolved theme.
+- [ ] Keep docs aligned if the strategy changes again.
+
+### Manual QA plan
+
+- [ ] Verify first keyboard presentation on iPhone portrait.
+- [ ] Verify first keyboard presentation on iPhone landscape.
+- [ ] Verify first keyboard presentation on iPad full screen.
+- [ ] Verify first keyboard presentation on iPad split view.
+- [ ] Verify interactive keyboard dismissal.
+- [ ] Verify accessory controls after switching themes.
+- [ ] Verify at least one custom theme with a non-standard background.
+- [ ] Verify no white band or default light host flash.
+- [ ] Verify no full-screen background takeover from accessory painting.
+
+### Likely files
 
-Reviewed current project shape across:
-
-- editor rendering and hidden syntax handling,
-- `MarkdownEditorTextView` and TextKit layout behavior,
-- keyboard accessory behavior and themed-background risk areas,
-- renderer tests,
-- workspace search and recent-file path lookup,
-- workspace/document view-model task lifecycles,
-- document observation and save paths,
-- architecture docs and stale editor bridge code.
-
-Current state is good enough to continue product work, but large-file rendering, renderer structure, keyboard accessory/theme integration, and path lookup hot paths should be cleaned up before adding more markdown features or themes.
-
----
-
-## Priority guide
-
-- **P0**: fix before adding new markdown or theme features.
-- **P1**: do soon; safe to run alongside UI polish and settings work.
-- **P2**: future architecture work that should not block current shipping unless performance regresses again.
-
----
-
-## P0 — immediate fixes before new markdown/theme features
-
-### 1. Keep the current hidden-syntax optimization layer in place
-
-**Current finding**
-
-The current tree already contains the important optimization layer. In the current code:
-
-- `MarkdownEditorTextView.Coordinator.applyRenderedText(...)` updates `textStorage` in place instead of replacing `attributedText` wholesale.
-- `textViewDidChangeSelection(...)` stays on the cheaper reveal/hide path unless a pending text mutation still needs a deferred full pass.
-- ordinary same-line inline edits now take a bounded current-line restyle path instead of automatically scheduling a whole-document markdown rerender.
-- `MarkdownCodeBackgroundLayoutManager.shouldGenerateGlyphs(...)` walks effective `.markdownHiddenSyntax` runs instead of allocating a hidden-range array per glyph batch.
-- `MarkdownStyledTextRenderer.updateHiddenSyntaxVisibility(...)` skips no-op attribute changes and invalidates only the changed ranges.
-
-**Plan**
-
-- [x] Update full rerenders to mutate `textView.textStorage` with `setAttributedString(...)` instead of replacing `attributedText`.
-- [x] Add a short deferred rerender after text edits so ordinary typing does not pay the full markdown pass immediately.
-- [x] Keep selection/caret movement on the cheap path whenever no text mutation requires a full rerender.
-- [x] In glyph generation, walk effective `.markdownHiddenSyntax` attribute runs instead of allocating a `hiddenRanges` array per glyph batch.
-- [x] In hidden-syntax visibility updates, skip no-op attribute changes.
-- [x] Invalidate layout/display for the actual changed syntax ranges instead of broader line ranges when possible.
-- [x] Add or restore tests for deferred rerender behavior and no-op hidden-syntax updates.
-- [x] For ordinary same-line inline edits, restyle the current line immediately and skip the deferred whole-document pass when broader markdown context is unchanged.
-- [x] Keep line-break edits and broader block-context edits on the deferred whole-document fallback path.
-- [x] Manually verify typing, fast caret movement, selection dragging, undo/redo, and IME/marked-text input on large files.
-
-**Likely files**
-
-- `Downward/Features/Editor/MarkdownEditorTextView.swift`
-- `Downward/Features/Editor/MarkdownStyledTextRenderer.swift`
-- `Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift`
-- `Tests/MarkdownStyledTextRendererTests.swift`
-
----
-
-### 2. Fix autosave cancellation semantics
-
-**Current finding**
-
-`EditorViewModel.scheduleAutosave(for:)` uses `try? await Task.sleep(for: autosaveDelay)` and then continues to `requestAutosave(...)`. A canceled sleep therefore still falls through. Generation checks make most cases harmless, but cancellation should be explicit and future-proof.
-
-**Plan**
-
-- [x] Replace `try? await Task.sleep(...)` with `do/catch` or a post-sleep `Task.isCancelled` guard.
-- [x] Ensure canceled autosave tasks cannot queue or start a save merely because the generation still matches.
-- [x] Add a regression test for canceling autosave without performing an old save.
-
-Manual follow-up: still exercise rapid typing, background/foreground flushes, and conflict-recovery actions on device to confirm autosave timing stays calm under real Files providers.
-
-**Likely files**
-
-- `Downward/Features/Editor/EditorViewModel.swift`
-- `Tests/EditorAutosaveTests.swift`
-
----
-
-### 3. Remove or repurpose stale `EditorTextViewHostBridge`
-
-**Current finding**
-
-`EditorTextViewHostBridge.swift` still describes a `TextEditor` probing bridge, but the shipping editor is now the custom `MarkdownEditorTextView` / `UITextView` boundary. The file still owns `EditorTextViewLayout`, so it cannot simply disappear without moving those constants.
-
-**Plan**
-
-- [x] Move `EditorTextViewLayout` into a dedicated editor layout file or into `MarkdownEditorTextView.swift`.
-- [x] Delete the obsolete `EditorTextViewHostBridge` and `EditorTextViewHostBridgeView` if they are unused.
-- [x] Delete or rewrite `EditorTextViewHostBridgeTests.swift` so tests describe the shipping editor path only.
-- [x] Update docs that still imply the app uses a SwiftUI `TextEditor` implementation.
-
-Note: `EditorTextViewLayout` was kept and moved into a dedicated editor layout file because the shipping `MarkdownEditorTextView` still uses those spacing constants.
-
-**Likely files**
-
-- `Downward/Features/Editor/EditorTextViewHostBridge.swift`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift`
-- `Tests/EditorTextViewHostBridgeTests.swift`
-- `ARCHITECTURE.md`
-
----
-
-### 4. Make markdown syntax visibility rules explicit
-
-**Current finding**
-
-The renderer has a mixed contract:
-
-- emphasis, heading, blockquote, link, and image marker hiding flows through `hideSyntaxIfNeeded(...)`, which respects `MarkdownSyntaxMode`;
-- inline code delimiters and fenced code fences currently call `hideRange(...)` directly and are hidden even in `.visible` mode;
-- tests currently encode always-hidden code delimiters/fences.
-
-That may be a valid product choice, but it needs to be named before more markdown features are added.
-
-**Plan**
-
-- [x] Decide whether `.visible` means “all markdown syntax visible” or “editor-friendly rendered mode where some structural code syntax is always hidden.”
-- [x] Rename the mode or add a second visibility policy if needed.
-- [x] Update tests so the intended behavior is obvious for emphasis, links, images, inline code, and fenced code.
-- [x] Keep future features from guessing whether their markers should use `hideSyntaxIfNeeded(...)` or unconditional `hideRange(...)`.
-
-Note: `.visible` remains the rendered editing mode, not a fully raw markdown mode. Supported markdown syntax now follows `MarkdownSyntaxMode` consistently, including inline-code delimiters and fenced-code fences, so caret-line reveal behaves the same way across syntax categories.
-
-**Likely files**
-
-- `Downward/Features/Editor/MarkdownSyntaxMode.swift`
-- `Downward/Features/Editor/MarkdownStyledTextRenderer.swift`
-- `Tests/MarkdownStyledTextRendererTests.swift`
-
----
-
-### 5. Introduce renderer style/theme roles before JSON themes
-
-**Current finding**
-
-`MarkdownStyledTextRenderer` hard-codes many UIKit colors directly while recognizing markdown. That will make JSON themes harder because parsing, styling, and theme decisions are currently tangled.
-
-**Plan**
-
-- [x] Add an internal editor theme/style model before importing JSON themes.
-- [x] Map semantic roles to concrete UIKit values in one place.
-- [x] Replace direct renderer references to `UIColor.label`, `.secondaryLabel`, `.tertiaryLabel`, `.link`, and `.secondarySystemFill` with theme roles.
-- [x] Keep code background and blockquote drawing colors in the same theme pipeline as attributed text.
-- [x] Add fallback/default theme values matching the current UI exactly.
-- [x] Add tests that default theme output matches current expected styling.
-
-Note: the shipping editor now resolves one runtime theme object for the editor background, text roles, syntax roles, code backgrounds, blockquote drawing, caret tint, and keyboard accessory styling. The accessory host is painted from the same editor surface role so UIKit keyboard host wrappers cannot flash their default light background. JSON import/export and editable custom themes should map into this same seam later.
-
-**Likely files**
-
-- `Downward/Features/Editor/MarkdownStyledTextRenderer.swift`
-- `Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift`
-- `Downward/Domain/Persistence/EditorAppearanceStore.swift`
-- `Downward/Features/Settings/SettingsScreen.swift`
-- new editor theme model file
-
----
-
-### 5a. Make keyboard accessory transparency explicit before custom backgrounds return
-
-**Current finding**
-
-The current safe-area fix in `EditorScreen` is necessary, but it is not the whole story once themed editor backgrounds return. The accessory bar sits at the intersection of:
-
-- the SwiftUI editor underlay,
-- the `UITextView` background and TextKit drawing stack,
-- the embedded `UIToolbar` used by `KeyboardAccessoryToolbarView`.
-
-That means the old opaque-bar regression can still come back if toolbar transparency is treated as an implicit platform default instead of a deliberate accessory contract.
-
-**Plan**
-
-- [x] Reintroduce explicit transparent `UIToolbarAppearance` configuration for the keyboard accessory.
-- [x] Reapply that appearance when the accessory moves into a window or traits change.
-- [x] Add a regression test proving the wrapper and toolbar use the resolved underlay by configuration.
-- [x] When editor themes are added, drive the editor background, TextKit background drawing, and accessory underlay from the same resolved theme model.
-- [ ] Add manual QA coverage for light, dark, and at least one non-standard editor background color.
-
-Note: the resolved theme pipeline now paints the accessory host underlay with the editor surface color. This avoids relying on transparency through UIKit's private keyboard-host hierarchy, which can otherwise show a white band during keyboard presentation or interactive dismissal.
-
-**Likely files**
-
-- `Downward/Features/Editor/MarkdownEditorTextView.swift`
-- `Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift`
-- `Downward/Domain/Persistence/EditorAppearanceStore.swift`
-- `Tests/EditorUndoRedoTests.swift`
-
----
-
-### 6. Reduce renderer duplication and allocation pressure
-
-**Current finding**
-
-`MarkdownStyledTextRenderer` repeats inline regex patterns in discovery and styling passes, repeatedly builds protected-range arrays, and uses linear `protectedRanges.contains(where:)` checks throughout. This is manageable today, but it will get worse as more markdown features are added.
-
-**Plan**
-
-- [ ] Extract inline pattern definitions into named token rules.
-- [ ] Avoid duplicating regex literals between pre-scan and styling passes.
-- [ ] Sort/merge protected ranges once and use a small helper for intersection checks.
-- [ ] Consider binary-searching protected ranges once the list is sorted.
-- [ ] Remove unused parameters in `hideRange(...)` once the old font/kerning strategy is gone.
-- [ ] Keep regex cache behavior, but do not let regex matching become the only extension mechanism for future block features.
-
-**Likely files**
-
-- `Downward/Features/Editor/MarkdownStyledTextRenderer.swift`
-- `Tests/MarkdownStyledTextRendererTests.swift`
-
----
-
-## P1 — workspace, tests, and maintainability cleanup
-
-### 7. Remove repeated snapshot-wide relative-path lookup
-
-**Current finding**
-
-`WorkspaceSearchEngine` traverses the workspace tree and then calls `snapshot.relativePath(for:)` for each file. `RecentFilesStore.relativeFilePaths(in:)` flattens file URLs and then calls `snapshot.relativePath(for:)` for each URL. Since `relativePath(for:)` scans the tree, those paths can become unnecessarily expensive in large workspaces.
-
-**Plan**
-
-- [x] Traverse workspace nodes with an accumulated relative path instead of resolving each URL with a second tree scan.
-- [x] Add a helper for walking files/folders with `(node, relativePath)` pairs.
-- [ ] Use that helper in search, recents pruning, move destination construction, and expanded-folder cleanup where it fits.
-- [ ] Keep final file-system access validation separate from snapshot-derived identity.
-- [x] Add tests proving search and recents still produce the same relative paths.
-
-**Likely files**
-
-- `Downward/Features/Workspace/WorkspaceSearchEngine.swift`
-- `Downward/Domain/Persistence/RecentFilesStore.swift`
-- `Downward/Domain/Workspace/WorkspaceSnapshotPathResolver.swift`
-- `Downward/Features/Workspace/WorkspaceViewModel.swift`
-- `Tests/WorkspaceSearchTests.swift`
-- `Tests/RecentFilesStoreTests.swift`
-
----
-
-### 8. Split the giant smoke-test file
-
-**Current finding**
-
-The app-level coverage is now split across one short smoke suite plus focused restore, mutation, and trusted-open/recent suites. `MarkdownWorkspaceAppSmokeTests.swift` is back to representing true end-to-end journeys instead of acting as the catch-all file for every coordinator behavior.
-
-**Plan**
-
-- [x] Keep true end-to-end smoke flows in `MarkdownWorkspaceAppSmokeTests.swift`.
-- [x] Move restore/reconnect cases into a focused restore suite.
-- [x] Move mutation/navigation cases into focused coordinator or workspace suites.
-- [ ] Move editor save/conflict flows into focused editor suites.
-- [x] Preserve existing coverage before adding new feature tests.
-
-**Likely files**
-
-- `Tests/MarkdownWorkspaceAppSmokeTests.swift`
-- `Tests/MarkdownWorkspaceAppRestoreFlowTests.swift`
-- `Tests/MarkdownWorkspaceAppMutationFlowTests.swift`
-- `Tests/MarkdownWorkspaceAppTrustedOpenAndRecentTests.swift`
-- `Tests/MarkdownWorkspaceAppTestSupport.swift`
-
-Note: the remaining smoke file is now 738 lines and the focused suites keep restore/reconnect, mutation/winner-policy, and trusted-relative open/recent-file coverage in files that fail with feature-specific names.
-
----
-
-### 8a. Ship the settings redesign as a real maintained surface
-
-**Current finding**
-
-The settings surface is now a prototype-aligned sheet with a native inset-grouped home list. Settings present over the current workspace/editor on both compact and regular layouts, so iPhone no longer pushes Settings into the workspace stack and iPad no longer treats Settings as a detail replacement.
-
-**Plan**
-
-- [x] Replace the original plain settings surface with a maintained prototype-aligned settings sheet.
-- [x] Keep the shipping workspace, editor font, editor font size, and markdown display settings fully functional.
-- [x] Present compact-width settings as a dedicated sheet while keeping the workspace/editor navigation stack underneath.
-- [x] Present regular-width settings as a dedicated sheet while keeping the editor or placeholder detail visible underneath.
-- [x] Keep unsupported work as explicit placeholders instead of fake-complete controls.
-- [x] Add focused session-level coverage for the regular-width settings presentation fallback behavior.
-- [x] Add representative previews for loaded workspace, no workspace, large Dynamic Type, and the regular-width sheet presentation.
-- [x] Add the nested Settings hierarchy for Editor, Theme, New Theme, Markdown, Tips, Information, and About.
-- [x] Wire real supported settings through existing persistence: app appearance, monospaced/proportional editor font family, font size, markdown syntax visibility, built-in theme selection, custom theme persistence, and the match-menus preference.
-- [x] Add JSON custom-theme import/export through a bounded exchange document path and keep it out of document save paths.
-- [x] Keep unsupported controls disabled or placeholder-backed: line numbers, larger heading text, StoreKit tips, App Store rating, and legal URLs.
-- [x] Add focused tests for home summary values, editor/markdown store updates, theme persistence/import-export seams, and placeholder feature honesty.
-- [ ] Manually verify iPhone flow, iPad flow, reconnect, clear confirmation, editor font changes, markdown mode changes, and Dynamic Type on device.
-
-**Likely files**
-
-- `Downward/Features/Settings/SettingsScreen.swift`
-- `Downward/Features/Root/RootScreen.swift`
-- `Downward/App/AppSession.swift`
-- `Tests/AppSessionSettingsPresentationTests.swift`
-- `Tests/SettingsScreenModelTests.swift`
-
-Note: the shipping settings surface is now a maintained sheet-based hierarchy. Theme/New Theme now use a real `ThemeStore`, built-in/custom theme selection persists through `EditorAppearanceStore`, and JSON import/export is available through a custom-theme exchange document. StoreKit purchases, App Store review routing, configured legal URLs, line numbers, and larger heading text remain future work and stay disabled or placeholder-backed.
-
----
-
-### 9. Make fire-and-forget tasks explicit
-
-**Current finding**
-
-Most long-lived tasks are tracked and canceled, and the 2026-04-24 async lifecycle audit made the remaining ownership split explicit. `RootViewModel` still has app-owned one-shot tasks, but they delegate to coordinator flows with transition/apply-generation guards. `WorkspaceViewModel` snapshot loads and file operations are model-owned and generation-gated. `EditorViewModel` load, autosave, observation, and conflict-resolution tasks are model-owned and cancel or re-check document identity before applying state.
-
-**Plan**
-
-- [x] Audit unstructured `Task { ... }` usage in view models.
-- [x] Store and cancel tasks that can outlive the UI state they mutate.
-- [x] Leave truly fire-and-forget actions as documented one-shot tasks.
-- [x] Add generation checks where an old async action can overwrite newer state.
-
-Note: this pass fixed the unsafe conflict-resolution path in `EditorViewModel`: delayed reload/overwrite actions are now stored, canceled on route/document identity changes, and guarded by generation plus logical-document checks before applying results. The audit left coordinator-owned root actions as one-shot tasks because stale workspace application is already guarded by coordinator transition/apply generations.
-
-**Likely files**
-
-- `Downward/Features/Root/RootViewModel.swift`
-- `Downward/Features/Editor/EditorViewModel.swift`
-- `Downward/Features/Workspace/WorkspaceViewModel.swift`
-
----
-
-### 10. Keep `AppCoordinator` from absorbing feature logic
-
-**Current finding**
-
-`AppCoordinator.swift` is still the central orchestration file and remains large. The current policy and service seams are working, but future markdown/theme work should not add editor-specific decisions here.
-
-**Plan**
-
-- [x] Extract repeated mutation error-handling helpers if coordinator growth continues.
-- [x] Keep navigation decisions inside `WorkspaceNavigationPolicy` where possible.
-- [x] Keep workspace snapshot application decisions inside `WorkspaceSessionPolicy` where possible.
-- [ ] Do not route editor theme or markdown parser state through the coordinator unless it affects route/session state.
-
-Note: the first cleanup pass moved workspace selection/replacement application and refresh session application through `WorkspaceSessionPolicy`, introduced `WorkspaceMutationPolicy` for repeated mutation preflight rules, and collapsed create/rename/move/delete mutation execution onto one shared coordinator error-handling path. The follow-up coordinator cleanup moved mutation execution metadata and fallback text into `WorkspaceMutationService` / `WorkspaceMutationErrorPresenter`, moved browser item kind lookup into `WorkspaceMutationPolicy`, and moved trusted editor route resolution plus stale recent-file open decisions into `WorkspaceNavigationPolicy`.
-
-Remaining coordinator work: mutation result application still contains the side-effect-heavy rename/delete/move reconciliation for open-document relocation, recents, pending presentations, and restorable-session updates. That should be extracted only behind a focused mutation result applier with tests, not by scattering those side effects across existing policies.
-
-**Likely files**
-
-- `Downward/App/AppCoordinator.swift`
-- `Downward/App/WorkspaceNavigationPolicy.swift`
-- `Downward/App/WorkspaceSessionPolicy.swift`
-- `Downward/App/WorkspaceMutationPolicy.swift`
-- `Downward/App/WorkspaceMutationService.swift`
-- `Downward/App/WorkspaceMutationErrorPresenter.swift`
-
----
-
-### 10a. Split the editor bridge by responsibility
-
-**Current finding**
-
-`MarkdownEditorTextView` is no longer one giant mixed-responsibility file. The representable surface now stays small, while the shipping bridge behavior is split across dedicated editor UIKit collaborators.
-
-**Plan**
-
-- [x] Keep `MarkdownEditorTextView.swift` focused on the SwiftUI representable surface and wiring.
-- [x] Move text syncing, selection preservation, rerendering, and viewport reset behavior into `MarkdownEditorTextViewCoordinator.swift`.
-- [x] Move the accessory view UI and transparent appearance logic into `EditorKeyboardAccessoryToolbarView.swift`.
-- [x] Move keyboard notification and inset logic into `EditorKeyboardGeometryController.swift`.
-- [x] Move the custom `UITextView` subclass into `EditorChromeAwareTextView.swift`.
-- [x] Preserve the current test-facing coordinator API and current shipping editor behavior.
-- [x] Add narrow regression coverage for the extracted keyboard geometry helper while keeping the broader editor tests green.
-- [ ] Manually verify the editor on device after the split, especially top underlay, viewport reset, keyboard accessory transparency, and undo/redo commands.
-
-**Likely files**
-
-- `Downward/Features/Editor/MarkdownEditorTextView.swift`
-- `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
 - `Downward/Features/Editor/EditorKeyboardAccessoryToolbarView.swift`
 - `Downward/Features/Editor/EditorKeyboardGeometryController.swift`
-- `Downward/Features/Editor/EditorChromeAwareTextView.swift`
-- `Tests/EditorUndoRedoTests.swift`
-- `Tests/MarkdownEditorTextViewSizingTests.swift`
+- `Downward/Features/Editor/MarkdownEditorTextView.swift`
 - `Tests/EditorKeyboardGeometryControllerTests.swift`
-
-Note: this was a pure responsibility split. The current top underlay, first-line placement, document-open viewport reset, keyboard accessory transparency, and resolved theme pipeline are intentionally unchanged.
-
----
-
-### 10b. Reduce large-file memory churn in `PlainTextDocumentSession`
-
-**Current finding**
-
-The editor-side large-file typing work is in place, but document open/save version bookkeeping was still doing avoidable whole-buffer UTF-8 churn:
-
-- read/open/reload loaded `Data`, decoded it to `String`, then re-encoded `String` back to `Data` for the digest,
-- save/autosave encoded the text for writing and separately repeated the UTF-8 conversion for the loaded-version digest.
-
-**Plan**
-
-- [x] Hash the raw UTF-8 file data already loaded on read/open/reload before version bookkeeping instead of re-encoding decoded text.
-- [x] Reuse the exact UTF-8 payload already being written on save/autosave for loaded-version digest and file-size updates.
-- [x] Keep autosave, revalidation, and conflict behavior unchanged while reducing avoidable whole-buffer churn.
-- [x] Add focused regression coverage for empty-file, raw-byte digest correctness, and large-file open/save version tracking.
-
-**Likely files**
-
-- `Downward/Domain/Document/PlainTextDocumentSession.swift`
-- `Tests/DocumentManagerTests.swift`
-
-Note: this pass keeps the current session/file-truth architecture intact. The optimization is strictly about deriving `DocumentVersion` from already-available bytes rather than manufacturing another full UTF-8 buffer.
-
-Manual perf check:
-
-- Open a large markdown file under Instruments Allocations and confirm the read path shows one raw file `Data` load, one decode to `String`, and no extra digest-only `String -> Data` copy.
-- Save a large edited markdown file and confirm the version/digest bookkeeping reuses the write payload instead of allocating a second full UTF-8 buffer for the same text.
-- Trigger revalidation on an unchanged large file and confirm it does not regress into extra versioning allocations beyond the required disk read/decode path.
-
----
-
-## P1 — markdown feature architecture preparation
-
-### 11. Add semantic token types before adding more markdown features
-
-**Plan**
-
-- [ ] Define semantic token roles for existing features first.
-- [ ] Represent syntax markers separately from content ranges.
-- [ ] Represent hidden-syntax eligibility separately from current hidden/revealed state.
-- [ ] Keep block-level tokens separate from inline tokens.
-- [ ] Include enough metadata for theming and later incremental parsing.
-
-Suggested starting roles:
-
-- [ ] `plainText`
-- [ ] `heading(level:)`
-- [ ] `headingMarker`
-- [ ] `setextUnderline`
-- [ ] `emphasisContent`
-- [ ] `strongContent`
-- [ ] `strikethroughContent`
-- [ ] `inlineCodeContent`
-- [ ] `inlineCodeDelimiter`
-- [ ] `fencedCodeContent`
-- [ ] `fencedCodeDelimiter`
-- [ ] `blockquoteMarker(depth:)`
-- [ ] `blockquoteContent(depth:)`
-- [ ] `listMarker`
-- [ ] `linkLabel`
-- [ ] `linkDestination`
-- [ ] `imageAltText`
-- [ ] `imageSource`
-- [ ] `syntaxMarker`
-- [ ] `hiddenSyntaxCandidate`
-
----
-
-### 12. Split parser, styler, theme, and layout responsibilities
-
-**Plan**
-
-- [ ] Keep markdown recognition in a parser/tokenizer layer.
-- [ ] Keep attributed-string mutation in a styler layer.
-- [ ] Keep colors/fonts/backgrounds in a theme layer.
-- [ ] Keep glyph suppression and background drawing in TextKit layout code.
-- [ ] Keep `PlainTextDocumentSession` completely unaware of markdown rendering.
-- [ ] Keep `EditorAppearanceStore` responsible for persisted appearance settings, not parsing.
-
----
-
-### 13. Define the extension protocol for new markdown features
-
-**Plan**
-
-Before adding each new feature, document:
-
-- [ ] which block or inline token roles it creates,
-- [ ] whether it can affect following lines,
-- [ ] whether it needs current-line syntax reveal behavior,
-- [ ] whether it participates in theme roles,
-- [ ] how it interacts with code blocks and inline code protection,
-- [ ] what tests prove it does not leak into protected ranges.
-
----
-
-## P2 — future large-file incremental rendering
-
-### 14. Stage 1: region-bounded restyling
-
-**Goal**
-
-Reduce edit-time work without committing to a full parser rewrite immediately.
-
-**Plan**
-
-- [x] Land a conservative current-line restyle path for ordinary same-line inline edits.
-- [x] Keep a whole-document fallback for line breaks and edits near broader markdown block context.
-- [ ] Track the edited character range from `UITextViewDelegate` callbacks.
-- [ ] Convert the edit range into a dirty line range.
-- [ ] Expand to include previous and next lines.
-- [ ] Expand over adjacent blockquote/list/indented-code regions where needed.
-- [ ] Expand to nearby fence boundaries when a code fence may be affected.
-- [ ] Render only that substring/window.
-- [ ] Offset produced ranges back into full-document coordinates.
-- [ ] Clear and replace attributes only inside the dirty window.
-- [ ] Fall back to whole-document rendering when the safe window cannot be proven.
-- [ ] Add large-file tests that assert the dirty range stays bounded for ordinary inline edits.
-
-Note: the shipping editor now has a conservative first bounded step: same-line inline edits can restyle the current line immediately when the line is outside fenced-code / blockquote / setext-sensitive context. Broader dirty-window expansion is still future work.
-
----
-
-### 15. Stage 2: cached line/block state
-
-**Goal**
-
-Make fenced code blocks and other stateful block features correct without reparsing the whole document after most edits.
-
-**Plan**
-
-- [ ] Cache per-line state for normal text vs fenced-code-block state.
-- [ ] Include fence delimiter metadata and fence language/info string if added later.
-- [ ] Recompute from a safe boundary before the edit.
-- [ ] Continue forward until newly computed state matches cached old state.
-- [ ] Invalidate only changed semantic ranges and changed layout ranges.
-- [ ] Keep a whole-document recovery pass for pathological cases and debugging.
-- [ ] Add tests for inserting/removing opening fences, closing fences, and edits near setext headings.
-
----
-
-### 16. Stage 3: fast retheme from semantic ranges
-
-**Goal**
-
-Theme switches should eventually avoid reparsing markdown.
-
-**Plan**
-
-- [ ] Cache semantic ranges from the latest successful parse.
-- [ ] On theme change, rebuild attributes from semantic ranges without re-running markdown recognition.
-- [ ] Re-run parsing only when document text changes or parser settings change.
-- [ ] Keep hidden-syntax current-line state as a layout/text-storage toggle, not a parser operation.
-
----
-
-## P1 — JSON theme plan
-
-### 17. Theme schema and validation
-
-**Plan**
-
-- [ ] Add a versioned JSON schema.
-- [ ] Support partial themes with default fallback values.
-- [x] Validate color strings before storing them.
-- [x] Support the prototype `strikethrough` colour role while preserving legacy theme imports without that key.
-- [ ] Clamp font sizes and reject unsupported font families gracefully.
-- [x] Keep imported theme data separate from the resolved runtime theme.
-- [ ] Add tests for missing fields, invalid colors, unknown roles, and future schema versions.
-
----
-
-### 18. Theme application UX
-
-**Plan**
-
-- [x] Add built-in default themes first.
-- [ ] Add a preview surface before applying imported themes globally.
-- [ ] Make reset-to-default obvious.
-- [x] Avoid applying malformed JSON directly to the live editor.
-- [x] Keep theme import/export out of document save paths.
-- [x] Keep workspace `.json` opens on the normal editor path and reserve theme import for explicit Settings actions.
-
----
-
-## QA gates before larger feature work
-
-### 19. Large-file editor QA
-
-- [ ] Open a very large markdown file with hidden syntax enabled.
-- [ ] Move the caret rapidly across headings, emphasis, code spans, links, images, and blockquotes.
-- [ ] Type inside a long paragraph.
-- [ ] Type near fenced-code block delimiters.
-- [ ] Drag-select across hidden markers.
-- [ ] Undo and redo after deferred rendering.
-- [ ] Verify no phantom marker spaces appear when syntax is hidden.
-- [ ] Verify caret placement remains sane around hidden markers.
-
----
-
-### 20. Real-device UI QA
-
-- [x] Restore seamless editor underlay beneath the top chrome while using one shared safe-area-driven inset for the first visible line and placeholder.
-- [ ] Verify first-line placement below top chrome on iPhone.
-- [ ] Verify first-line placement below top chrome on iPad.
-- [ ] Verify keyboard accessory behavior and keyboard dismissal.
-- [ ] Verify scroll indicators with top chrome and keyboard visible.
-- [ ] Verify the editor remains usable in iCloud Drive and local Files workspaces.
-
-Note: the code path no longer reconstructs top clearance from navigation-bar/window geometry. The editor surface now underlaps the top chrome again, while `MarkdownEditorTextView` and the placeholder share one safe-area-driven top inset helper and still keep zero extra scroll-view top compensation. The final top-offset fix also measures `topViewportInset` outside the ignored-safe-area editor subtree, so the editor does not accidentally see zero top clearance on open. Real-device verification is still required before closing the remaining QA bullets above.
-New-document opens also reset the text view viewport to the document-start resting position instead of preserving a stale scroll offset across document switches, while same-document rerenders still keep the current scroll position.
-
----
-
-### 21. Regression test coverage
-
-- [x] Hidden syntax remains glyph-suppressed, not font-collapsed.
-- [x] Current-line syntax reveal updates without full rerender when text is already rendered.
-- [ ] Deferred rerender happens after edits and does not break undo/redo.
-- [x] Canceled autosave tasks do not start stale saves.
-- [x] Search and recents keep the same relative-path identity after path traversal optimization.
-- [x] Theme defaults reproduce current colors and fonts.
-
----
-
-## Explicit non-goals for now
-
-Do not start these until the P0 list is handled or there is a specific product need:
-
-- [ ] Full CommonMark compliance.
-- [ ] Third-party markdown parser dependency.
-- [ ] A second competing editor implementation.
-- [ ] Multi-document live editing.
-- [ ] Content indexing/search.
-- [ ] Background parsing service without a clear UI performance requirement.
+- `Tests/MarkdownEditorTextViewSizingTests.swift`
+- New focused accessory appearance tests if needed.
+
+## P1 plan — theme import/export hardening
+
+### Current finding
+
+The app now has real custom theme infrastructure, but import/export is still closer to a functional foundation than a polished external file format. The biggest product decision is whether export means “current form draft” or “last saved theme”.
+
+### Implementation plan
+
+- [ ] Decide whether export should serialize the current editor form or the persisted theme.
+- [ ] If exporting the form, label it as draft/current export.
+- [ ] If exporting the saved theme, load the persisted theme by ID before export.
+- [ ] Decide whether low-contrast warnings should block export.
+- [x] Add explicit unsupported-schema handling for future `schemaVersion` values.
+- [ ] Make duplicate-name import errors user-readable.
+- [ ] Make oversized-file errors user-readable.
+- [ ] Make invalid JSON errors user-readable without exposing raw decoder internals.
+- [ ] Decide whether bundle import should be all-or-nothing or allow partial import.
+- [ ] Keep normal `.json` document opening separate from theme import.
+
+### Test plan
+
+- [ ] Import a valid single-theme JSON file.
+- [ ] Import a valid array of themes.
+- [ ] Import a valid bundle document.
+- [ ] Import invalid JSON.
+- [ ] Import a file above the 5 MB limit.
+- [ ] Import a theme with duplicate name and different ID.
+- [ ] Import a theme with the same ID and confirm replacement behavior.
+- [ ] Import legacy JSON missing newer optional fields.
+- [ ] Delete the currently selected custom theme and confirm fallback.
+- [ ] Export a saved theme.
+- [ ] Export unsaved editor form state if that remains the chosen behavior.
+
+### Manual QA plan
+
+- [ ] Import from Files local storage.
+- [ ] Import from iCloud Drive.
+- [ ] Import from a third-party provider if available.
+- [ ] Export to Files local storage.
+- [ ] Export to iCloud Drive.
+- [ ] Confirm exported JSON can be re-imported.
+- [ ] Confirm ordinary workspace `.json` files open as text documents.
+
+### Likely files
+
+- `Downward/Features/Settings/ThemeEditorSettingsPage.swift`
+- `Downward/Features/Settings/ThemeSettingsPage.swift`
+- `Downward/Infrastructure/Theme/ThemeImportService.swift`
+- `Downward/Infrastructure/Theme/ThemePersistenceService.swift`
+- `Downward/Shared/Theme/ThemeExchangeDocument.swift`
+- `Downward/Shared/Theme/CustomTheme.swift`
+- `Downward/Shared/Theme/ThemeStore.swift`
+- `Tests/ThemeStoreTests.swift`
+
+## P1 plan — markdown renderer scalability
+
+### Current finding
+
+`MarkdownStyledTextRenderer.swift` remains the largest app file and still owns too many concerns. Current-line restyling is the right short-term optimization, but long-term markdown feature work needs recognition, hidden-syntax decisions, theme role mapping, and attributed-string styling to be separated.
+
+### Architecture plan
+
+- [ ] Create a syntax recognition/scanning layer that returns markdown spans and block metadata without UIKit dependencies.
+- [ ] Create a styling layer that maps recognized spans to fonts, colors, paragraph styles, and hidden-syntax attributes.
+- [ ] Create a hidden-syntax visibility policy that can be tested without a live text view.
+- [ ] Keep code-block/background layout drawing separate from syntax recognition.
+- [ ] Keep theme role mapping separate from markdown parsing.
+- [ ] Keep renderer tests focused on both recognition and styled output during the transition.
+
+### Performance plan
+
+- [ ] Keep same-line edits on the current-line restyle path.
+- [ ] Send line breaks, paste, structural edits, and selection reveal changes through deferred full rerender until a real incremental parser exists.
+- [ ] Add large-document fixtures.
+- [ ] Measure typing latency in long documents.
+- [ ] Measure paste latency in long documents.
+- [ ] Measure theme-switch restyle latency in long documents.
+- [ ] Do not add table/footnote/task-list interaction features until the split starts.
+
+### Likely files
+
+- `Downward/Features/Editor/MarkdownStyledTextRenderer.swift`
+- `Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift`
+- `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
+- `Tests/MarkdownStyledTextRendererTests.swift`
+- `Tests/MarkdownCurrentLineRestyleTests.swift`
+- New scanner/recognizer tests.
+
+## P1 plan — workspace snapshot indexing
+
+### Current finding
+
+`WorkspaceSnapshotPathResolver` still uses recursive lookup for relative-path and URL resolution. This is correct and simple, but it will become a performance problem in large workspaces and in flows that repeatedly reconcile recents, mutations, and navigation state.
+
+### Implementation plan
+
+- [ ] Add a per-snapshot index for relative path to node/file metadata.
+- [ ] Add a per-snapshot index for file URL or stable file identity where available.
+- [ ] Build indexes when a snapshot is created or refreshed.
+- [ ] Keep recursive traversal as a fallback while indexes are introduced.
+- [ ] Route navigation lookup through the index.
+- [ ] Route recent-file reconciliation through the index.
+- [ ] Route mutation outcome lookup through the index.
+- [ ] Ensure indexes rebuild after refresh, rename, move, delete, and reconnect.
+
+### Test plan
+
+- [ ] Duplicate filenames in different folders.
+- [ ] Rename file.
+- [ ] Rename folder.
+- [ ] Move file.
+- [ ] Move folder.
+- [ ] Delete open file.
+- [ ] Delete ancestor folder of open file.
+- [ ] Case-only rename.
+- [ ] Stale recent file after external change.
+- [ ] Large synthetic tree lookup benchmark if practical.
+
+### Likely files
+
+- `Downward/Domain/Workspace/WorkspaceSnapshotPathResolver.swift`
+- `Downward/Domain/Workspace/WorkspaceSnapshot.swift`
+- `Downward/Features/Workspace/WorkspaceViewModel.swift`
+- `Downward/App/WorkspaceNavigationPolicy.swift`
+- `Downward/App/WorkspaceMutationPolicy.swift`
+- `Tests/WorkspaceSnapshotPathResolverTests.swift`
+- `Tests/WorkspaceViewModelMutationTests.swift`
+
+## P1 plan — runtime QA matrix
+
+### Editor layout and keyboard
+
+- [ ] iPhone portrait: top underlay and first line.
+- [ ] iPhone landscape: top underlay and first line.
+- [ ] iPad full screen: top underlay and first line.
+- [ ] iPad split view: top underlay and first line.
+- [ ] First keyboard presentation.
+- [ ] Keyboard dismissal.
+- [ ] Interactive keyboard dismissal.
+- [ ] Undo/redo accessory buttons.
+- [ ] Accessory after theme switch.
+- [ ] Accessory after app foreground/background.
+
+### Workspace and Files providers
+
+- [ ] Local workspace select/open/edit/save.
+- [ ] iCloud Drive workspace select/open/edit/save.
+- [ ] Third-party provider workspace select/open/edit/save if available.
+- [ ] External rename while app is open.
+- [ ] External move while app is open.
+- [ ] External delete while app is open.
+- [ ] Reconnect after stale bookmark/access.
+- [ ] Recent file after workspace refresh.
+
+### Settings and themes
+
+- [ ] Settings sheet compact width.
+- [ ] Settings sheet regular width.
+- [ ] Built-in theme switch.
+- [ ] Custom theme create/edit/delete.
+- [ ] Custom theme import.
+- [ ] Custom theme export.
+- [ ] Low-contrast warning.
+- [ ] Open ordinary workspace `.json` as a document.
+
+## P2 plan — coordinator and workspace view model containment
+
+### App coordinator
+
+- [ ] Keep new workspace decisions in focused policies/helpers.
+- [ ] Extract mutation-outcome reconciliation if it grows.
+- [ ] Extract restore presentation decisions if reconnect UX grows.
+- [ ] Keep coordinator tests around every extraction.
+- [ ] Avoid adding settings/theme/editor feature logic directly to `AppCoordinator`.
+
+### Workspace view model
+
+- [ ] Keep search behaviour in `WorkspaceSearchModel`.
+- [ ] Extract prompt/command state if more dialogs are added.
+- [ ] Extract expansion/path-rewrite helpers if tree mutation handling grows.
+- [ ] Add tests before splitting to preserve browser behavior.
+
+## P2 plan — future product features
+
+These stay behind the current validation and architecture work.
+
+- [ ] StoreKit tips.
+- [ ] App Store review/rating routing.
+- [ ] Configured legal/privacy URLs.
+- [ ] Line numbers.
+- [ ] Larger heading text.
+- [ ] Richer markdown constructs such as tables and footnotes.
+- [ ] Deeper theme marketplace/sharing behavior.
+
+## Documentation maintenance plan
+
+- [x] Refresh `CODE_REVIEW.md` with current findings.
+- [x] Convert `TASKS.md` to checkable sections.
+- [x] Convert this file to checkable engineering plans.
+- [ ] Update `ARCHITECTURE.md` whenever ownership boundaries change.
+- [ ] Update `AGENTS.md` only when contributor instructions or project rules change.
+- [ ] Keep runtime QA results in `TASKS.md` or a dedicated release checklist.

@@ -5,8 +5,9 @@ import UIKit
 /// TextKit drawing, editor surface, and keyboard accessory all consume the same palette.
 struct ResolvedEditorTheme: Equatable {
     let editorBackground: UIColor
-    /// The accessory host is painted with the editor surface color so UIKit's private keyboard
-    /// wrappers cannot expose their default light background during presentation or dismissal.
+    /// Reserved theme color for keyboard-adjacent surfaces. The shipping accessory host stays
+    /// clear/non-opaque so UIKit's own keyboard material shows through without repainting
+    /// private keyboard wrapper views.
     let keyboardAccessoryUnderlayBackground: UIColor
     let accent: UIColor
     let primaryText: UIColor

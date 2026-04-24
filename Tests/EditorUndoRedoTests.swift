@@ -64,8 +64,8 @@ final class EditorUndoRedoTests: XCTestCase {
         }
 
         XCTAssertNotNil(textView.keyboardAccessoryToolbarView)
-        XCTAssertSameResolvedColor(accessoryView.backgroundColor, .systemBackground)
-        XCTAssertTrue(accessoryView.isOpaque)
+        XCTAssertClear(accessoryView.backgroundColor)
+        XCTAssertFalse(accessoryView.isOpaque)
         XCTAssertEqual(accessoryView.toolbar.items?.count, 4)
         XCTAssertFalse(textView.undoAccessoryItem?.isEnabled ?? true)
         XCTAssertFalse(textView.redoAccessoryItem?.isEnabled ?? true)
@@ -339,19 +339,14 @@ final class EditorUndoRedoTests: XCTestCase {
         let fittedSize = accessoryView.sizeThatFits(CGSize(width: 320, height: UIView.noIntrinsicMetric))
 
         XCTAssertGreaterThan(fittedSize.height, 0)
-        XCTAssertSameResolvedColor(accessoryView.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
-        XCTAssertSameResolvedColor(accessoryView.toolbar.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
-        XCTAssertTrue(accessoryView.toolbar.isTranslucent)
+        XCTAssertClear(accessoryView.backgroundColor)
+        XCTAssertFalse(accessoryView.isOpaque)
         XCTAssertEqual(accessoryView.toolbar.tintColor, theme.accent)
-        XCTAssertSameResolvedColor(accessoryView.toolbar.standardAppearance.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
-        XCTAssertSameResolvedColor(accessoryView.toolbar.compactAppearance?.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
-        XCTAssertSameResolvedColor(accessoryView.toolbar.scrollEdgeAppearance?.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
-        XCTAssertNilOrClear(accessoryView.toolbar.standardAppearance.shadowColor)
         XCTAssertGreaterThan(accessoryView.intrinsicContentSize.height, 0)
     }
 
     @MainActor
-    func testKeyboardAccessoryPaintsUIKitHostBackground() {
+    func testKeyboardAccessoryKeepsUIKitHostBackgroundUntouched() {
         let actionTarget = AccessoryActionTarget()
         let accessoryView = KeyboardAccessoryToolbarView(
             target: actionTarget,
@@ -368,20 +363,25 @@ final class EditorUndoRedoTests: XCTestCase {
         accessoryView.frame = CGRect(x: 0, y: 0, width: 320, height: 52)
         accessoryView.layoutIfNeeded()
 
-        XCTAssertSameResolvedColor(hostView.backgroundColor, .systemBackground)
+        XCTAssertEqual(hostView.backgroundColor, .white)
         XCTAssertTrue(hostView.isOpaque)
+        XCTAssertClear(accessoryView.backgroundColor)
+        XCTAssertFalse(accessoryView.isOpaque)
 
         let paintedTheme = makeResolvedTheme(keyboardAccessoryUnderlayBackground: .brown)
         hostView.backgroundColor = .white
         hostView.isOpaque = true
         accessoryView.applyResolvedTheme(paintedTheme)
 
-        XCTAssertEqual(hostView.backgroundColor, .brown)
+        XCTAssertEqual(hostView.backgroundColor, .white)
         XCTAssertTrue(hostView.isOpaque)
+        XCTAssertClear(accessoryView.backgroundColor)
+        XCTAssertFalse(accessoryView.isOpaque)
+        XCTAssertEqual(accessoryView.toolbar.tintColor, paintedTheme.accent)
     }
 
     @MainActor
-    func testDefaultThemeReapplicationRestoresPaintedAccessoryHost() {
+    func testDefaultThemeReapplicationPreservesClearAccessoryHost() {
         let actionTarget = AccessoryActionTarget()
         let accessoryView = KeyboardAccessoryToolbarView(
             target: actionTarget,
@@ -415,15 +415,15 @@ final class EditorUndoRedoTests: XCTestCase {
         )
 
         accessoryView.applyResolvedTheme(customTheme)
-        XCTAssertEqual(accessoryView.backgroundColor, customTheme.keyboardAccessoryUnderlayBackground)
+        XCTAssertClear(accessoryView.backgroundColor)
+        XCTAssertFalse(accessoryView.isOpaque)
+        XCTAssertEqual(accessoryView.toolbar.tintColor, customTheme.accent)
 
         accessoryView.applyResolvedTheme(.default)
 
-        XCTAssertSameResolvedColor(accessoryView.backgroundColor, .systemBackground)
-        XCTAssertSameResolvedColor(accessoryView.toolbar.backgroundColor, .systemBackground)
-        XCTAssertSameResolvedColor(accessoryView.toolbar.standardAppearance.backgroundColor, .systemBackground)
-        XCTAssertSameResolvedColor(accessoryView.toolbar.compactAppearance?.backgroundColor, .systemBackground)
-        XCTAssertSameResolvedColor(accessoryView.toolbar.scrollEdgeAppearance?.backgroundColor, .systemBackground)
+        XCTAssertClear(accessoryView.backgroundColor)
+        XCTAssertFalse(accessoryView.isOpaque)
+        XCTAssertEqual(accessoryView.toolbar.tintColor, ResolvedEditorTheme.default.accent)
     }
 
     @MainActor
@@ -484,7 +484,8 @@ final class EditorUndoRedoTests: XCTestCase {
             return XCTFail("Expected markdown layout manager")
         }
 
-        XCTAssertEqual(accessoryView.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
+        XCTAssertClear(accessoryView.backgroundColor)
+        XCTAssertFalse(accessoryView.isOpaque)
         XCTAssertEqual(accessoryView.toolbar.tintColor, theme.accent)
         XCTAssertEqual(layoutManager.resolvedTheme, theme)
         XCTAssertEqual(textView.backgroundColor, theme.editorBackground)
@@ -1001,18 +1002,6 @@ private func XCTAssertClear(
 
     let resolvedColor = color.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
     XCTAssertEqual(resolvedColor.cgColor.alpha, 0, accuracy: 0.001, file: file, line: line)
-}
-
-private func XCTAssertNilOrClear(
-    _ color: UIColor?,
-    file: StaticString = #filePath,
-    line: UInt = #line
-) {
-    guard let color else {
-        return
-    }
-
-    XCTAssertClear(color, file: file, line: line)
 }
 
 private func XCTAssertSameResolvedColor(

@@ -1,811 +1,261 @@
-# CODE_REVIEW
+# CODE_REVIEW.md
 
-## Review scope
+## 2026-04-24 static review refresh
 
-- Static code review of the uploaded `Downward.zip` snapshot.
-- Reviewed `App/`, `Domain/`, `Infrastructure/`, `Features/`, `Shared/`, `Tests/`, and the archive contents.
-- I can run focused `xcodebuild` test suites in this environment, but anything marked **runtime verification needed** still requires simulator or device verification.
+### Scope and verification
 
+This review covers the uploaded `Downward.zip` project after the latest code changes. I reviewed the app sources, domain/infrastructure layers, feature modules, tests, and steering markdown files.
 
-## 2026-04-23 review refresh
+Verification status:
 
-This refresh was done against the latest uploaded `Downward.zip` after the repo was reverted back to a stable baseline.
+- [x] Static source review completed.
+- [x] Steering docs refreshed to match the current code direction.
+- [ ] Xcode build completed.
+- [ ] XCTest suite completed.
+- [ ] Simulator/device manual QA completed.
 
-## 2026-04-24 async lifecycle audit
+Important limitation: this review was performed in a Linux container. `xcodebuild` is not available here, and SwiftUI/UIKit XCTest targets cannot be compiled or run in this environment. Treat the findings below as a static review plus documentation update, not as a passing build/test certification.
 
-### Audited
+### Snapshot metrics
 
-- `AppCoordinator` restore, reconnect, refresh, mutation, foreground validation, document reload, revalidation, and recent/trusted-open flows.
-- `RootViewModel`, `WorkspaceViewModel`, and `EditorViewModel` unstructured `Task { ... }` call sites.
-- `PlainTextDocumentSession` observation fallback polling, file-presenter callbacks, structured read/revalidate operations, and intentionally detached save writes.
-- `MarkdownEditorTextViewCoordinator` deferred rerender and viewport-reset tasks.
-- Settings clear/reconnect entry points through `RootViewModel` and coordinator-owned workspace transitions.
+| Area | Current snapshot |
+| --- | --- |
+| Swift files reviewed | 115 |
+| Swift lines reviewed | 32,138 |
+| Largest app file | `Downward/Features/Editor/MarkdownStyledTextRenderer.swift` — 1,612 lines |
+| Largest domain file | `Downward/Domain/Workspace/WorkspaceManager.swift` — 1,509 lines |
+| Largest coordinator file | `Downward/App/AppCoordinator.swift` — 1,336 lines |
+| Largest feature view model | `Downward/Features/Workspace/WorkspaceViewModel.swift` — 1,049 lines |
 
-### Fixed in this audit
+### Review verdict
 
-- **Editor conflict-resolution tasks are now explicitly model-owned.** `EditorViewModel.reloadFromDisk()` and `overwriteDisk()` now store the task, cancel it when the editor route/document identity changes, and require both a generation match and same logical document before applying delayed results.
-- **Stale reload results no longer replace a newer route document.** Added `EditorConflictTests.testDelayedReloadResolutionDoesNotReplaceNewerRouteDocument`.
-- **Root app actions are documented as coordinator-owned one-shot tasks.** Clear, retry restore, folder picker selection, and foreground validation remain fire-and-forget at the view-model boundary because coordinator transition/apply generations own stale-result suppression.
-- **Docs now encode the async ownership rule.** New tasks should be classified as app/session-owned, model-owned, view-owned, or explicitly fire-and-forget, and any state mutation after `await` needs cancellation, generation, or identity checks.
+No new P0 release-blocking defect was found by static review. The current codebase looks materially healthier than the previous emergency-hardening state: workspace safety, editor layout, restore flows, autosave, theme persistence, and settings structure all have clearer ownership and stronger tests.
 
-### Remaining risk
+Do not treat that as release-ready until the validation checklist passes. The remaining risk is concentrated in runtime UI behavior, theme import/export polish, renderer scalability, and a few large-file/large-tree architecture seams.
 
-- Simulator `NSFilePresenter` delivery remains unreliable in `EditorAutosaveTests.testLiveObservationReloadsCleanEditorAfterOutsideWrite`; the test timed out during this pass and should be treated as a file-observation reliability follow-up rather than evidence of a conflict-resolution regression.
-- Detached document/workspace writes are intentionally preserved so transient UI cancellation does not interrupt coordinated file-system operations after they start.
+## What is now in good shape
 
-## 2026-04-24 coordinator boundary cleanup
+- [x] Workspace trust remains centred in `WorkspaceManager` and `WorkspaceRelativePath` rather than being spread through UI code.
+- [x] Relative-path-first document routing is explicit through `WorkspaceNavigationPolicy`, `WorkspaceViewModel`, and workspace snapshot helpers.
+- [x] Restore/reconnect flows have better stale-result guards and clearer coordinator/session ownership.
+- [x] Editor autosave cancellation is now guarded around `Task.sleep`, and cancelled autosave tasks no longer fall through to save work.
+- [x] Save acknowledgement merging preserves newer in-memory edits instead of blindly replacing state with the saved version.
+- [x] The editor bridge is split into focused collaborators instead of one monolithic representable file.
+- [x] Full-height editor sizing, top underlay, first-line placement, and document-open viewport reset are treated as product behavior.
+- [x] Markdown syntax visibility is an explicit editor appearance setting.
+- [x] Current-line restyling reduces the cost of ordinary same-line edits, with deferred full rerendering still available for broader markdown-context changes.
+- [x] Settings now have a real sheet-based hierarchy rather than placeholder-only surfaces.
+- [x] Built-in and custom theme selection persist through `EditorAppearanceStore`, `ThemeStore`, and `ThemePersistenceService`.
+- [x] JSON theme import/export is routed through explicit theme settings flows rather than through normal document opening.
+- [x] `.json` workspace files can open as text editor documents while explicit theme import stays separate.
+- [x] Tests cover many of the important seams: workspace restore, document manager behavior, editor undo/redo, autosave, keyboard geometry, renderer behavior, settings model, theme store, and theme exchange documents.
 
-### Moved out of `AppCoordinator`
+## Current findings
 
-- **Mutation execution metadata and fallback text** now live in `WorkspaceMutationService` and `WorkspaceMutationErrorPresenter`. The coordinator still sequences the operation and applies generation guards, but it no longer builds create/rename/move/delete fallback errors inline.
-- **Browser item kind lookup** now lives in `WorkspaceMutationPolicy`, next to mutation preflight rules.
-- **Trusted editor route resolution** now lives in `WorkspaceNavigationPolicy`, including preferred URL handling, open-document route reuse, snapshot URL lookup, and workspace-relative fallback URL construction.
-- **Presented editor relative-path resolution and stale recent-file open policy** now live in `WorkspaceNavigationPolicy`, so recent/trusted-open behavior is tested as policy rather than embedded in coordinator branches.
-- **Folder rename descendant route resolution helpers** now live in `WorkspaceNavigationPolicy`, so AppCoordinator no longer owns the path/URL rewriting helpers directly.
+### [P1] Keyboard accessory/theme contract needs final runtime verification and docs discipline
 
-### Coverage added or updated
+**Status:** regression coverage now matches the clear-host/tinted-controls contract; runtime verification still open.
 
-- `WorkspaceCoordinatorPolicyTests` now cover workspace-relative fallback editor route construction, regular-width pending trusted presentation resolution, stale recent-file removal/error construction, and folder browser-kind classification.
-- Existing restore, mutation, trusted-open/recent, and editor conflict app-flow suites passed after the refactor.
+Relevant files:
 
-### Still in `AppCoordinator`
-
-- Mutation result application still contains cross-dependency side effects: updating recents, rewriting pending presentations, relocating the active document session, clearing restorable sessions, and presenting delete alerts.
-- That remaining block is a reasonable future extraction target, but it should move into a focused mutation result applier rather than into navigation/session policies.
-
-## 2026-04-24 settings hierarchy implementation
-
-### Implemented
-
-- **Settings now has a product-facing hierarchy** matching the prototype structure: a native inset-grouped Settings home plus Editor, Theme, New Theme, Markdown, Tips, Information, and About destinations.
-- **The Settings feature owns its nested page stack.** App/session wiring now presents Settings through `AppSession.isSettingsPresented` as a sheet on both compact and regular layouts; `AppCoordinator` did not gain settings feature logic.
-- **Existing real controls remain wired through `EditorAppearanceStore`.** Editor font family, editor font size, and markdown syntax visibility still persist through the existing appearance pipeline.
-- **Editor settings now match the prototype section structure more closely.** The Editor destination uses a native grouped form with a segmented monospaced/proportional picker, prototype-style font rows, section footers, and persisted proportional font choices for SF Pro, New York, and Georgia where available.
-- **Appearance is now a real picker.** The top-level Appearance row matches the prototype menu picker and persists System/Light/Dark through `AppColorScheme`, which the app root applies with `preferredColorScheme`.
-- **Theme settings now have backing infrastructure.** Built-in theme selection persists through `EditorAppearanceStore`; custom themes persist through `ThemeStore`; New Theme/Edit Theme use a live markdown preview, palette picker, contrast warning, save/delete/edit actions, strikethrough colour editing, and JSON import/export through `ThemeExchangeDocument`.
-- **Workspace JSON files now open as editor documents.** `.json` files appear in the workspace/search surfaces like other supported text files; importing a JSON theme remains an explicit Theme settings action through `ThemeImportService`/`ThemeStore`.
-- **Workspace actions remain reachable from Settings.** The Workspace row opens reconnect/clear actions without moving file-system logic into the view.
-- **Unsupported product areas stay honest.** Line numbers, larger heading text, StoreKit tips, App Store rating, and legal URLs are disabled or placeholder-backed rather than presented as complete features.
-- **Coverage now includes settings display seams.** `SettingsScreenModelTests` covers home summary font/theme/workspace values, editor/markdown store updates, and placeholder feature flags; `ThemeStoreTests` covers custom-theme persistence, exchange document round-trips, prototype JSON with `strikethrough`, legacy JSON without it, and file-based theme import.
-
-### Remaining settings work
-
-- Theme import currently adds themes without an import-preview confirmation step.
-- The JSON exchange format still needs richer schema/version migration tests before broadening the format beyond the current required colour roles.
-- Tips need StoreKit product IDs and purchase infrastructure.
-- Rate the App, Privacy Policy, and Terms rows need configured production URLs/routes.
-- Real-device verification is still needed for the new hierarchy on iPhone and iPad with larger Dynamic Type.
-
-### Checked off in this refresh
-
-- **P0 editor height / clipping** — fixed in current code. `MarkdownEditorTextView` now uses an effectively unbounded text container, tracks width, implements `sizeThatFits`, lowers vertical layout priorities, and has `MarkdownEditorTextViewSizingTests`.
-- **P0 keyboard accessory underlay** — fixed in current code. The root cause was the SwiftUI editor container ignoring only `.container` safe area, not `.keyboard`; `EditorScreen` now includes `.ignoresSafeArea(.keyboard, edges: .bottom)`.
-- **P0 initial keyboard underlap** — closed as obsolete. The current implementation no longer uses accessory-height underlap subtraction; it matches the prototype model by reserving the full keyboard overlap and letting the accessory overlay the full-height editor.
-- **P1 top chrome / first-line placement in code** — fixed in current code. The editor surface underlaps the top chrome again, while `EditorScreen` and `MarkdownEditorTextView` now share one safe-area-driven top inset contract for the first line and placeholder instead of reconstructing clearance from navigation-bar/window geometry. The final regression fix also moved the `topViewportInset` measurement out of the ignored-safe-area editor subtree so document opens do not accidentally see zero top clearance.
-- **P1 initial document-open viewport anchoring** — fixed in current code. `MarkdownEditorTextView` no longer preserves stale `contentOffset` values across document identity changes, and top-inset changes only re-anchor the viewport when the editor is already resting at document start.
-- **P1 dead `showsKeyboardToolbar` state** — fixed. The property is gone and tests now target the actual UIKit accessory view.
-- **P1 accessory appearance hardening** — fixed in current code. The accessory wrapper, embedded `UIToolbar`, and UIKit keyboard host chain are explicitly painted with the resolved editor surface underlay so private host views cannot show a white background during presentation or interactive dismissal.
-- **P1 resolved editor theme pipeline** — fixed in current code. The editor surface, renderer text colors, TextKit code/blockquote drawing, caret tint, and keyboard accessory styling now resolve from one runtime theme model with focused regression coverage.
-- **P1 editor bridge split** — fixed in current code. `MarkdownEditorTextView.swift` is now a thin representable file, while the coordinator, accessory view, keyboard geometry, and `UITextView` subclass live in focused collaborators with the existing editor regressions still covered by tests.
-- **P0 large-file same-line typing latency** — fixed in current code. Ordinary same-line inline edits now take a bounded current-line restyle path instead of automatically scheduling a whole-document markdown rerender, while line-break and broader block-context edits still use the deferred full fallback.
-- **P1 document read/write memory churn** — fixed in current code. `PlainTextDocumentSession` now hashes raw bytes already loaded from disk and reuses the exact UTF-8 payload already being written during save/autosave instead of doing extra full-buffer `String -> Data` round-trips for version bookkeeping.
-- **P1 coordinator policy cleanup** — improved in current code. Workspace selection/replacement and refresh session application now flow through `WorkspaceSessionPolicy`, repeated mutation preflight rules now live in `WorkspaceMutationPolicy`, and create/rename/move/delete mutation error handling no longer duplicates the same inline catch branches across `AppCoordinator`.
-
-### Still relevant after this refresh
-
-- Undo/redo/dismiss still have two command paths: visible accessory actions plus token commands.
-- Real-device verification is still needed for top chrome / first-line placement on iPhone and iPad.
-- Real-device verification is still needed for light, dark, and non-standard editor backgrounds now that the shared theme/accessory pipeline paints the accessory host from the editor surface.
-- User-facing custom theme management and JSON import/export now have initial backing infrastructure; richer schema validation and import-preview UX remain future work.
-- Settings now ship as a maintained sheet with a native inset-grouped home list, and regular-width iPad settings present as a dedicated sheet instead of replacing the split-view detail pane.
-- Workspace snapshot path lookup, search, and recents pruning are still relevant performance items.
-- Large files still need broader incremental rendering work and real-device verification, but the immediate same-line typing-latency regression is no longer open.
-- `AppCoordinator` is still a hotspot, but the remaining risk is mainly mutation outcome reconciliation and restore sequencing rather than repeated selection/refresh/error boilerplate.
-
-## Executive summary
-
-The project has **good bones**:
-
-- the workspace trust boundary is clearly treated as a real product invariant,
-- document/session logic is kept out of views more than in many SwiftUI apps,
-- actor boundaries are used in the right places for workspace/document work,
-- the editor has meaningful unit coverage,
-- the repo docs (`AGENTS.md`, `ARCHITECTURE.md`, `TASKS.md`) are unusually strong and mostly tell the truth.
-
-The biggest current risks are not basic data safety. They are:
-
-1. **editor chrome and theming integration still being only partially explicit**,
-2. **duplicate or stale editor paths left over from earlier implementations**,
-3. **hot-path performance on larger workspaces and larger files**,
-4. **oversized coordinator/renderer files that are becoming hard to reason about safely**,
-5. **theme/customization surfaces still need to grow on top of the new settings shell**.
-
-## Project metrics from this snapshot
-
-- **93 Swift files total**
-  - **69 app files**
-  - **24 test files**
-- Largest files:
-  - `Downward/Features/Editor/MarkdownStyledTextRenderer.swift` — **1600 lines**
-  - `Downward/Domain/Workspace/WorkspaceManager.swift` — **1509 lines**
-  - `Downward/App/AppCoordinator.swift` — **1504 lines**
-  - `Tests/WorkspaceManagerRestoreTests.swift` — **1318 lines**
-  - `Tests/DocumentManagerTests.swift` — **1138 lines**
-  - `Downward/Features/Workspace/WorkspaceViewModel.swift` — **1049 lines**
-  - `Downward/Domain/Document/PlainTextDocumentSession.swift` — **978 lines**
-  - `Tests/EditorAutosaveTests.swift` — **888 lines**
-  - `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift` — **661 lines**
-
-## What is already strong and should be preserved
-
-- `LiveWorkspaceManager` is clearly trying to keep the **workspace root** as the only trust boundary.
-- `PlainTextDocumentSession` is taking the right stance that the **live editor buffer stays authoritative while typing**.
-- The app is disciplined about **workspace-relative identity** being primary.
-- The docs explicitly protect calm autosave behavior and exceptional-only conflict UI.
-- The test suite is broad and covers real risk areas: restore, autosave, conflict handling, enumeration, security-scoped access, recents, and search.
-
----
-
-# 1) P0 / release-blocking issues
-
-## [x] P0 — Fix the editor height / clipping bug in `MarkdownEditorTextView`
-
-**Files**
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:27-54`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:77-99`
-- `Downward/Features/Editor/EditorScreen.swift:49-80`
-
-**Evidence**
-- The current editor is created with `NSTextContainer(size: .zero)` at line 30.
-- The representable does **not** implement `sizeThatFits(_:uiView:context:)`.
-- The `UITextView` only lowers **horizontal** compression resistance at line 54, not vertical.
-- Your screenshot shows the editor content visually stopping around mid-screen, leaving a large dead area below.
-
-**Why this matters**
-- This is a **core editing bug**, not just polish.
-- It also makes the keyboard accessory debugging misleading, because a half-height editor can make a transparent accessory look opaque simply because there is no text behind it.
-
-**Recommended change**
-- Create the text container with an effectively unbounded height.
-- Make the text container track width.
-- Implement `UIViewRepresentable.sizeThatFits` so SwiftUI gives the text view the full proposed height.
-- Lower **vertical** hugging/compression resistance as well.
-- Re-test before making more keyboard-bar visual tweaks.
-
-**Done when**
-- A long document fills the full editor area on iPhone and iPad.
-- There is no large blank dead zone under the text before the keyboard appears.
-- The bug reproducing in your screenshot is gone on device and simulator.
-
-**Status after 2026-04-21 refresh**
-- Fixed in code: unbounded text container height, width tracking, full-proposal `sizeThatFits`, lowered vertical layout priorities, and sizing regression coverage are present.
-- Keep real-device coverage in the QA checklist, but this no longer belongs in the active P0 bug list.
-
----
-
-## [x] P0 — Fix the keyboard accessory “transparent only after touch/scroll” bug
-
-**Files**
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:300-327`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:454-477`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:531-583`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:699-790`
-
-**Observed bug**
-- You reported: **the bar the buttons sit on above the keyboard is only transparent when the user touches and scrolls down**.
-
-**My read from the code**
-- The accessory itself is configured to be transparent (`backgroundColor = .clear`, `isOpaque = false`, transparent `UIToolbarAppearance`, clear background/shadow images).
-- That means the symptom is **likely not a simple “toolbar is opaque” bug**.
-- The more likely causes are:
-  1. the editor is not filling height yet, so there is no content under the accessory until the user scrolls,
-  2. the underlap inset math is not correct on the **first** keyboard presentation,
-  3. the toolbar appearance is only configured in `init`, not re-applied when the accessory is attached to the keyboard host view or when traits change.
-
-**Important note**
-- This item needs **runtime verification** after the height bug above is fixed, because right now the sizing bug can mask the real root cause.
-
-**Recommended change**
-- Fix the full-height editor issue first.
-- Then instrument and verify:
-  - `keyboardOverlapInset`
-  - `accessoryHeightToUnderlap(...)`
-  - final `contentInset.bottom`
-  - final `verticalScrollIndicatorInsets.bottom`
-- Re-apply accessory appearance when the accessory moves into a window and when the trait collection changes.
-- Confirm the accessory host view itself is not drawing an inherited background.
-
-**Done when**
-- The accessory looks transparent immediately when the keyboard appears.
-- Transparency does not depend on the user scrolling first.
-- The same behavior is confirmed on a real iPhone, not just simulator.
-
-**Status after 2026-04-21 refresh**
-- Fixed in code and confirmed by the user.
-- Root cause: the editor container ignored `.container` safe areas but not the keyboard safe area, so the transparent accessory initially sat over SwiftUI background instead of live editor content.
-- Fix: `EditorScreen` now applies `.ignoresSafeArea(.keyboard, edges: .bottom)` to the editor container.
-
----
-
-## [x] P0 — Stabilize initial keyboard underlap so text is visible behind the accessory on first presentation
-
-**Files**
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:312-319`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:551-569`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:612-635`
-
-**Problem**
-- The editor underlap is currently computed as:
-  - keyboard overlap
-  - minus accessory height
-- That is the right idea.
-- The problem is that the current implementation depends on keyboard geometry being available and correct at the right moment. If that geometry is stale or the editor has not finished sizing, users see a blank band rather than content under the accessory.
-
-**Why this matters**
-- This directly affects the “floating, native” feeling of the keyboard controls.
-- If the content does not underlap correctly, the accessory always feels like a bar sitting *above* the editor instead of part of the editor chrome.
-
-**Recommended change**
-- After the full-height fix, verify the first keyboard presentation path explicitly.
-- Ensure the first responder path and first `keyboardWillChangeFrame` path produce the same final inset as later scroll interactions.
-- Add targeted test coverage for initial keyboard presentation, not only steady-state `keyboardOverlapInset` math.
-
-**Done when**
-- When the keyboard first appears, text is already visible behind the transparent accessory.
-- The user does not need to scroll or tap to get the intended visual effect.
-
-**Status after 2026-04-21 refresh**
-- Closed as obsolete. The current implementation no longer uses accessory-height underlap subtraction.
-- The working model is the prototype model: reserve full keyboard overlap in scroll insets, keep the editor full-height, and let the accessory overlay the editor content.
-- The real transparency fix was `.ignoresSafeArea(.keyboard, edges: .bottom)`, not more underlap math.
-
----
-
-## [x] P0 — Fix large-file typing latency in `MarkdownEditorTextView`
-
-**Files**
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:248-320`
-- `Downward/Features/Editor/MarkdownStyledTextRenderer.swift:31-297`
-- `Downward/Features/Editor/EditorViewModel.swift:163-175`
-- `Tests/EditorUndoRedoTests.swift`
-
-**Observed bug**
-- The uploaded `large_test_file.md` is around 250 KB and repeated editing in that file produced multi-second keypress lag.
-
-**Root cause**
-- Ordinary typing still escalated too quickly into whole-document work.
-- Same-line inline edits in `hiddenOutsideCurrentLine` mode were still riding the deferred full-render path even when the current revealed line had not moved and the broader markdown context was unchanged.
-- Full passes also paid an avoidable whole-document attributed-string equality check before mutating `textStorage`.
-
-**Final fix**
-- Track edit context from `textView(_:shouldChangeTextIn:replacementText:)`.
-- For ordinary same-line inline edits, restyle just the current line immediately with the existing renderer and update `NSTextStorage` only for that line.
-- Keep line-break edits and broader markdown block context on the existing deferred whole-document fallback path.
-- Remove the extra whole-document attributed-string equality check before in-place full rerenders.
-- Add focused regression tests for:
-  - immediate same-line restyling,
-  - line-break edits still deferring to the full pass,
-  - a large-line same-document editing path.
-
-**Done when**
-- Editing the uploaded large markdown file is responsive in both syntax modes, especially `hiddenOutsideCurrentLine`.
-- Typing ordinary characters on the same line does not trigger full-document re-rendering.
-- Moving the cursor to another line still updates hidden-syntax presentation.
-- Line-break edits still refresh the current-line presentation correctly.
-- Confirmed on simulator and a real iPhone.
-
-**Status after 2026-04-23 refresh**
-- Fixed in code and covered by focused editor tests.
-- Real-device verification on a large markdown file is still recommended before treating the performance gain as release-ready across Files providers.
-
----
-
-# 2) P1 user-visible correctness / UX cleanup
-
-## [ ] P1 — Consolidate undo / redo / dismiss into a single source of truth
-
-**Files**
-- `Downward/Features/Editor/EditorViewModel.swift:300-317`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:123-125`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:415-444`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:492-529`
-
-**Problem**
-- The editor currently has **two command paths** for the same actions:
-  1. token-based commands from the SwiftUI view model,
-  2. direct accessory button actions on the `UITextView`.
-
-**Why this matters**
-- This increases the number of states that must stay in sync.
-- It makes the code harder to reason about during regressions.
-- It also makes tests less representative if the visible UI uses one path and tests assert the other.
-
-**Recommended change**
-- Pick one on-screen interaction path as canonical.
-- Keep the token path only if you still need it for non-accessory invocations such as external commands or future hardware keyboard shortcuts.
-- Document which layer owns the visible toolbar behavior.
-
-**Done when**
-- One code path is clearly canonical for the visible accessory buttons.
-- The other path is either removed or explicitly documented as secondary.
-
----
-
-## [x] P1 — Remove dead `showsKeyboardToolbar` state and update tests that still assume the old UI
-
-**Files**
-- `Downward/Features/Editor/EditorViewModel.swift:163-165`
-- `Tests/EditorUndoRedoTests.swift:11-24`
-- `Tests/EditorUndoRedoTests.swift:40-45`
-
-**Problem**
-- `showsKeyboardToolbar` still exists in `EditorViewModel`, but `EditorScreen` no longer reads it.
-- Tests still assert that property even though the visible on-screen toolbar is now driven by the `inputAccessoryView` path.
-
-**Why this matters**
-- It creates false confidence.
-- Passing tests can suggest the keyboard-toolbar feature works when they are only asserting leftover state.
-
-**Recommended change**
-- Remove `showsKeyboardToolbar` if it is no longer part of the product surface.
-- Rewrite tests to assert the actual current UI behavior: accessory existence, enabled states, inset behavior, and real focus transitions.
-
-**Done when**
-- There is no dead keyboard-toolbar state left in `EditorViewModel`.
-- Tests only assert behavior that still exists in the current editor architecture.
-
-**Status after 2026-04-21 refresh**
-- Fixed. `showsKeyboardToolbar` no longer exists, SwiftUI `.keyboard` toolbar items are gone, and tests assert the actual `inputAccessoryView` toolbar path.
-
----
-
-## [x] P1 — Simplify top-chrome clearance ownership in code and move the remaining risk into real-device QA
-
-**Files**
-- `Downward/Features/Editor/EditorScreen.swift:79-80`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:300-309`
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:638-655`
-
-**Problem**
-- The original implementation ignored the top container safe area and then manually reconstructed clearance from navigation-bar / safe-area geometry inside the text view.
-- The first cleanup removed that geometry probing by keeping the editor inside the top safe area, but it also introduced a visible top band because the editor surface no longer underlapped the navigation chrome.
-- The real goal is both: seamless top underlay and correct first-line placement.
-
-**Why this matters**
-- This is exactly the sort of geometry code that looks correct on simulator and still fails on a real iPhone or iPad.
-
-**Recommended change**
-- Keep the editor surface under the top chrome so the background stays visually continuous.
-- Derive the visible first-line/placeholder start from one shared safe-area-driven inset helper instead of from nav-bar/window geometry.
-- Keep `MarkdownEditorTextView` responsible for internal content padding and keyboard-driven bottom insets, and avoid extra top scroll-view compensation.
-- Add regression coverage for the shared top inset helper and the unchanged scroll-view top insets.
-
-**Done when**
-- The first visible line, placeholder, and caret start position align in code without device-specific magic offsets.
-- The editor still feels visually continuous beneath the back button/document-title chrome.
-- The remaining work is explicit real-device QA, not more top-clearance math inside the editor.
-
-**Status after 2026-04-23 refresh**
-- Fixed in code: `EditorScreen` underlaps the top chrome again, `MarkdownEditorTextView` still avoids navigation-bar/window geometry math, and the placeholder/text view now share the same safe-area-driven top inset helper.
-- The final first-line regression fix measures top clearance from an outer geometry scope instead of from inside the underlapped editor subtree, which prevents newly opened documents from starting behind the navigation chrome.
-- The document-open regression is also fixed in code: new document identities normalize the viewport back to the document-start resting position instead of preserving a stale scroll offset from the previous document or layout pass.
-- Targeted regression coverage now asserts the shared top inset helper, zero top scroll-view compensation, document-switch viewport reset, and same-document scroll preservation.
-- Keep real-device verification in `PLANS.md` before treating the UI QA gate as fully closed on shipping devices.
-
----
-
-## [x] P1 — Re-apply keyboard accessory appearance on attachment and trait changes
-
-**Files**
-- `Downward/Features/Editor/MarkdownEditorTextView.swift:891-997`
-- `Tests/EditorUndoRedoTests.swift:220-239`
-
-**Problem**
-- Transparent appearance is configured only in `KeyboardAccessoryToolbarView.init(...)`.
-- There is no `didMoveToWindow`, `layoutSubviews` re-application, or `traitCollectionDidChange` hook to keep the accessory appearance stable when the keyboard host or system appearance changes.
-
-**Why this matters**
-- It is a likely contributor to the “only looks right after interaction” class of bugs.
-- It is also a likely future bug for dark mode / keyboard-style transitions.
-
-**Recommended change**
-- Reapply the appearance in lifecycle hooks that are actually exercised when the accessory joins the keyboard host view.
-- Explicitly test light/dark appearance changes if the app supports both.
-
-**Done when**
-- The accessory appearance is stable across presentation, dismissal, and appearance changes.
-
-**Status after 2026-04-21 refresh**
-- Reopened and now fixed as hardening work in the current tree.
-- This was not the original root cause of the first opaque-bar bug, but it is still the right defensive move before non-default themed editor backgrounds return.
-- The accessory now keeps explicit transparent toolbar appearance across keyboard-host attachment and trait changes.
-
----
-
-# 3) P1 performance and scalability
-
-## [ ] P1 — Add cached URL ↔ relative-path indexes to `WorkspaceSnapshot`
-
-**Files**
-- `Downward/Domain/Workspace/WorkspaceSnapshotPathResolver.swift:8-47`
-- `Downward/Domain/Workspace/WorkspaceSnapshotPathResolver.swift:49-73`
-
-**Problem**
-- `WorkspaceSnapshot.relativePath(for:)` does a recursive tree walk every time.
-- `WorkspaceSnapshot.fileURL(forRelativePath:)` also does a recursive tree walk every time.
-- This is fine for small workspaces but becomes expensive once the snapshot grows.
-
-**Why this matters**
-- Other parts of the app already call these methods repeatedly in hot paths.
-- That turns tree traversal into an avoidable performance cost.
-
-**Recommended change**
-- Build snapshot indexes once during snapshot creation:
-  - normalized URL path → relative path
-  - relative path → URL
-- Keep the current APIs, but back them with O(1) lookup tables.
-
-**Done when**
-- Search, recents pruning, and path-resolution flows no longer recursively walk the entire snapshot for repeated lookups.
-
----
-
-## [ ] P1 — Rewrite `WorkspaceSearchEngine` to carry relative paths during traversal instead of re-resolving every file
-
-**Files**
-- `Downward/Features/Workspace/WorkspaceSearchEngine.swift:21-37`
-- `Downward/Features/Workspace/WorkspaceSearchEngine.swift:40-72`
-
-**Problem**
-- Search recursively traverses the tree, but for every file match candidate it calls `snapshot.relativePath(for: file.url)`.
-- That means one traversal is nested inside another traversal.
-
-**Why this matters**
-- On larger workspaces, this becomes effectively O(n²) behavior.
-- Search should feel instantaneous because it operates on an already in-memory snapshot.
-
-**Recommended change**
-- Carry the current relative path down the recursive traversal.
-- Do not ask the snapshot to rediscover the path for each file.
-- If you add snapshot indexes, search can also just use the cached path mapping.
-
-**Done when**
-- Search traverses the tree once per query.
-- Search does not call `snapshot.relativePath(for:)` for every file.
-
----
-
-## [ ] P1 — Rewrite `RecentFilesStore.pruneInvalidItems(using:)` to avoid flattening the whole tree and then re-walking it
-
-**Files**
-- `Downward/Domain/Persistence/RecentFilesStore.swift:60-64`
-- `Downward/Domain/Persistence/RecentFilesStore.swift:255-267`
-- `Downward/Domain/Workspace/WorkspaceSnapshotPathResolver.swift:8-47`
-
-**Problem**
-- `pruneInvalidItems(using:)` builds a set of valid paths by:
-  1. flattening all file URLs,
-  2. then calling `snapshot.relativePath(for:)` on every file URL.
-- That is correct, but needlessly expensive.
-
-**Why this matters**
-- This is a maintenance and performance issue in a workflow that can happen during refresh and mutation reconciliation.
-
-**Recommended change**
-- Reuse a snapshot index or carry paths while traversing.
-- Avoid generating `[URL]` only to immediately convert them back to relative paths.
-
-**Done when**
-- Recent-file pruning is a single traversal or index lookup.
-- No repeated whole-tree path re-resolution remains in that flow.
-
----
-
-## [x] P1 — Reduce large-file memory churn in `PlainTextDocumentSession`
-
-**Files**
-- `Downward/Domain/Document/PlainTextDocumentSession.swift:749-760`
-- `Downward/Domain/Document/PlainTextDocumentSession.swift:765-775`
-- `Downward/Domain/Document/PlainTextDocumentSession.swift:777-790`
-
-**Problem**
-- The old read flow did:
-  1. `Data(contentsOf:)`
-  2. decode to `String`
-  3. re-encode to `Data(text.utf8)` to compute the digest
-- The old save flow encoded the text for writing and separately recomputed the digest from a second UTF-8 conversion.
-
-**Why this matters**
-- Large markdown / JSON / text files will pay extra memory and CPU cost.
-- This lines up with `TASKS.md`, which already flags large-file pressure as a current risk.
-
-**Final fix**
-- Read/open/reload now hash the raw UTF-8 bytes already loaded from disk and then decode them once for the editor buffer.
-- Save/autosave now reuse the exact `Data(text.utf8)` payload already being written for loaded-version digest and file-size bookkeeping.
-- Focused `DocumentManagerTests` cover raw-byte digest correctness for open, empty-file, save, and large-file flows.
-
-**Status**
-- Fixed in current code without changing autosave, revalidation, or conflict behavior.
-
----
-
-# 4) P1/P2 architecture and maintainability
-
-## [x] P1 — Split `MarkdownEditorTextView.swift` by responsibility
-
-**Files**
-- `Downward/Features/Editor/MarkdownEditorTextView.swift` (**142 lines**)
-- `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift` (**661 lines**)
 - `Downward/Features/Editor/EditorKeyboardAccessoryToolbarView.swift`
 - `Downward/Features/Editor/EditorKeyboardGeometryController.swift`
-- `Downward/Features/Editor/EditorChromeAwareTextView.swift`
+- `Downward/Features/Editor/MarkdownEditorTextView.swift`
+- `Downward/Features/Editor/EditorScreen.swift`
+- `Tests/EditorKeyboardGeometryControllerTests.swift`
+- `Tests/MarkdownEditorTextViewSizingTests.swift`
 
-**Problem**
-The old bridge file used to own all of these responsibilities at once:
+The current accessory implementation deliberately keeps the accessory wrapper clear and non-opaque, and applies tint/appearance to the toolbar controls. This is different from earlier docs that described a painted accessory underlay matching the editor surface. The code comment is clear that painting the accessory host previously caused broader keyboard-host/editor background side effects.
 
-- SwiftUI `UIViewRepresentable` construction
-- coordinator lifecycle
-- renderer refresh logic
-- selection preservation
-- keyboard notification handling
-- accessory toolbar construction
-- top-chrome overlap math
-- keyboard underlap math
-- custom `UITextView` subclass
-- custom accessory view class
+Action items:
 
-**Why this mattered**
-- Small changes in one area could easily break another.
-- The editor bridge had become hard to review and even harder to debug quickly.
+- [x] Keep docs aligned with the current contract: editor/TextKit/renderer colors are theme-driven, but the keyboard accessory background remains clear/material-hosted rather than painted as an editor-surface underlay.
+- [x] Add or keep a focused regression test that asserts the accessory wrapper remains clear and non-opaque while toolbar tint follows the resolved theme.
+- [ ] Verify on iPhone and iPad that the accessory does not flash white, does not inherit an unwanted editor-wide background, and behaves correctly during interactive keyboard dismissal.
+- [ ] Verify the behavior with at least one non-standard custom theme, not just system light/dark.
 
-**Implemented split**
-- `MarkdownEditorTextView.swift` — representable surface only
-- `MarkdownEditorTextViewCoordinator.swift` — text sync / selection / rendering
-- `EditorKeyboardAccessoryToolbarView.swift` — accessory UI only
-- `EditorKeyboardGeometryController.swift` — keyboard overlap + insets
-- `EditorChromeAwareTextView.swift` — subclass only
+Follow-up note (2026-04-24): `Tests/EditorUndoRedoTests.swift` now asserts that `KeyboardAccessoryToolbarView` stays clear/non-opaque across theme changes and that toolbar tint tracks the resolved accent. Runtime QA is still required because this environment cannot complete simulator-backed XCTest runs.
 
-**Done when**
-- No single editor file owns both rendering and keyboard geometry and accessory UI.
+Done when:
 
-**Status after 2026-04-23 refactor**
-- Done in current code.
-- Focused coverage still passes for sizing, viewport reset, same-document scroll preservation, painted accessory underlay behavior, deferred rerendering, and the extracted keyboard geometry helper.
+- [ ] Manual QA confirms no first-presentation white band, no unexpected full-screen editor background takeover, and correct control tint in light, dark, and custom themes.
+- [ ] `PLANS.md`, `TASKS.md`, and this review all describe the same accessory contract.
 
----
+### [P1] Theme import/export needs a production hardening pass
 
-## [ ] P1 — Split `AppCoordinator.swift` before more feature logic accumulates there
+**Status:** future schema rejection is now explicit; external-file UX and broader validation still need polish.
 
-**File**
-- `Downward/App/AppCoordinator.swift` (**1732 lines**)
+Relevant files:
 
-**Problem**
-- The coordinator is already doing bootstrap, restore, reconnect, refresh, create/rename/delete/move, route handling, editor handoff, and alert coordination.
+- `Downward/Features/Settings/ThemeEditorSettingsPage.swift`
+- `Downward/Features/Settings/ThemeSettingsPage.swift`
+- `Downward/Infrastructure/Theme/ThemeImportService.swift`
+- `Downward/Infrastructure/Theme/ThemePersistenceService.swift`
+- `Downward/Shared/Theme/ThemeExchangeDocument.swift`
+- `Downward/Shared/Theme/CustomTheme.swift`
+- `Downward/Shared/Theme/ThemeStore.swift`
+- `Tests/ThemeStoreTests.swift`
 
-**Why this matters**
-- The docs explicitly warn against letting `AppCoordinator` become the architecture again.
-- At its current size, it is already the easiest place for “just one more rule” to land.
+The theme foundation is useful: custom themes persist, JSON exchange accepts single-theme/array/bundle shapes, import is security-scoped, and imported themes replace matching IDs while rejecting duplicate names.
 
-**Recommended split**
-- Extract by policy/flow, not by arbitrary helper name.
-- Strong candidates:
-  - restore + reconnect application
-  - workspace mutation reconciliation
-  - open-document routing / recent-file flows
+Remaining concerns:
 
-**Done when**
-- New navigation and workspace rules land in policy types or dedicated collaborators, not inline in the coordinator.
+- [x] `CustomTheme` decodes `schemaVersion` but currently treats it mostly as stored metadata. Before sharing themes externally, unknown future schema versions should produce a clear user-facing outcome.
+- [ ] Import should surface precise errors for invalid JSON, unsupported schema, duplicate names, oversized files, and partial-bundle failures.
+- [ ] Export from `ThemeEditorSettingsPage` currently serializes the current editor form state. That may be useful, but it means the user can export unsaved or low-contrast edits. Either make this explicit in the UI copy or export only the last-saved theme.
+- [ ] Contrast warnings do not block save/export. That is acceptable if intentional, but the app should be explicit about it.
+- [ ] Security-scoped import should be manually tested with Files, iCloud Drive, and at least one third-party provider.
 
----
+Follow-up note (2026-04-24): theme exchange import/export now encodes `schemaVersion`, rejects versions newer than `CustomTheme.currentSchemaVersion`, and surfaces a direct localized error instead of silently accepting unknown future schema payloads.
 
-## [ ] P2 — Split `WorkspaceViewModel.swift`
+Done when:
 
-**File**
-- `Downward/Features/Workspace/WorkspaceViewModel.swift` (**1049 lines**)
+- [ ] Theme import/export failures are specific enough for a non-developer user to understand.
+- [ ] Export behavior is intentionally labelled: either “Export Current Draft” or “Export Saved Theme”.
+- [ ] Tests cover invalid JSON, too-large files, duplicate imported names, same-ID replacement, bundle import, selected-theme deletion fallback, and legacy JSON without newer optional fields.
 
-**Problem**
-- It currently owns snapshot loading, refresh, search, folder expansion state, recents sheet flow, create/rename/delete/move flows, and settings routing.
+### [P1] Markdown renderer remains the main scalability and maintainability risk
 
-**Why this matters**
-- The workspace screen is one of the app’s main surfaces.
-- A very large view model raises regression risk every time browser features move.
+**Status:** improved but still a large, high-churn hotspot.
 
-**Recommended split**
-- Separate search state, mutation prompts, and folder-expansion behavior into dedicated helpers.
+Relevant files:
 
-**Done when**
-- `WorkspaceViewModel` reads as a feature orchestrator, not a storage bucket for every workspace-screen concern.
+- `Downward/Features/Editor/MarkdownStyledTextRenderer.swift`
+- `Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift`
+- `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
+- `Tests/MarkdownStyledTextRendererTests.swift`
+- `Tests/MarkdownCurrentLineRestyleTests.swift`
 
----
+`MarkdownStyledTextRenderer.swift` is still the largest app source file at 1,612 lines. Current-line restyling is a meaningful win for ordinary typing, but the renderer still combines recognition, style mapping, hidden-syntax decisions, theme role resolution, and TextKit-facing attributed-string mutation.
 
-## [ ] P1 — Remove the stale `EditorTextViewHostBridge` path after first extracting the shared layout constants
+Action items:
 
-**Files**
-- `Downward/Features/Editor/EditorTextViewHostBridge.swift:1-169`
-- `TASKS.md` section “Remove stale editor bridge leftovers”
+- [ ] Split syntax recognition from UIKit styling before adding more markdown constructs.
+- [ ] Move hidden-syntax visibility decisions behind a small value type or strategy that can be tested without `UITextView`.
+- [ ] Keep current-line restyle as the fast path for simple same-line edits.
+- [ ] Keep line-breaks, block-context changes, selection-driven reveal changes, and paste operations on a deferred full-rerender path until a real incremental parser exists.
+- [ ] Add large-document performance fixtures before adding tables, footnotes, task-list interactions, or richer code-block behavior.
 
-**Problem**
-- The file is documented as a `TextEditor` bridge, but the shipping editor is no longer `TextEditor`.
-- This leaves the codebase telling two different stories.
-- `EditorTextViewLayout` currently lives in this file, so the bridge cannot simply be deleted without moving those constants.
+Done when:
 
-**Why this matters**
-- This is exactly the kind of historical leftover that confuses future changes.
+- [ ] The renderer has a recognizer/scanner layer that can be tested without UIKit.
+- [ ] Styling/theme application is a separate layer.
+- [ ] Large-file typing has an explicit performance budget and regression coverage.
 
-**Recommended change**
-- Move `EditorTextViewLayout` into its own dedicated file.
-- Delete `EditorTextViewHostBridge` and its tests if it is no longer used.
-- Update docs to reflect one editor implementation path only.
+### [P1] Workspace snapshot reverse lookup is still recursively searched
 
-**Done when**
-- There is no `TextEditor`-specific bridge file left in the shipping editor path.
+**Status:** correct-looking, but likely to become a hot path in large workspaces.
 
----
+Relevant files:
 
-## [x] P2 — Split the giant smoke-test suite into true smoke flows plus targeted suites
+- `Downward/Domain/Workspace/WorkspaceSnapshotPathResolver.swift`
+- `Downward/Features/Workspace/WorkspaceViewModel.swift`
+- `Downward/App/WorkspaceNavigationPolicy.swift`
+- `Tests/WorkspaceSnapshotPathResolverTests.swift`
+- `Tests/WorkspaceViewModelMutationTests.swift`
 
-**Files**
-- `Tests/MarkdownWorkspaceAppSmokeTests.swift` (**738 lines**)
-- `Tests/MarkdownWorkspaceAppRestoreFlowTests.swift`
-- `Tests/MarkdownWorkspaceAppMutationFlowTests.swift`
-- `Tests/MarkdownWorkspaceAppTrustedOpenAndRecentTests.swift`
-- `Tests/MarkdownWorkspaceAppTestSupport.swift`
+`WorkspaceSnapshotPathResolver.relativePath(for:)` and `fileURL(forRelativePath:)` still recursively walk the snapshot tree. This keeps the code simple and correct, but repeated lookups during navigation, recent-file restoration, rename/move/delete reconciliation, and search/mutation flows will become expensive in larger workspaces.
 
-**Problem**
-- The file is extremely valuable, but now too large to stay healthy.
+Action items:
 
-**Why this matters**
-- Giant mixed-purpose test files are hard to debug, hard to name clearly, and discourage maintenance.
+- [ ] Introduce a snapshot index keyed by relative path and stable file ID/URL identity where possible.
+- [ ] Build the index once per snapshot refresh.
+- [ ] Keep recursive traversal as a fallback or validation path while the index is introduced.
+- [ ] Add tests for rename, move, delete, case-only rename, duplicate filenames in different folders, and stale recent-file paths.
 
-**Recommended change**
-- Keep only true end-to-end “app still basically works” flows in the smoke file.
-- Move feature-specific cases into smaller suites.
+Done when:
 
-**Done when**
-- The smoke suite is short enough to scan quickly.
-- Failing tests identify a specific feature area immediately.
+- [ ] Navigation and recent-file reconciliation can resolve path/file identity without repeatedly walking the whole tree.
+- [ ] Workspace mutation tests prove index invalidation/rebuild behavior.
 
-**Status after 2026-04-23 split**
-- Done in current code. Restore/reconnect flows, mutation/winner-policy flows, and trusted-relative open/recent-file flows now live in focused suites with shared support extracted out of the smoke file.
-- Smoke coverage remains end-to-end and the focused split passed in one targeted test run.
+### [P1] Runtime QA is still required for the most sensitive UI and Files-provider paths
 
----
+**Status:** not completed in this environment.
 
-# 5) Test and QA gaps
+Runtime-only checklist:
 
-## [ ] P0/P1 — Add a real-device editor regression checklist specifically for keyboard accessory behavior
+- [ ] Launch with no workspace selected.
+- [ ] Select a workspace from Files.
+- [ ] Reopen the app and confirm workspace restore/reconnect behavior.
+- [ ] Open nested documents via workspace browser and recents.
+- [ ] Rename/move/delete files and folders while the edited document is open.
+- [ ] Type long edits and verify autosave does not lose text after rapid open/close/reopen.
+- [ ] Confirm first visible line placement below the top chrome on iPhone portrait, iPhone landscape, iPad split view, and iPad full screen.
+- [ ] Confirm keyboard accessory controls on first keyboard presentation, after scroll, after theme change, and during interactive dismissal.
+- [ ] Import and export themes through Files/iCloud Drive.
+- [ ] Open ordinary `.json` files from a workspace and confirm they do not trigger theme import accidentally.
+- [ ] Verify Settings sheet hierarchy on compact and regular width.
 
-**Why**
-The repo docs already say real devices are the source of truth for editor chrome, and the recent regressions prove that is correct.
+Done when:
 
-**Suggested checklist**
-- keyboard appears on first tap
-- accessory buttons appear immediately
-- accessory is visually transparent immediately
-- text is visible behind accessory immediately
-- long document still fills full editor height
-- keyboard dismiss works interactively and via button
-- undo/redo enabled states stay correct while typing
-- file switch while keyboard is visible does not leave stale insets
-- iPhone and iPad both verified
+- [ ] Manual QA results are recorded in `TASKS.md` or the release checklist.
 
-**Done when**
-- This checklist is part of every editor-geometry/accessory change.
+### [P2] `AppCoordinator` is improved but still large
 
----
+**Status:** acceptable for now; keep feature logic from creeping back in.
 
-## [x] P1 — Add tests for full-height editor sizing
+Relevant files:
 
-**Gap**
-- There is test coverage for accessory existence and inset math, but not enough around “does the representable actually occupy the full proposed height?”
+- `Downward/App/AppCoordinator.swift`
+- `Downward/App/WorkspaceNavigationPolicy.swift`
+- `Downward/App/WorkspaceMutationPolicy.swift`
+- `Downward/App/WorkspaceRestoreCoordinator.swift`
+- `Downward/App/AppSession.swift`
 
-**Recommended tests**
-- host `MarkdownEditorTextView` in a fixed-size container and assert its rendered `UITextView` frame matches the proposal
-- assert large documents do not truncate visible height
+At 1,336 lines, `AppCoordinator` is no longer the 1,500+ line hotspot it previously was, but it remains large enough that new feature work can easily reintroduce hidden coupling. The current seams are good: navigation and mutation decisions are already pushed into policy helpers.
 
-**Done when**
-- The half-height editor bug would fail a test before reaching a device.
+Action items:
 
-**Status after 2026-04-21 refresh**
-- Fixed in current code. `Tests/MarkdownEditorTextViewSizingTests.swift` hosts the representable in a fixed-size container and asserts the `EditorChromeAwareTextView` fills the proposed width and height.
+- [ ] Keep new workspace rules in policy/helper types, not directly in `AppCoordinator`.
+- [ ] Consider extracting mutation-outcome reconciliation if rename/move/delete flows grow further.
+- [ ] Consider extracting restore-state presentation decisions if reconnect UX grows.
+- [ ] Add tests before moving coordinator logic so behavior remains stable.
 
----
+### [P2] `WorkspaceViewModel` mixes several UI concerns
 
-## [ ] P1 — Add tests for accessory transparency / underlap timing, not just steady-state enabled states
+**Status:** not urgent, but watch it before adding more browser features.
 
-**Files**
-- `Tests/EditorUndoRedoTests.swift`
+Relevant files:
 
-**Gap**
-- Current tests prove the accessory exists and button enabled states update.
-- They do **not** prove the accessory is visually correct on the first keyboard presentation.
+- `Downward/Features/Workspace/WorkspaceViewModel.swift`
+- `Downward/Features/Workspace/WorkspaceBrowserView.swift`
+- `Downward/Features/Workspace/WorkspaceSearchModel.swift`
 
-**Recommended tests**
-- test initial `keyboardOverlapInset == 0` → keyboard frame change → final inset state
-- test keyboard hide resets the underlap correctly
-- add a diagnostic-only path if needed to inspect first-presentation values
+The view model owns search, expansion, create/rename/delete/move prompts, recent-file presentation, async workspace operation state, and mutation-result UI updates. It is coherent enough today, but future browser features will make it harder to reason about.
 
-**Done when**
-- The “transparent only after scroll” class of bug is much harder to reintroduce.
+Action items:
 
----
+- [ ] Keep search state in `WorkspaceSearchModel` rather than pulling it back into the main view model.
+- [ ] Extract command/prompt state if more mutation dialogs are added.
+- [ ] Extract expansion/path-rewrite helpers if the tree mutation logic grows.
 
-## [ ] P2 — Add performance regression coverage for large snapshots and larger files
+## Test gaps to close next
 
-**Why**
-- The app is already mature enough that performance regressions are now a real product risk.
+- [ ] Theme import invalid JSON.
+- [ ] Theme import file larger than the 5 MB limit.
+- [ ] Theme import duplicate name with different ID.
+- [ ] Theme import same ID replacement.
+- [ ] Theme import bundle/array decoding and partial failure behavior.
+- [ ] Selected custom theme deletion fallback.
+- [ ] Theme export current-draft versus saved-theme behavior.
+- [ ] Accessory clear-background/tint contract.
+- [ ] Accessory behavior during keyboard presentation and interactive dismissal on device.
+- [ ] Large-document renderer performance fixture.
+- [ ] Snapshot index behavior after rename/move/delete/case-only rename.
+- [ ] Real Files-provider workspace observation and theme import.
 
-**Recommended coverage**
-- synthetic snapshot with thousands of nodes
-- recent-file pruning against a large tree
-- search against a large tree
-- open/save/revalidate on larger text files
+## Documentation changes made by this review
 
-**Done when**
-- Path lookup and file-size regressions can be caught before shipping.
+- [x] `CODE_REVIEW.md` refreshed with the current static review and actionable findings.
+- [x] `TASKS.md` converted into an active checkable backlog.
+- [x] `PLANS.md` refreshed into checkable engineering plans and QA gates.
+- [x] Stale claims about a painted accessory underlay were removed from steering docs.
 
----
+## Next recommended sequence
 
-# 6) Documentation and repo hygiene
-
-## [ ] P1 — Update the docs once the keyboard accessory architecture is stable
-
-**Files**
-- `AGENTS.md`
-- `ARCHITECTURE.md`
-- `TASKS.md`
-
-**Problem**
-- The docs are strong overall, but the keyboard accessory approach has shifted significantly during the recent patch attempts.
-- Once the implementation settles, the docs should reflect the final ownership story.
-
-**Done when**
-- The docs explain the actual shipping keyboard accessory approach and its constraints.
-
----
-
-## [ ] P2 — Clean archive/repo noise and add or verify ignore rules
-
-**Archive contents observed in this snapshot**
-- `.DS_Store`
-- `.git/`
-- `__MACOSX/`
-- `.codex/`
-- `.pi/`
-
-**Why this matters**
-- It makes shared archives noisy.
-- It raises the odds of accidental commits of local/editor-specific data.
-
-**Recommended change**
-- Add or verify `.gitignore` coverage.
-- Exclude macOS archive cruft and local tool directories from shared zips and commits.
-
-**Done when**
-- Fresh shared archives contain only project files that matter.
-
----
-
-# Suggested fix order after 2026-04-21 refresh
-
-1. **Verify and land the large-file typing-latency fix.** This is now the highest active editor blocker.
-2. **Run the real-device keyboard/accessory regression checklist** to protect the safe-area fix.
-3. **Consolidate undo / redo / dismiss command ownership.**
-4. **Keep top-chrome safe-area verification on the device QA list.**
-5. **Split the editor file into smaller units.**
-6. **Fix snapshot path lookup hot paths.**
-7. **Reduce large-file read/write memory churn.**
-8. **Remove stale bridge leftovers.**
-9. **Split the oversized smoke tests and coordinator/view model files over time.**
-
----
-
-# Bottom line
-
-This codebase is closer to “solid app with a few unstable hot zones” than “messy rewrite candidate.”
-
-The most important immediate conclusion is:
-
-- **do not keep chasing accessory visuals until the editor sizing bug is fixed**, because it is currently distorting what you are seeing,
-- then lock down **initial keyboard underlap and transparency behavior on real devices**,
-- then remove the stale editor paths so the repo tells one clear story again.
+1. Run the Xcode build and focused XCTest suites.
+2. Complete the runtime QA checklist for editor geometry, keyboard accessory, settings, workspace restore, and Files-provider import/export.
+3. Patch any build/test regressions before adding new product features.
+4. Harden theme import/export UX.
+5. Add workspace snapshot indexes.
+6. Split markdown recognition from styling before expanding markdown features.

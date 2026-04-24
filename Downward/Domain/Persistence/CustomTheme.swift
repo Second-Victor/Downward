@@ -175,7 +175,8 @@ nonisolated struct CustomTheme: Codable, Identifiable, Equatable, Hashable, Send
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        _ = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        let schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        try Self.validateSchemaVersion(schemaVersion)
         let id = try container.decode(UUID.self, forKey: .id)
         let name = try container.decode(String.self, forKey: .name)
         let background = try container.decode(HexColor.self, forKey: .background)
@@ -221,5 +222,25 @@ nonisolated struct CustomTheme: Codable, Identifiable, Equatable, Hashable, Send
         try container.encode(horizontalRule, forKey: .horizontalRule)
         try container.encode(checkboxUnchecked, forKey: .checkboxUnchecked)
         try container.encode(checkboxChecked, forKey: .checkboxChecked)
+    }
+
+    static func validateSchemaVersion(_ schemaVersion: Int) throws {
+        guard schemaVersion <= currentSchemaVersion else {
+            throw ThemeSchemaVersionError.unsupported(
+                schemaVersion: schemaVersion,
+                maximumSupportedVersion: currentSchemaVersion
+            )
+        }
+    }
+}
+
+enum ThemeSchemaVersionError: LocalizedError, Equatable {
+    case unsupported(schemaVersion: Int, maximumSupportedVersion: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case let .unsupported(schemaVersion, maximumSupportedVersion):
+            return "This theme uses schema version \(schemaVersion), but Downward supports up to version \(maximumSupportedVersion)."
+        }
     }
 }

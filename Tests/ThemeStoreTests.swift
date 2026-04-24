@@ -103,6 +103,41 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertEqual(decoded.themes, [firstTheme, secondTheme])
     }
 
+    func testThemeExchangeDocumentRejectsUnsupportedFutureSchemaVersion() {
+        let data = """
+        {
+          "schemaVersion" : 999,
+          "horizontalRule" : "#404040",
+          "text" : "#D4D4D4",
+          "tint" : "#569CD6",
+          "checkboxChecked" : "#6A9955",
+          "id" : "11019126-7DF8-475F-B132-A53F46EDAE89",
+          "inlineCode" : "#CE9178",
+          "codeBackground" : "#2D2D2D",
+          "checkboxUnchecked" : "#F44747",
+          "name" : "Future",
+          "boldItalicMarker" : "#72727F",
+          "background" : "#1E1E1E"
+        }
+        """.data(using: .utf8)!
+
+        XCTAssertThrowsError(try ThemeExchangeDocument(data: data)) { error in
+            XCTAssertEqual(
+                error as? ThemeSchemaVersionError,
+                .unsupported(schemaVersion: 999, maximumSupportedVersion: CustomTheme.currentSchemaVersion)
+            )
+        }
+    }
+
+    func testThemeExchangeDocumentRejectsInvalidJSONWithUserReadableError() {
+        let data = Data("{".utf8)
+
+        XCTAssertThrowsError(try ThemeExchangeDocument(data: data)) { error in
+            let localizedError = error as? LocalizedError
+            XCTAssertEqual(localizedError?.errorDescription, "The selected file is not valid JSON.")
+        }
+    }
+
     func testThemeImportServiceLoadsThemeJSONFromFileURL() async throws {
         let theme = Self.makeTheme(name: "Workspace Theme")
         let document = ThemeExchangeDocument(theme: theme)
@@ -112,6 +147,55 @@ final class ThemeStoreTests: XCTestCase {
         let importedThemes = try await ThemeImportService().loadThemes(from: themeURL)
 
         XCTAssertEqual(importedThemes, [theme])
+    }
+
+    func testThemeImportServiceRejectsUnsupportedFutureSchemaVersionFromFileURL() async throws {
+        let themeURL = try makeTemporaryThemeURL()
+        let data = """
+        {
+          "schemaVersion" : 999,
+          "horizontalRule" : "#404040",
+          "text" : "#D4D4D4",
+          "tint" : "#569CD6",
+          "checkboxChecked" : "#6A9955",
+          "id" : "11019126-7DF8-475F-B132-A53F46EDAE89",
+          "inlineCode" : "#CE9178",
+          "codeBackground" : "#2D2D2D",
+          "checkboxUnchecked" : "#F44747",
+          "name" : "Future",
+          "boldItalicMarker" : "#72727F",
+          "background" : "#1E1E1E"
+        }
+        """.data(using: .utf8)!
+        try data.write(to: themeURL)
+
+        do {
+            _ = try await ThemeImportService().loadThemes(from: themeURL)
+            XCTFail("Expected unsupported schema version to fail import")
+        } catch let error as ThemeSchemaVersionError {
+            XCTAssertEqual(
+                error,
+                .unsupported(schemaVersion: 999, maximumSupportedVersion: CustomTheme.currentSchemaVersion)
+            )
+            XCTAssertEqual(
+                error.localizedDescription,
+                "This theme uses schema version 999, but Downward supports up to version 2."
+            )
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testThemeImportServiceRejectsInvalidJSONFromFileURL() async throws {
+        let themeURL = try makeTemporaryThemeURL()
+        try Data("{".utf8).write(to: themeURL)
+
+        do {
+            _ = try await ThemeImportService().loadThemes(from: themeURL)
+            XCTFail("Expected invalid JSON to fail import")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "The selected file is not valid JSON.")
+        }
     }
 
     private func makeTemporaryThemeURL() throws -> URL {

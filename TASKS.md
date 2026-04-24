@@ -2,138 +2,157 @@
 
 ## Purpose
 
-This file is the active backlog and steering summary for Downward.
-It intentionally stays short. Use `PLANS.md` for the detailed technical checklist, performance roadmap, and code-review findings behind this backlog.
-
----
+This is the active fix-tracking backlog for Downward. It should stay checkable and current so completed work can be marked off as fixes land. Use `PLANS.md` for the deeper engineering plan behind each item, and `CODE_REVIEW.md` for review rationale.
 
 ## Current state
 
-The repo is no longer in emergency hardening mode.
-The strongest current foundations are:
+The project is no longer in an emergency-hardening phase. The main architecture foundations are in place: trusted workspace access, relative-path-first routing, safer restore/reconnect flows, a split editor bridge, quiet autosave cancellation, explicit syntax visibility, real settings pages, and persistent custom themes.
 
-- the workspace trust boundary,
-- relative-path-first open identity,
-- restore and reconnect behavior,
-- quiet autosave, explicit autosave cancellation, and calmer revalidation,
-- a split app-level test stack with a short smoke suite plus focused restore, mutation, and trusted-open/recent suites,
-- explicit keyboard-safe-area underlap for the editor,
-- seamless top editor underlay with a shared safe-area-driven first-line inset, an outer-geometry top-clearance source, and explicit document-open viewport reset,
-- a shared resolved editor theme pipeline for renderer colors, TextKit backgrounds, and a painted keyboard accessory underlay that matches the editor surface,
-- a split editor bridge where the representable, coordinator, accessory view, keyboard geometry, and `UITextView` subclass now live in focused files,
-- a bounded current-line restyle path so ordinary same-line markdown edits no longer automatically fall back to whole-document rerenders,
-- an explicit markdown syntax visibility contract for future renderer work,
-- a maintained prototype-aligned settings sheet with a native inset-grouped home list, nested Editor/Theme/Markdown/Tips/Information/About pages, persisted theme selection, custom-theme persistence, and honest placeholders for unfinished StoreKit/legal/rating areas,
-- workspace-visible `.json` files that open in the editor like other supported text files, while theme import remains an explicit Theme settings action,
-- a clearer app-coordinator boundary where workspace selection/refresh session application now flows through `WorkspaceSessionPolicy`, mutation preflight and browser-kind rules live in `WorkspaceMutationPolicy`, mutation execution metadata lives in `WorkspaceMutationService`, and trusted route/recent-file decisions live in `WorkspaceNavigationPolicy`,
-- leaner document-session version bookkeeping where open/reload hash raw file bytes and save/autosave reuse the exact UTF-8 payload being written,
-- an async lifecycle audit that keeps workspace refresh/mutation application generation-gated and makes delayed editor conflict-resolution tasks cancel/identity-check before applying results,
-- recent files, app appearance, and editor appearance persistence, including monospaced and proportional editor font choices,
-- a broad test suite around risky behaviors.
+The remaining work is mostly validation, production polish, scalability, and preventing large files from accumulating more responsibilities.
 
-The main risks now are **maintainability**, **broader large-file rendering work**, **renderer/theme extensibility**, and **real-device UI polish**, not basic correctness. Async lifecycle ownership is in better shape after the audit, but new unstructured tasks still need explicit ownership and stale-result guards. The main editor-specific risks are still real-device verification of initial first-line placement on iPhone/iPad and of the shared theme/accessory pipeline on non-standard backgrounds; the settings hierarchy and initial custom theme management are now real, but StoreKit tips, legal/rating URLs, and richer theme-schema validation are still future work.
+## Completed foundations
 
----
+- [x] Keep final file-system trust checks in `WorkspaceManager`/`WorkspaceRelativePath`.
+- [x] Route workspace document opening by relative path instead of display name or raw URL where possible.
+- [x] Keep `.json` workspace files openable as normal text documents.
+- [x] Keep theme JSON import as an explicit Settings action, not an implicit file-open side effect.
+- [x] Preserve newer in-memory edits when save acknowledgements arrive after additional typing.
+- [x] Cancel autosave tasks cleanly when an editor session is closed or replaced.
+- [x] Keep the editor representable thin by splitting coordinator, keyboard accessory, keyboard geometry, and text-view subclass responsibilities.
+- [x] Preserve full-height editor layout and first-line top clearance behavior.
+- [x] Keep markdown syntax visibility controlled by editor appearance state.
+- [x] Persist built-in and custom theme selection.
+- [x] Persist custom themes through `ThemeStore`/`ThemePersistenceService`.
+- [x] Support JSON theme import/export through `ThemeExchangeDocument` and `ThemeImportService`.
+- [x] Keep settings as a sheet-based hierarchy on compact and regular-width layouts.
+- [x] Keep StoreKit tips, legal URLs, ratings/review routing, line numbers, and larger heading text as explicitly future-backed features.
 
-## Current guardrails
+## P0 validation gate before release
 
-These are not backlog items. They are shipping expectations.
+No new P0 code defect was found in the 2026-04-24 static review, but release validation is still open.
 
-- Browser, search, and recent-file opens should stay relative-path-first whenever that identity is already known.
-- Final file-system operations must still validate against the chosen workspace root.
-- Redirected descendants must not re-enter the browser or document pipeline.
-- The app still owns one active live document session at a time.
-- Autosave should remain quiet.
-- Conflict UI should remain exceptional.
-- Refreshes and mutations must continue to reconcile under one explicit winner policy.
-- Async work that can mutate state after suspension must be owned by a session/model boundary and guarded by cancellation, generation, or workspace/document identity.
-- Settings and editor polish must not push unrelated logic into Views or into `PlainTextDocumentSession`.
+- [ ] Build the app in Xcode.
+- [ ] Run the focused XCTest suites for workspace restore, document manager, editor autosave, editor undo/redo, markdown rendering, settings, themes, and keyboard geometry.
+- [ ] Run the app on at least one iPhone simulator.
+- [ ] Run the app on at least one iPad simulator or device.
+- [ ] Manually verify workspace selection, restore, reconnect, recent-file reopening, and stale workspace handling.
+- [ ] Manually verify editing, autosave, close/reopen, and rapid document switching.
+- [ ] Manually verify keyboard accessory behavior on first keyboard presentation and during interactive dismissal.
+- [ ] Manually verify Settings sheet presentation on compact and regular width.
+- [ ] Record build/test/manual QA results here before treating the release as ready.
 
----
+## P1 active work
 
-## Highest-priority work
+### 1. Align keyboard accessory and theme contract
 
-### 1. Keep `AppCoordinator` from regaining feature logic
+Current finding: the shipping code deliberately keeps the accessory host clear/non-opaque and themes the controls/tint. Older docs described a painted accessory underlay. The docs have been corrected; now the runtime contract needs to be protected.
 
-**Why**
+- [x] Add a regression test for `EditorKeyboardAccessoryToolbarView` proving the wrapper stays clear and non-opaque.
+- [x] Add or keep a regression test proving toolbar tint follows the resolved editor theme.
+- [ ] Verify there is no white band on first keyboard presentation.
+- [ ] Verify there is no full-screen background takeover caused by accessory host painting.
+- [ ] Verify light, dark, and at least one custom non-standard theme.
+- [ ] Verify interactive keyboard dismissal.
+- [ ] Keep `CODE_REVIEW.md`, `PLANS.md`, and this file aligned if the accessory strategy changes again.
 
-`AppCoordinator.swift` is still the easiest place for “just one more rule” to accumulate.
+Done when:
 
-**Success**
+- [ ] Device/simulator QA confirms the accessory behavior is stable.
+- [x] Tests encode the clear-host/tinted-controls contract.
 
-- new navigation rules land in `WorkspaceNavigationPolicy`,
-- workspace-state application rules land in `WorkspaceSessionPolicy`,
-- repeated mutation execution, preflight, or error rules land in focused mutation seams instead of new inline coordinator branches,
-- the coordinator stays an orchestrator instead of becoming the architecture.
+### 2. Harden theme import/export UX
 
-### 2. Protect `PlainTextDocumentSession` and the renderer from feature creep
+- [ ] Decide whether export means “current editor draft” or “last saved theme”.
+- [ ] Rename/copy the export action if current unsaved form state is intentionally exported.
+- [ ] Add a clear user-facing warning for low-contrast themes if save/export remains allowed.
+- [x] Reject or clearly handle unsupported future `schemaVersion` values.
+- [ ] Improve import errors for invalid JSON, unsupported schema, duplicate names, oversized files, and bundle failures.
+- [ ] Verify import/export through Files, iCloud Drive, and one third-party provider.
+- [ ] Add tests for duplicate names, same-ID replacement, selected-theme deletion fallback, legacy JSON, and file-size rejection.
 
-**Why**
+Done when:
 
-`PlainTextDocumentSession.swift` and `MarkdownStyledTextRenderer.swift` are both real boundaries and easy places to overstuff. Future markdown and JSON theme work will be much easier if parsing, styling, theme roles, and TextKit layout behavior stay separate.
+- [ ] Import/export failures are specific and user understandable.
+- [ ] Theme exchange behavior is covered by tests and manual Files-provider QA.
 
-**Success**
+### 3. Continue renderer scalability work
 
-- session code stays focused on file truth,
-- rendering code stays focused on markdown presentation,
-- syntax recognition is separated from theme/style application before major new markdown features land,
-- future markdown work extends the explicit mode-controlled vs always-hidden syntax contract instead of inventing new visibility paths,
-- hidden syntax remains glyph-level layout behavior rather than font/kerning tricks,
-- new editor UX does not automatically land in either file.
+- [ ] Split markdown recognition/scanning from UIKit styling.
+- [ ] Keep theme role mapping out of parsing code.
+- [ ] Keep hidden-syntax reveal decisions testable without a live `UITextView`.
+- [ ] Preserve same-line current-line restyle as the fast path.
+- [ ] Preserve deferred full rerender for line breaks, paste, block-context changes, and selection-driven reveal changes.
+- [ ] Add large-document performance fixtures.
+- [ ] Avoid adding tables, footnotes, or richer code-block behavior until the renderer split is underway.
 
-### 3. Finish production polish around Settings and theme management
+Done when:
 
-**Why**
+- [ ] Renderer tests can exercise syntax recognition without attributed-string styling.
+- [ ] Large-file typing has an explicit performance budget.
 
-The settings hierarchy is now a real product surface, including Theme and New Theme screens. Built-in theme selection, custom theme persistence, and JSON import/export now have backing infrastructure; future work should refine that hierarchy instead of replacing it.
+### 4. Add workspace snapshot lookup indexes
 
-**Success**
+- [ ] Build per-snapshot indexes for relative-path and file-identity lookup.
+- [ ] Use indexes in navigation, recents, mutation reconciliation, and restore paths.
+- [ ] Keep recursive traversal as a correctness fallback while the index lands.
+- [ ] Add tests for duplicate names in different folders.
+- [ ] Add tests for rename, move, delete, and case-only rename.
+- [ ] Add tests for stale recent-file paths after a workspace refresh.
 
-- harden and polish the initial persisted theme management flow,
-- keep explicit theme imports routed through `ThemeImportService`/`ThemeStore`, not through document editing,
-- keep settings as a sheet over the current workspace/editor on both compact and regular layouts,
-- preserve the existing working workspace/editor/markdown controls,
-- keep StoreKit and legal/rating links honest until the backing infrastructure actually ships,
-- add richer theme-schema validation and migration support before expanding the import format further.
+Done when:
 
-**Likely files**
+- [ ] Path/file resolution no longer repeatedly walks the whole snapshot tree in common flows.
+- [ ] Mutation tests prove index rebuild/invalidation behavior.
 
-- `Downward/Features/Settings/SettingsScreen.swift`
-- future dedicated theme settings views if needed
+### 5. Keep coordinator and workspace view model from growing again
 
----
+- [ ] Keep new workspace decision logic in `WorkspaceNavigationPolicy`, `WorkspaceMutationPolicy`, or focused helpers.
+- [ ] Avoid adding feature-specific UI rules directly to `AppCoordinator`.
+- [ ] Extract mutation-result reconciliation if rename/move/delete flows grow.
+- [ ] Keep search-specific state in `WorkspaceSearchModel`.
+- [ ] Extract workspace prompt/command state if more browser dialogs are added.
 
-## Secondary cleanup
+Done when:
 
-### 5. Keep preview and sample data aligned with the real product model
+- [ ] New features add small policies/models instead of expanding coordinator/view-model switchboards.
 
-Preview and sample identity should stay close to the same relative-path-first model used in production so visual testing stays useful.
+### 6. Finish runtime QA for Files-provider behavior
 
-### 6. Keep docs truthful
+- [ ] Select a local workspace.
+- [ ] Select an iCloud Drive workspace.
+- [ ] Select a third-party provider workspace if available.
+- [ ] Rename a folder outside the app and confirm refresh/reconnect behavior.
+- [ ] Move/delete an open document outside the app and confirm the app surfaces a safe state.
+- [ ] Import a theme from Files.
+- [ ] Export a theme to Files.
+- [ ] Open a normal `.json` file from the workspace and confirm it opens as text.
 
-Any editor, navigation, or settings change should be reflected in:
+Done when:
 
-- `AGENTS.md` when it changes a hard rule,
-- `ARCHITECTURE.md` when it changes ownership,
-- `TASKS.md` when it changes active priorities or known pressure points.
+- [ ] Real Files-provider results are recorded in this checklist.
 
----
+## P2 cleanup and polish
 
-## Intentional debt that is acceptable for now
+- [ ] Add a dedicated release checklist file if this task list becomes too crowded.
+- [ ] Replace placeholder-backed Settings actions when StoreKit, review routing, and legal URL infrastructure are ready.
+- [ ] Add line-number support only after renderer/layout performance is protected.
+- [ ] Add larger heading text only after accessibility, dynamic type, and markdown layout behavior are tested.
+- [ ] Consider extracting renderer theme role tables into smaller value types.
+- [ ] Consider extracting workspace expansion/path rewrite helpers from `WorkspaceViewModel`.
+- [ ] Keep `ARCHITECTURE.md` updated when ownership boundaries change.
 
-- `AppCoordinator.swift` is still large, but refresh application, replacement selection, trusted route/recent-file decisions, and repeated mutation execution/error paths no longer need to grow inline there.
-- `PlainTextDocumentSession.swift` is still dense, but it is currently the right file-session boundary and its version bookkeeping no longer needs extra whole-buffer UTF-8 round-trips on open/save.
-- The app still uses one whole workspace snapshot and simple filename/path search.
-- URL-only open paths still exist for compatibility, but should stay secondary.
+## Guardrails for future changes
 
----
+- [ ] Do not bypass workspace-relative path validation with raw URLs from UI code.
+- [ ] Do not make normal document opening trigger theme import automatically.
+- [ ] Do not add long-lived unstructured tasks without cancellation ownership and stale-result guards.
+- [ ] Do not add more markdown features to `MarkdownStyledTextRenderer` without preserving the current-line fast path.
+- [ ] Do not paint UIKit keyboard host/container backgrounds unless device QA proves there is no wider visual side effect.
+- [ ] Do not mark a UI geometry fix complete without iPhone and iPad verification.
 
-## Explicit non-goals right now
+## Files to update when priorities change
 
-Do not start these without a design pass first:
-
-- content search,
-- a second editor implementation,
-- multi-window or multi-pane live editing,
-- an app-owned mirrored document store,
-- large-scale architecture rewrites without a concrete product need.
+- [ ] `TASKS.md` for active checklists and fix status.
+- [ ] `PLANS.md` for detailed implementation sequencing.
+- [ ] `CODE_REVIEW.md` for review findings and severity changes.
+- [ ] `ARCHITECTURE.md` when ownership boundaries or module responsibilities change.

@@ -42,27 +42,43 @@ struct ThemeExchangeDocument: FileDocument {
     }
 
     private static func decodeThemes(from data: Data) throws -> [CustomTheme] {
+        do {
+            _ = try JSONSerialization.jsonObject(with: data)
+        } catch {
+            throw ThemeExchangeError.invalidJSON
+        }
+
         let decoder = JSONDecoder()
 
-        if let theme = try? decoder.decode(ThemeExchangeTheme.self, from: data) {
-            return [theme.makeCustomTheme()]
-        }
-
-        if let themes = try? decoder.decode([ThemeExchangeTheme].self, from: data), themes.isEmpty == false {
-            return themes.map { $0.makeCustomTheme() }
-        }
-
-        if let bundle = try? decoder.decode(ThemeExchangeBundle.self, from: data), bundle.themes.isEmpty == false {
-            return bundle.themes.map { $0.makeCustomTheme() }
-        }
-
-        var underlyingError: Error?
         do {
-            _ = try decoder.decode(ThemeExchangeTheme.self, from: data)
+            let theme = try decoder.decode(ThemeExchangeTheme.self, from: data)
+            return [theme.makeCustomTheme()]
+        } catch let error as ThemeSchemaVersionError {
+            throw error
         } catch {
-            underlyingError = error
         }
-        throw ThemeExchangeError.invalidFormat(underlyingError: underlyingError)
+
+        do {
+            let themes = try decoder.decode([ThemeExchangeTheme].self, from: data)
+            if themes.isEmpty == false {
+                return themes.map { $0.makeCustomTheme() }
+            }
+        } catch let error as ThemeSchemaVersionError {
+            throw error
+        } catch {
+        }
+
+        do {
+            let bundle = try decoder.decode(ThemeExchangeBundle.self, from: data)
+            if bundle.themes.isEmpty == false {
+                return bundle.themes.map { $0.makeCustomTheme() }
+            }
+        } catch let error as ThemeSchemaVersionError {
+            throw error
+        } catch {
+        }
+
+        throw ThemeExchangeError.invalidFormat
     }
 }
 
@@ -85,6 +101,7 @@ private nonisolated struct ThemeExchangeTheme: Codable {
     let checkboxChecked: HexColor
 
     private enum CodingKeys: String, CodingKey {
+        case schemaVersion
         case id
         case name
         case background
@@ -116,6 +133,8 @@ private nonisolated struct ThemeExchangeTheme: Codable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        try CustomTheme.validateSchemaVersion(schemaVersion)
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         background = try Self.decodeExchangeHexColor(from: container, forKey: .background)
@@ -133,6 +152,7 @@ private nonisolated struct ThemeExchangeTheme: Codable {
 
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(CustomTheme.currentSchemaVersion, forKey: .schemaVersion)
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
         try container.encode(background.hex, forKey: .background)
@@ -185,13 +205,15 @@ private nonisolated struct ThemeExchangeTheme: Codable {
 }
 
 private enum ThemeExchangeError: LocalizedError {
-    case invalidFormat(underlyingError: Error?)
+    case invalidJSON
+    case invalidFormat
 
     var errorDescription: String? {
-        var message = "The selected JSON file is not a valid Downward theme export."
-        if case let .invalidFormat(error) = self, let detail = error?.localizedDescription {
-            message += " (\(detail))"
+        switch self {
+        case .invalidJSON:
+            return "The selected file is not valid JSON."
+        case .invalidFormat:
+            return "The selected JSON file is not a valid Downward theme export."
         }
-        return message
     }
 }

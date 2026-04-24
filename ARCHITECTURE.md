@@ -232,6 +232,8 @@ Important realities:
 
 `MarkdownEditorTextView` should stay a thin representable boundary. Text syncing, viewport reset, keyboard accessory behavior, and keyboard geometry now live in focused editor collaborators rather than being re-accumulated into one bridge file.
 
+Keyboard accessory styling has an explicit contract: the accessory host should remain clear/non-opaque while toolbar controls use the resolved editor tint. The editor surface, TextKit backgrounds, renderer roles, and caret tint can be theme-driven, but do not paint private UIKit keyboard-host containers unless a device QA pass proves there is no wider visual side effect.
+
 The editor currently has a sensitive layout boundary around top chrome, safe areas, and the first visible line.
 Treat that as real product behavior, not cosmetic trivia.
 Any change there needs real-device verification on iPhone and iPad.
