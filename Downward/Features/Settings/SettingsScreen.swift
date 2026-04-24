@@ -879,17 +879,18 @@ private struct ThemeEditorSettingsPage: View {
             _checkboxUnchecked = State(initialValue: Color(uiColor: editing.checkboxUnchecked.uiColor))
             _checkboxChecked = State(initialValue: Color(uiColor: editing.checkboxChecked.uiColor))
         } else {
+            let baseTheme = EditorTheme.adaptive
             _name = State(initialValue: "")
-            _background = State(initialValue: Color(uiColor: UIColor(red: 0.118, green: 0.118, blue: 0.118, alpha: 1)))
-            _text = State(initialValue: Color(uiColor: UIColor(red: 0.831, green: 0.831, blue: 0.831, alpha: 1)))
-            _tint = State(initialValue: Color(uiColor: UIColor(red: 0.337, green: 0.612, blue: 0.839, alpha: 1)))
-            _boldItalicMarker = State(initialValue: Color(uiColor: UIColor(red: 0.45, green: 0.45, blue: 0.50, alpha: 1)))
-            _strikethrough = State(initialValue: Color(uiColor: UIColor(red: 0.45, green: 0.45, blue: 0.50, alpha: 1)))
-            _inlineCode = State(initialValue: Color(uiColor: UIColor(red: 0.808, green: 0.569, blue: 0.471, alpha: 1)))
-            _codeBackground = State(initialValue: Color(uiColor: UIColor(red: 0.176, green: 0.176, blue: 0.176, alpha: 1)))
-            _horizontalRule = State(initialValue: Color(uiColor: UIColor(red: 0.251, green: 0.251, blue: 0.251, alpha: 1)))
-            _checkboxUnchecked = State(initialValue: Color(uiColor: UIColor(red: 0.957, green: 0.278, blue: 0.278, alpha: 1)))
-            _checkboxChecked = State(initialValue: Color(uiColor: UIColor(red: 0.416, green: 0.600, blue: 0.333, alpha: 1)))
+            _background = State(initialValue: Color(uiColor: baseTheme.background))
+            _text = State(initialValue: Color(uiColor: baseTheme.text))
+            _tint = State(initialValue: Color(uiColor: baseTheme.tint))
+            _boldItalicMarker = State(initialValue: Color(uiColor: baseTheme.boldItalicMarker))
+            _strikethrough = State(initialValue: Color(uiColor: baseTheme.strikethrough))
+            _inlineCode = State(initialValue: Color(uiColor: baseTheme.inlineCode))
+            _codeBackground = State(initialValue: Color(uiColor: baseTheme.codeBackground))
+            _horizontalRule = State(initialValue: Color(uiColor: baseTheme.horizontalRule))
+            _checkboxUnchecked = State(initialValue: Color(uiColor: baseTheme.checkboxUnchecked))
+            _checkboxChecked = State(initialValue: Color(uiColor: baseTheme.checkboxChecked))
         }
     }
 
