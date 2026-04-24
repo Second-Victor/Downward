@@ -136,7 +136,9 @@ struct MarkdownStyledTextRenderer {
             lineRanges: lineRanges,
             protectedRanges: codeBlockRanges + setextUnderlineRanges,
             baseFont: configuration.baseFont,
-            resolvedTheme: configuration.resolvedTheme
+            resolvedTheme: configuration.resolvedTheme,
+            syntaxMode: configuration.syntaxMode,
+            revealedRange: configuration.revealedRange
         )
         styleBlockquotes(
             in: attributed,
@@ -904,7 +906,9 @@ struct MarkdownStyledTextRenderer {
         lineRanges: [NSRange],
         protectedRanges: [NSRange],
         baseFont: UIFont,
-        resolvedTheme: ResolvedEditorTheme
+        resolvedTheme: ResolvedEditorTheme,
+        syntaxMode: MarkdownSyntaxMode,
+        revealedRange: NSRange?
     ) {
         for lineRange in lineRanges {
             let contentRange = trimmedLineRange(from: lineRange, in: text)
@@ -923,9 +927,17 @@ struct MarkdownStyledTextRenderer {
             attributed.addAttributes(
                 [
                     .foregroundColor: resolvedTheme.horizontalRuleText,
-                    .font: UIFont.monospacedSystemFont(ofSize: baseFont.pointSize * 0.9, weight: .regular)
+                    .font: UIFont.monospacedSystemFont(ofSize: baseFont.pointSize * 0.9, weight: .regular),
+                    .markdownHorizontalRule: true
                 ],
                 range: contentRange
+            )
+            applySyntaxVisibility(
+                contentRange,
+                rule: .followsMode,
+                in: attributed,
+                syntaxMode: syntaxMode,
+                revealedRange: revealedRange
             )
         }
     }

@@ -9,6 +9,7 @@ extension NSAttributedString.Key {
     nonisolated static let markdownCodeBackgroundKind = NSAttributedString.Key("Downward.MarkdownCodeBackgroundKind")
     nonisolated static let markdownBlockquoteDepth = NSAttributedString.Key("Downward.MarkdownBlockquoteDepth")
     nonisolated static let markdownBlockquoteGroupID = NSAttributedString.Key("Downward.MarkdownBlockquoteGroupID")
+    nonisolated static let markdownHorizontalRule = NSAttributedString.Key("Downward.MarkdownHorizontalRule")
     nonisolated static let markdownSyntaxToken = NSAttributedString.Key("Downward.MarkdownSyntaxToken")
     nonisolated static let markdownHiddenSyntax = NSAttributedString.Key("Downward.MarkdownHiddenSyntax")
 }
@@ -23,6 +24,9 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
     private let blockquoteBarCornerRadius: CGFloat = 2
     private let blockquoteBackgroundInset = UIEdgeInsets(top: 2, left: 2, bottom: 2, right: 2)
     private let blockquoteBackgroundCornerRadius: CGFloat = 4
+    private let horizontalRuleHeight: CGFloat = 2
+    private let horizontalRuleHorizontalInset: CGFloat = 2
+    private let horizontalRuleCornerRadius: CGFloat = 1
     nonisolated(unsafe) var resolvedTheme: ResolvedEditorTheme = .default
 
     nonisolated override init() {
@@ -159,6 +163,20 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
                 groupID: groupID,
                 at: origin
             )
+        }
+
+        textStorage.enumerateAttribute(.markdownHorizontalRule, in: characterRange) { value, range, _ in
+            guard value as? Bool == true else {
+                return
+            }
+
+            let glyphRange = self.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            let visibleGlyphRange = NSIntersectionRange(glyphRange, glyphsToShow)
+            guard visibleGlyphRange.length > 0 else {
+                return
+            }
+
+            self.drawHorizontalRule(forGlyphRange: visibleGlyphRange, at: origin)
         }
     }
 
@@ -334,6 +352,32 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
             )
             resolvedTheme.blockquoteBar.setFill()
             guidePath.fill()
+        }
+    }
+
+    nonisolated private func drawHorizontalRule(
+        forGlyphRange glyphRange: NSRange,
+        at origin: CGPoint
+    ) {
+        enumerateLineFragments(forGlyphRange: glyphRange) { lineFragmentRect, _, textContainer, lineGlyphRange, _ in
+            guard NSIntersectionRange(lineGlyphRange, glyphRange).length > 0 else {
+                return
+            }
+
+            let containerWidth = textContainer.size.width > 0 ? textContainer.size.width : lineFragmentRect.width
+            let width = max(0, containerWidth - self.horizontalRuleHorizontalInset * 2)
+            let ruleRect = CGRect(
+                x: origin.x + lineFragmentRect.minX + self.horizontalRuleHorizontalInset,
+                y: origin.y + lineFragmentRect.midY - self.horizontalRuleHeight / 2,
+                width: width,
+                height: self.horizontalRuleHeight
+            )
+            let path = UIBezierPath(
+                roundedRect: ruleRect,
+                cornerRadius: self.horizontalRuleCornerRadius
+            )
+            self.resolvedTheme.horizontalRuleText.setFill()
+            path.fill()
         }
     }
 }

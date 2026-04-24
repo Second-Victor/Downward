@@ -538,6 +538,62 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
     }
 
     @MainActor
+    func testHorizontalRuleUsesThemeRoleAndMarksLineForDrawing() {
+        let text = """
+        Before
+
+        ---
+
+        After
+        """
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                resolvedTheme: customTheme,
+                syntaxMode: .visible,
+                revealedRange: nil
+            )
+        )
+
+        let nsString = rendered.string as NSString
+        let ruleRange = nsString.range(of: "---")
+        let ruleColor = rendered.attribute(.foregroundColor, at: ruleRange.location, effectiveRange: nil) as? UIColor
+        let isHorizontalRule = rendered.attribute(.markdownHorizontalRule, at: ruleRange.location, effectiveRange: nil) as? Bool
+
+        XCTAssertEqual(ruleColor, customTheme.horizontalRuleText)
+        XCTAssertEqual(isHorizontalRule, true)
+    }
+
+    @MainActor
+    func testHorizontalRuleSyntaxCanHideWhileKeepingDrawMarker() {
+        let text = """
+        Before
+
+        ---
+
+        After
+        """
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                resolvedTheme: customTheme,
+                syntaxMode: .hiddenOutsideCurrentLine,
+                revealedRange: nil
+            )
+        )
+
+        let nsString = rendered.string as NSString
+        let ruleRange = nsString.range(of: "---")
+        let isHiddenSyntax = rendered.attribute(.markdownHiddenSyntax, at: ruleRange.location, effectiveRange: nil) as? Bool
+        let isHorizontalRule = rendered.attribute(.markdownHorizontalRule, at: ruleRange.location, effectiveRange: nil) as? Bool
+
+        XCTAssertEqual(isHiddenSyntax, true)
+        XCTAssertEqual(isHorizontalRule, true)
+    }
+
+    @MainActor
     func testIndentedCodeBlockUsesMonospacedFontAndDoesNotParseEmphasisInside() {
         let text = """
             **literal**
