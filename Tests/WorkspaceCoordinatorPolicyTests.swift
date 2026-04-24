@@ -50,6 +50,64 @@ final class WorkspaceCoordinatorPolicyTests: XCTestCase {
         XCTAssertEqual(updatedState.regularDetailSelection, .placeholder)
     }
 
+    func testEditorRouteURLFallsBackToWorkspaceRelativeResolution() {
+        let routeURL = WorkspaceNavigationPolicy.editorRouteURL(
+            for: "Drafts/New.md",
+            preferredURL: nil,
+            snapshot: WorkspaceSnapshot(
+                rootURL: PreviewSampleData.workspaceRootURL,
+                displayName: PreviewSampleData.nestedWorkspace.displayName,
+                rootNodes: [],
+                lastUpdated: PreviewSampleData.previewDate
+            ),
+            openDocument: nil
+        )
+
+        XCTAssertEqual(
+            routeURL,
+            PreviewSampleData.workspaceRootURL.appending(path: "Drafts/New.md")
+        )
+    }
+
+    func testRegularPresentedEditorRelativePathUsesPendingTrustedPresentation() {
+        let relativePath = WorkspaceNavigationPolicy.presentedEditorRelativePath(
+            for: PreviewSampleData.readmeDocumentURL,
+            navigationLayout: .regular,
+            navigationState: WorkspaceNavigationState(
+                path: [],
+                regularDetailSelection: .editor(PreviewSampleData.cleanDocument.relativePath)
+            ),
+            regularWorkspaceDetailEditorURL: nil,
+            pendingEditorPresentation: .init(
+                routeURL: PreviewSampleData.readmeDocumentURL,
+                relativePath: PreviewSampleData.cleanDocument.relativePath
+            )
+        )
+
+        XCTAssertEqual(relativePath, PreviewSampleData.cleanDocument.relativePath)
+    }
+
+    func testStaleRecentFileOpenApplicationBuildsRecentSpecificRemoval() {
+        let application = WorkspaceNavigationPolicy.staleRecentFileOpenApplication(
+            from: .documentUnavailable(name: PreviewSampleData.cleanDocument.displayName),
+            documentURL: PreviewSampleData.cleanDocument.url,
+            pendingEditorPresentation: .init(
+                routeURL: PreviewSampleData.cleanDocument.url,
+                relativePath: PreviewSampleData.cleanDocument.relativePath,
+                source: .recentFile
+            ),
+            presentedRelativePath: PreviewSampleData.cleanDocument.relativePath,
+            snapshot: PreviewSampleData.nestedWorkspace
+        )
+
+        XCTAssertEqual(application?.relativePath, PreviewSampleData.cleanDocument.relativePath)
+        XCTAssertEqual(application?.error.title, "Recent File Unavailable")
+        XCTAssertEqual(
+            application?.error.recoverySuggestion,
+            "It was removed from Recent Files. Choose another file from the browser."
+        )
+    }
+
     func testReplacingEditorPresentationUpdatesMatchingRouteAndSelection() {
         let renamedURL = PreviewSampleData.workspaceRootURL.appending(path: "Inbox Renamed.md")
         let initialState = WorkspaceNavigationState(
@@ -112,7 +170,23 @@ final class WorkspaceCoordinatorPolicyTests: XCTestCase {
         XCTAssertTrue(application.shouldClearEditorAlertError)
     }
 
-    func testSnapshotReconciliationClearsMissingVisibleCleanEditor() {
+    func testSelectionApplicationForFailedReplacementKeepsExistingSessionAndReturnsAlert() {
+        let reconnectError = UserFacingError(
+            title: "Can’t Open Folder",
+            message: "The selected folder could not be loaded.",
+            recoverySuggestion: "Try choosing the folder again."
+        )
+
+        let application = WorkspaceSessionPolicy.selectionApplication(
+            for: .failed(reconnectError),
+            replacingActiveWorkspace: true
+        )
+
+        XCTAssertNil(application.sessionApplication)
+        XCTAssertEqual(application.workspaceAlertError, reconnectError)
+    }
+
+    func testSnapshotRefreshApplicationClearsMissingVisibleCleanEditor() {
         let snapshotWithoutOpenDocument = WorkspaceSnapshot(
             rootURL: PreviewSampleData.workspaceRootURL,
             displayName: PreviewSampleData.nestedWorkspace.displayName,
@@ -120,7 +194,7 @@ final class WorkspaceCoordinatorPolicyTests: XCTestCase {
             lastUpdated: PreviewSampleData.previewDate
         )
 
-        let reconciliation = WorkspaceSessionPolicy.reconcileAfterApplyingSnapshot(
+        let application = WorkspaceSessionPolicy.refreshApplication(
             snapshotWithoutOpenDocument,
             navigationState: WorkspaceNavigationState(
                 path: [.editor(PreviewSampleData.cleanDocument.url)],
@@ -131,15 +205,16 @@ final class WorkspaceCoordinatorPolicyTests: XCTestCase {
             visibleEditorRelativePath: PreviewSampleData.cleanDocument.relativePath
         )
 
-        XCTAssertEqual(reconciliation.navigationState, .placeholder)
-        XCTAssertTrue(reconciliation.shouldClearOpenDocument)
-        XCTAssertTrue(reconciliation.shouldClearEditorLoadError)
-        XCTAssertTrue(reconciliation.shouldClearEditorAlertError)
-        XCTAssertTrue(reconciliation.shouldClearRestorableDocumentSession)
-        XCTAssertEqual(reconciliation.workspaceAlertError?.title, "Document Unavailable")
+        XCTAssertEqual(application.sessionApplication.workspaceSnapshot, snapshotWithoutOpenDocument)
+        XCTAssertEqual(application.sessionApplication.navigationState, .placeholder)
+        XCTAssertTrue(application.sessionApplication.shouldClearOpenDocument)
+        XCTAssertTrue(application.sessionApplication.shouldClearEditorLoadError)
+        XCTAssertTrue(application.sessionApplication.shouldClearEditorAlertError)
+        XCTAssertTrue(application.shouldClearRestorableDocumentSession)
+        XCTAssertEqual(application.sessionApplication.workspaceAlertError?.title, "Document Unavailable")
     }
 
-    func testSnapshotReconciliationPreservesDirtyMissingEditor() {
+    func testSnapshotRefreshApplicationPreservesDirtyMissingEditor() {
         let snapshotWithoutDirtyDocument = WorkspaceSnapshot(
             rootURL: PreviewSampleData.workspaceRootURL,
             displayName: PreviewSampleData.nestedWorkspace.displayName,
@@ -159,7 +234,7 @@ final class WorkspaceCoordinatorPolicyTests: XCTestCase {
             path: [.editor(PreviewSampleData.dirtyDocument.url)],
             regularDetailSelection: .placeholder
         )
-        let reconciliation = WorkspaceSessionPolicy.reconcileAfterApplyingSnapshot(
+        let application = WorkspaceSessionPolicy.refreshApplication(
             snapshotWithoutDirtyDocument,
             navigationState: initialNavigationState,
             navigationLayout: .compact,
@@ -167,11 +242,40 @@ final class WorkspaceCoordinatorPolicyTests: XCTestCase {
             visibleEditorRelativePath: PreviewSampleData.dirtyDocument.relativePath
         )
 
-        XCTAssertEqual(reconciliation.navigationState, initialNavigationState)
-        XCTAssertFalse(reconciliation.shouldClearOpenDocument)
-        XCTAssertFalse(reconciliation.shouldClearEditorLoadError)
-        XCTAssertFalse(reconciliation.shouldClearEditorAlertError)
-        XCTAssertFalse(reconciliation.shouldClearRestorableDocumentSession)
-        XCTAssertNil(reconciliation.workspaceAlertError)
+        XCTAssertEqual(application.sessionApplication.navigationState, initialNavigationState)
+        XCTAssertFalse(application.sessionApplication.shouldClearOpenDocument)
+        XCTAssertFalse(application.sessionApplication.shouldClearEditorLoadError)
+        XCTAssertFalse(application.sessionApplication.shouldClearEditorAlertError)
+        XCTAssertFalse(application.shouldClearRestorableDocumentSession)
+        XCTAssertNil(application.sessionApplication.workspaceAlertError)
+    }
+
+    func testMutationPolicyRejectsDirtyDeleteForOpenDocument() {
+        var dirtyDocument = PreviewSampleData.cleanDocument
+        dirtyDocument.isDirty = true
+        dirtyDocument.saveState = .unsaved
+
+        let error = WorkspaceMutationPolicy.blockingEditorMutationError(
+            action: .delete,
+            targetKind: .file,
+            targetURL: dirtyDocument.url,
+            targetRelativePath: dirtyDocument.relativePath,
+            openDocument: dirtyDocument
+        )
+
+        XCTAssertEqual(error?.title, "Delete File")
+        XCTAssertEqual(
+            error?.message,
+            "Finish with \(dirtyDocument.displayName) before deleting it from the browser."
+        )
+    }
+
+    func testMutationPolicyDetectsFolderBrowserItemKind() {
+        let targetKind = WorkspaceMutationPolicy.browserItemKind(
+            for: PreviewSampleData.referencesURL,
+            in: PreviewSampleData.nestedWorkspace
+        )
+
+        XCTAssertEqual(targetKind, .folder)
     }
 }

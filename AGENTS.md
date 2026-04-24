@@ -110,6 +110,7 @@ These are part of the app contract and must not be casually broken.
 - Never bypass workspace-boundary validation at the final file-system edge.
 - Treat Files and provider-backed URLs as asynchronous and fallible.
 - Keep reads, writes, reloads, and mutation handling in the domain/infrastructure layers, not in Views.
+- Reuse already-loaded or already-encoded UTF-8 buffers in document-session versioning paths instead of adding avoidable full-buffer round-trips.
 
 ### 2. Calm editing over defensive noise
 
@@ -131,6 +132,9 @@ These are part of the app contract and must not be casually broken.
 - File I/O and heavier file-version work should not block the main actor.
 - Async completions must not overwrite newer state blindly.
 - Use generation checks where newer work can race with older completions.
+- Classify every new unstructured `Task` as app/session-owned, model-owned, view-owned, or explicitly fire-and-forget.
+- Model-owned tasks that mutate state after `await` must cancel or check identity/generation when the selected workspace, route, or document changes.
+- Fire-and-forget UI actions are acceptable only when a coordinator/domain boundary owns stale-result suppression.
 
 ### 5. Testability over abstraction theatre
 
@@ -150,6 +154,8 @@ Use the current app/domain names already present in the codebase:
 - root composition: `AppContainer`
 - root session state: `AppSession`
 - orchestration: `AppCoordinator`
+- app policy seams: `WorkspaceNavigationPolicy`, `WorkspaceSessionPolicy`, `WorkspaceMutationPolicy`
+- app mutation seams: `WorkspaceMutationService`, `WorkspaceMutationErrorPresenter`
 - workspace domain: `WorkspaceManager`, `WorkspaceSnapshot`, `WorkspaceNode`
 - document domain: `DocumentManager`, `PlainTextDocumentSession`, `OpenDocument`
 - editor UI: `EditorViewModel`, `EditorScreen`, `MarkdownEditorTextView`

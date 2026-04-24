@@ -81,6 +81,42 @@ final class EditorConflictTests: XCTestCase {
     }
 
     @MainActor
+    func testDelayedReloadResolutionDoesNotReplaceNewerRouteDocument() async throws {
+        let conflictedDocument = makeConflictedDocument()
+        var secondDocument = PreviewSampleData.dirtyDocument
+        secondDocument.isDirty = false
+        secondDocument.saveState = .saved(PreviewSampleData.previewDate)
+        let documentManager = RouteSwitchingConflictDocumentManager(
+            documents: [
+                PreviewSampleData.cleanDocument.url: PreviewSampleData.cleanDocument,
+                secondDocument.url: secondDocument,
+            ],
+            conflictedSaveResult: conflictedDocument,
+            reloadedDocument: PreviewSampleData.cleanDocument,
+            reloadDelay: .milliseconds(120)
+        )
+        let system = makeEditorSystem(documentManager: documentManager)
+
+        system.viewModel.handleTextChange("Local edits")
+        try await Task.sleep(for: .milliseconds(80))
+        system.viewModel.reloadFromDisk()
+
+        system.session.path = [.editor(secondDocument.url)]
+        system.viewModel.handleAppear(for: secondDocument.url)
+        system.viewModel.handleDisappear(for: PreviewSampleData.cleanDocument.url)
+
+        try await waitUntil {
+            system.session.openDocument?.url == secondDocument.url
+        }
+        try await Task.sleep(for: .milliseconds(180))
+
+        XCTAssertEqual(system.session.openDocument?.url, secondDocument.url)
+        XCTAssertEqual(system.session.openDocument?.relativePath, secondDocument.relativePath)
+        XCTAssertFalse(system.viewModel.isResolvingConflict)
+        XCTAssertFalse(system.viewModel.isShowingConflictResolution)
+    }
+
+    @MainActor
     func testObservationStopsRevalidatingAfterEditorDisappears() async throws {
         let documentManager = ObservationRecordingDocumentManager(document: PreviewSampleData.cleanDocument)
         let system = makeEditorSystem(documentManager: documentManager)
@@ -195,6 +231,66 @@ private actor ConflictResolvingDocumentManager: DocumentManager {
 
     func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
         reloadedDocument
+    }
+
+    func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument {
+        if overwriteConflict {
+            var savedDocument = document
+            savedDocument.isDirty = false
+            savedDocument.saveState = .saved(Date(timeIntervalSince1970: 1_710_000_200))
+            savedDocument.conflictState = .none
+            return savedDocument
+        }
+
+        return conflictedSaveResult
+    }
+
+    func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            continuation.finish()
+        }
+    }
+
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {}
+}
+
+private actor RouteSwitchingConflictDocumentManager: DocumentManager {
+    private let documents: [URL: OpenDocument]
+    private let conflictedSaveResult: OpenDocument
+    private let reloadedDocument: OpenDocument
+    private let reloadDelay: Duration
+
+    init(
+        documents: [URL: OpenDocument],
+        conflictedSaveResult: OpenDocument,
+        reloadedDocument: OpenDocument,
+        reloadDelay: Duration
+    ) {
+        self.documents = documents
+        self.conflictedSaveResult = conflictedSaveResult
+        self.reloadedDocument = reloadedDocument
+        self.reloadDelay = reloadDelay
+    }
+
+    func openDocument(at url: URL, in workspaceRootURL: URL) async throws -> OpenDocument {
+        guard let document = documents[url] else {
+            throw AppError.documentUnavailable(name: url.lastPathComponent)
+        }
+
+        return document
+    }
+
+    func reloadDocument(from document: OpenDocument) async throws -> OpenDocument {
+        try? await Task.sleep(for: reloadDelay)
+        return reloadedDocument
+    }
+
+    func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
+        document
     }
 
     func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument {

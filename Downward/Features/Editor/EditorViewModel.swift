@@ -21,7 +21,9 @@ final class EditorViewModel {
     private let editorAppearanceStore: EditorAppearanceStore
     private var autosaveTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
+    private var conflictResolutionTask: Task<Void, Never>?
     private var loadGeneration = 0
+    private var conflictResolutionGeneration = 0
     private var currentRouteURL: URL?
     private var editGeneration = 0
     private var saveInFlight = false
@@ -192,6 +194,7 @@ final class EditorViewModel {
             return
         }
 
+        cancelConflictResolutionTask()
         stopObservingDocumentChanges()
         invalidatePendingLoad()
         let generation = loadGeneration
@@ -226,6 +229,7 @@ final class EditorViewModel {
             currentRouteURL = nil
             session.editorLoadError = nil
             session.editorAlertError = nil
+            cancelConflictResolutionTask()
             invalidatePendingLoad()
             stopObservingDocumentChanges()
         } else if hasVisibleEditor == false {
@@ -319,13 +323,20 @@ final class EditorViewModel {
         }
 
         autosaveTask?.cancel()
-        isResolvingConflict = true
-        Task {
+        let generation = beginConflictResolutionTask()
+        let documentSnapshot = currentRouteDocument
+        conflictResolutionTask = Task {
             defer {
-                isResolvingConflict = false
+                finishConflictResolutionTaskIfCurrent(generation)
             }
 
-            let result = await coordinator.reloadDocumentFromDisk(currentRouteDocument)
+            let result = await coordinator.reloadDocumentFromDisk(documentSnapshot)
+            guard Task.isCancelled == false else {
+                return
+            }
+            guard shouldApplyDocumentActionResult(for: documentSnapshot, generation: generation) else {
+                return
+            }
 
             switch result {
             case let .success(reloadedDocument):
@@ -345,22 +356,29 @@ final class EditorViewModel {
         }
 
         autosaveTask?.cancel()
-        isResolvingConflict = true
+        let generation = beginConflictResolutionTask()
 
         var pendingDocument = currentRouteDocument
         pendingDocument.saveState = .saving
         pendingDocument.conflictState = .none
         session.openDocument = pendingDocument
 
-        Task {
+        conflictResolutionTask = Task {
             defer {
-                isResolvingConflict = false
+                finishConflictResolutionTaskIfCurrent(generation)
             }
 
             let result = await coordinator.saveDocument(
                 pendingDocument,
                 overwriteConflict: true
             )
+            guard Task.isCancelled == false else {
+                return
+            }
+            guard shouldApplyDocumentActionResult(for: pendingDocument, generation: generation) else {
+                return
+            }
+
             applySaveResult(
                 result,
                 for: pendingDocument,
@@ -676,6 +694,30 @@ final class EditorViewModel {
         loadGeneration += 1
     }
 
+    private func beginConflictResolutionTask() -> Int {
+        conflictResolutionTask?.cancel()
+        conflictResolutionGeneration += 1
+        isResolvingConflict = true
+        return conflictResolutionGeneration
+    }
+
+    private func cancelConflictResolutionTask() {
+        conflictResolutionTask?.cancel()
+        conflictResolutionTask = nil
+        conflictResolutionGeneration += 1
+        isResolvingConflict = false
+        isShowingConflictResolution = false
+    }
+
+    private func finishConflictResolutionTaskIfCurrent(_ generation: Int) {
+        guard generation == conflictResolutionGeneration else {
+            return
+        }
+
+        isResolvingConflict = false
+        conflictResolutionTask = nil
+    }
+
     private func shouldApplyLoadResult(
         for documentURL: URL,
         generation: Int
@@ -689,6 +731,21 @@ final class EditorViewModel {
         }
 
         return visibleEditorURLs.contains(documentURL)
+    }
+
+    private func shouldApplyDocumentActionResult(
+        for documentSnapshot: OpenDocument,
+        generation: Int
+    ) -> Bool {
+        guard generation == conflictResolutionGeneration else {
+            return false
+        }
+
+        guard let currentRouteDocument else {
+            return false
+        }
+
+        return isSameLogicalDocument(currentRouteDocument, documentSnapshot)
     }
 
     private func documentObservationIdentity(for document: OpenDocument) -> String {

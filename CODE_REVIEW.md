@@ -4,12 +4,54 @@
 
 - Static code review of the uploaded `Downward.zip` snapshot.
 - Reviewed `App/`, `Domain/`, `Infrastructure/`, `Features/`, `Shared/`, `Tests/`, and the archive contents.
-- I could not run `xcodebuild` or launch the app in this environment, so anything marked **runtime verification needed** is based on source inspection plus the screenshots you provided.
+- I can run focused `xcodebuild` test suites in this environment, but anything marked **runtime verification needed** still requires simulator or device verification.
 
 
 ## 2026-04-23 review refresh
 
 This refresh was done against the latest uploaded `Downward.zip` after the repo was reverted back to a stable baseline.
+
+## 2026-04-24 async lifecycle audit
+
+### Audited
+
+- `AppCoordinator` restore, reconnect, refresh, mutation, foreground validation, document reload, revalidation, and recent/trusted-open flows.
+- `RootViewModel`, `WorkspaceViewModel`, and `EditorViewModel` unstructured `Task { ... }` call sites.
+- `PlainTextDocumentSession` observation fallback polling, file-presenter callbacks, structured read/revalidate operations, and intentionally detached save writes.
+- `MarkdownEditorTextViewCoordinator` deferred rerender and viewport-reset tasks.
+- Settings clear/reconnect entry points through `RootViewModel` and coordinator-owned workspace transitions.
+
+### Fixed in this audit
+
+- **Editor conflict-resolution tasks are now explicitly model-owned.** `EditorViewModel.reloadFromDisk()` and `overwriteDisk()` now store the task, cancel it when the editor route/document identity changes, and require both a generation match and same logical document before applying delayed results.
+- **Stale reload results no longer replace a newer route document.** Added `EditorConflictTests.testDelayedReloadResolutionDoesNotReplaceNewerRouteDocument`.
+- **Root app actions are documented as coordinator-owned one-shot tasks.** Clear, retry restore, folder picker selection, and foreground validation remain fire-and-forget at the view-model boundary because coordinator transition/apply generations own stale-result suppression.
+- **Docs now encode the async ownership rule.** New tasks should be classified as app/session-owned, model-owned, view-owned, or explicitly fire-and-forget, and any state mutation after `await` needs cancellation, generation, or identity checks.
+
+### Remaining risk
+
+- Simulator `NSFilePresenter` delivery remains unreliable in `EditorAutosaveTests.testLiveObservationReloadsCleanEditorAfterOutsideWrite`; the test timed out during this pass and should be treated as a file-observation reliability follow-up rather than evidence of a conflict-resolution regression.
+- Detached document/workspace writes are intentionally preserved so transient UI cancellation does not interrupt coordinated file-system operations after they start.
+
+## 2026-04-24 coordinator boundary cleanup
+
+### Moved out of `AppCoordinator`
+
+- **Mutation execution metadata and fallback text** now live in `WorkspaceMutationService` and `WorkspaceMutationErrorPresenter`. The coordinator still sequences the operation and applies generation guards, but it no longer builds create/rename/move/delete fallback errors inline.
+- **Browser item kind lookup** now lives in `WorkspaceMutationPolicy`, next to mutation preflight rules.
+- **Trusted editor route resolution** now lives in `WorkspaceNavigationPolicy`, including preferred URL handling, open-document route reuse, snapshot URL lookup, and workspace-relative fallback URL construction.
+- **Presented editor relative-path resolution and stale recent-file open policy** now live in `WorkspaceNavigationPolicy`, so recent/trusted-open behavior is tested as policy rather than embedded in coordinator branches.
+- **Folder rename descendant route resolution helpers** now live in `WorkspaceNavigationPolicy`, so AppCoordinator no longer owns the path/URL rewriting helpers directly.
+
+### Coverage added or updated
+
+- `WorkspaceCoordinatorPolicyTests` now cover workspace-relative fallback editor route construction, regular-width pending trusted presentation resolution, stale recent-file removal/error construction, and folder browser-kind classification.
+- Existing restore, mutation, trusted-open/recent, and editor conflict app-flow suites passed after the refactor.
+
+### Still in `AppCoordinator`
+
+- Mutation result application still contains cross-dependency side effects: updating recents, rewriting pending presentations, relocating the active document session, clearing restorable sessions, and presenting delete alerts.
+- That remaining block is a reasonable future extraction target, but it should move into a focused mutation result applier rather than into navigation/session policies.
 
 ### Checked off in this refresh
 
@@ -22,6 +64,9 @@ This refresh was done against the latest uploaded `Downward.zip` after the repo 
 - **P1 accessory appearance hardening** — fixed in current code. The accessory wrapper and embedded `UIToolbar` configure transparent appearance explicitly again, and the default accessory host underlay is transparent instead of painting an opaque system background.
 - **P1 resolved editor theme pipeline** — fixed in current code. The editor surface, renderer text colors, TextKit code/blockquote drawing, caret tint, and keyboard accessory styling now resolve from one runtime theme model with focused regression coverage.
 - **P1 editor bridge split** — fixed in current code. `MarkdownEditorTextView.swift` is now a thin representable file, while the coordinator, accessory view, keyboard geometry, and `UITextView` subclass live in focused collaborators with the existing editor regressions still covered by tests.
+- **P0 large-file same-line typing latency** — fixed in current code. Ordinary same-line inline edits now take a bounded current-line restyle path instead of automatically scheduling a whole-document markdown rerender, while line-break and broader block-context edits still use the deferred full fallback.
+- **P1 document read/write memory churn** — fixed in current code. `PlainTextDocumentSession` now hashes raw bytes already loaded from disk and reuses the exact UTF-8 payload already being written during save/autosave instead of doing extra full-buffer `String -> Data` round-trips for version bookkeeping.
+- **P1 coordinator policy cleanup** — improved in current code. Workspace selection/replacement and refresh session application now flow through `WorkspaceSessionPolicy`, repeated mutation preflight rules now live in `WorkspaceMutationPolicy`, and create/rename/move/delete mutation error handling no longer duplicates the same inline catch branches across `AppCoordinator`.
 
 ### Still relevant after this refresh
 
@@ -30,9 +75,9 @@ This refresh was done against the latest uploaded `Downward.zip` after the repo 
 - Real-device verification is still needed for light, dark, and non-standard editor backgrounds now that the shared theme/accessory pipeline exists and the accessory host is transparent-by-default again.
 - User-facing custom theme management and JSON import/export are still future work.
 - Settings now ship as a maintained card-style shell, and regular-width iPad settings present as a dedicated sheet instead of replacing the split-view detail pane.
-- Workspace snapshot path lookup, search, recents pruning, and document read/write memory churn are still relevant performance items.
-- Large files now have a separate P0 typing-latency item because the uploaded `large_test_file.md` exposed multi-second keypress lag.
-- Large files/editor performance needs real device verification and, ideally, regression coverage.
+- Workspace snapshot path lookup, search, and recents pruning are still relevant performance items.
+- Large files still need broader incremental rendering work and real-device verification, but the immediate same-line typing-latency regression is no longer open.
+- `AppCoordinator` is still a hotspot, but the remaining risk is mainly mutation outcome reconciliation and restore sequencing rather than repeated selection/refresh/error boilerplate.
 
 ## Executive summary
 
@@ -54,13 +99,13 @@ The biggest current risks are not basic data safety. They are:
 
 ## Project metrics from this snapshot
 
-- **92 Swift files total**
-  - **68 app files**
+- **93 Swift files total**
+  - **69 app files**
   - **24 test files**
 - Largest files:
-  - `Downward/App/AppCoordinator.swift` — **1732 lines**
   - `Downward/Features/Editor/MarkdownStyledTextRenderer.swift` — **1600 lines**
   - `Downward/Domain/Workspace/WorkspaceManager.swift` — **1509 lines**
+  - `Downward/App/AppCoordinator.swift` — **1504 lines**
   - `Tests/WorkspaceManagerRestoreTests.swift` — **1318 lines**
   - `Tests/DocumentManagerTests.swift` — **1138 lines**
   - `Downward/Features/Workspace/WorkspaceViewModel.swift` — **1049 lines**
@@ -193,7 +238,7 @@ The biggest current risks are not basic data safety. They are:
 
 ---
 
-## [ ] P0 — Fix large-file typing latency in `MarkdownEditorTextView`
+## [x] P0 — Fix large-file typing latency in `MarkdownEditorTextView`
 
 **Files**
 - `Downward/Features/Editor/MarkdownEditorTextView.swift:248-320`
@@ -204,18 +249,20 @@ The biggest current risks are not basic data safety. They are:
 **Observed bug**
 - The uploaded `large_test_file.md` is around 250 KB and repeated editing in that file produced multi-second keypress lag.
 
-**Likely root cause from source inspection**
-- In `hiddenOutsideCurrentLine` mode, `textViewDidChangeSelection(_:)` can re-render the full markdown document after each typed character because the revealed current-line `NSRange` changes length while the cursor remains on the same line.
-- A full render runs many whole-document passes over headings, code blocks, inline styles, links/images, and hidden-syntax ranges. That is acceptable on load or when moving to another line, but not on every keypress in a large file.
-- The hot path also did large string equality checks before publishing the editor buffer to SwiftUI/session state.
+**Root cause**
+- Ordinary typing still escalated too quickly into whole-document work.
+- Same-line inline edits in `hiddenOutsideCurrentLine` mode were still riding the deferred full-render path even when the current revealed line had not moved and the broader markdown context was unchanged.
+- Full passes also paid an avoidable whole-document attributed-string equality check before mutating `textStorage`.
 
-**Patch included with this review**
-- Track whether the edit inserted or removed a line break via `textView(_:shouldChangeTextIn:replacementText:)`.
-- When typing ordinary characters on the same current line, update the stored revealed-line range but skip the full attributed re-render.
-- Still re-render when moving to a different line, when editing line breaks, or when making an explicit selection.
-- Avoid one unnecessary full-string equality check in `textViewDidChange(_:)` and another in `EditorViewModel.handleTextChange(_:)`.
-- Cache compiled markdown regexes so repeated full renders do not recompile every pattern.
-- Add a focused regression test for same-line typing not forcing a hidden-syntax rerender.
+**Final fix**
+- Track edit context from `textView(_:shouldChangeTextIn:replacementText:)`.
+- For ordinary same-line inline edits, restyle just the current line immediately with the existing renderer and update `NSTextStorage` only for that line.
+- Keep line-break edits and broader markdown block context on the existing deferred whole-document fallback path.
+- Remove the extra whole-document attributed-string equality check before in-place full rerenders.
+- Add focused regression tests for:
+  - immediate same-line restyling,
+  - line-break edits still deferring to the full pass,
+  - a large-line same-document editing path.
 
 **Done when**
 - Editing the uploaded large markdown file is responsive in both syntax modes, especially `hiddenOutsideCurrentLine`.
@@ -224,8 +271,9 @@ The biggest current risks are not basic data safety. They are:
 - Line-break edits still refresh the current-line presentation correctly.
 - Confirmed on simulator and a real iPhone.
 
-**Status after 2026-04-21 refresh**
-- Patch prepared, but not checked off yet because it needs Xcode/device verification.
+**Status after 2026-04-23 refresh**
+- Fixed in code and covered by focused editor tests.
+- Real-device verification on a large markdown file is still recommended before treating the performance gain as release-ready across Files providers.
 
 ---
 
@@ -430,7 +478,7 @@ The biggest current risks are not basic data safety. They are:
 
 ---
 
-## [ ] P1 — Reduce large-file memory churn in `PlainTextDocumentSession`
+## [x] P1 — Reduce large-file memory churn in `PlainTextDocumentSession`
 
 **Files**
 - `Downward/Domain/Document/PlainTextDocumentSession.swift:749-760`
@@ -438,24 +486,23 @@ The biggest current risks are not basic data safety. They are:
 - `Downward/Domain/Document/PlainTextDocumentSession.swift:777-790`
 
 **Problem**
-- Current read flow does:
+- The old read flow did:
   1. `Data(contentsOf:)`
   2. decode to `String`
   3. re-encode to `Data(text.utf8)` to compute the digest
-- Current save flow encodes the text again for writing and separately computes the digest from the string path.
+- The old save flow encoded the text for writing and separately recomputed the digest from a second UTF-8 conversion.
 
 **Why this matters**
 - Large markdown / JSON / text files will pay extra memory and CPU cost.
 - This lines up with `TASKS.md`, which already flags large-file pressure as a current risk.
 
-**Recommended change**
-- On read: hash the raw file data you already loaded before decoding it to a string.
-- On save: reuse the encoded UTF-8 data you are already writing.
-- Consider thresholds for very large files so versioning work stays predictable.
+**Final fix**
+- Read/open/reload now hash the raw UTF-8 bytes already loaded from disk and then decode them once for the editor buffer.
+- Save/autosave now reuse the exact `Data(text.utf8)` payload already being written for loaded-version digest and file-size bookkeeping.
+- Focused `DocumentManagerTests` cover raw-byte digest correctness for open, empty-file, save, and large-file flows.
 
-**Done when**
-- Open/save/revalidate do not create unnecessary extra full-buffer copies.
-- Large-file behavior is measured and documented.
+**Status**
+- Fixed in current code without changing autosave, revalidation, or conflict behavior.
 
 ---
 

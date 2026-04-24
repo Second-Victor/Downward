@@ -10,7 +10,172 @@ struct WorkspaceNavigationState: Equatable {
     )
 }
 
+struct StaleRecentFileOpenApplication: Equatable {
+    let relativePath: String
+    let error: UserFacingError
+}
+
 enum WorkspaceNavigationPolicy {
+    static func editorRelativePath(
+        for url: URL,
+        snapshot: WorkspaceSnapshot?,
+        openDocument: OpenDocument?
+    ) -> String? {
+        if let openDocument, openDocument.url == url {
+            return openDocument.relativePath
+        }
+
+        return snapshot?.relativePath(for: url)
+    }
+
+    static func editorRouteURL(
+        for relativePath: String,
+        preferredURL: URL?,
+        snapshot: WorkspaceSnapshot?,
+        openDocument: OpenDocument?
+    ) -> URL? {
+        if let preferredURL {
+            return preferredURL
+        }
+
+        if let openDocument, openDocument.relativePath == relativePath {
+            return openDocument.url
+        }
+
+        if let snapshotURL = snapshot?.fileURL(forRelativePath: relativePath) {
+            return snapshotURL
+        }
+
+        guard let workspaceRootURL = snapshot?.rootURL else {
+            return nil
+        }
+
+        return WorkspaceRelativePath.resolve(relativePath, within: workspaceRootURL)
+    }
+
+    /// Browser/search/recent-file loads should resolve through the UI's trusted relative-path
+    /// presentation state whenever that identity is available, regardless of route URL aliases.
+    static func presentedEditorRelativePath(
+        for documentURL: URL,
+        navigationLayout: WorkspaceNavigationLayout,
+        navigationState: WorkspaceNavigationState,
+        regularWorkspaceDetailEditorURL: URL?,
+        pendingEditorPresentation: AppSession.PendingEditorPresentation?
+    ) -> String? {
+        switch navigationLayout {
+        case .compact:
+            guard let route = navigationState.path.last, route.editorURL == documentURL else {
+                return nil
+            }
+
+            return route.editorRelativePath
+        case .regular:
+            guard case let .editor(relativePath) = navigationState.regularDetailSelection else {
+                return nil
+            }
+
+            if regularWorkspaceDetailEditorURL == documentURL {
+                return relativePath
+            }
+
+            if pendingEditorPresentation?.relativePath == relativePath {
+                return relativePath
+            }
+
+            return nil
+        }
+    }
+
+    /// A stale recent-file tap should remove only the matching recent entry and show a recent-file
+    /// specific error. Final file access still stays inside the document/workspace managers.
+    static func staleRecentFileOpenApplication(
+        from error: AppError,
+        documentURL: URL,
+        pendingEditorPresentation: AppSession.PendingEditorPresentation?,
+        presentedRelativePath: String?,
+        snapshot: WorkspaceSnapshot?
+    ) -> StaleRecentFileOpenApplication? {
+        guard case .documentUnavailable = error else {
+            return nil
+        }
+
+        guard
+            let pendingEditorPresentation,
+            pendingEditorPresentation.source == .recentFile,
+            pendingEditorPresentation.routeURL == documentURL
+                || presentedRelativePath == pendingEditorPresentation.relativePath,
+            snapshot != nil
+        else {
+            return nil
+        }
+
+        let documentName = documentURL.lastPathComponent
+        return StaleRecentFileOpenApplication(
+            relativePath: pendingEditorPresentation.relativePath,
+            error: UserFacingError(
+                title: "Recent File Unavailable",
+                message: "\(documentName) is no longer available in this workspace.",
+                recoverySuggestion: "It was removed from Recent Files. Choose another file from the browser."
+            )
+        )
+    }
+
+    static func rewrittenRelativePath(
+        _ path: String,
+        oldPrefix: String,
+        newPrefix: String
+    ) -> String? {
+        guard matchesEditorRelativePath(
+            path,
+            targetRelativePath: oldPrefix,
+            includingDescendants: true
+        ) else {
+            return nil
+        }
+
+        if path == oldPrefix {
+            return newPrefix
+        }
+
+        let suffix = path.dropFirst(oldPrefix.count + 1)
+        return "\(newPrefix)/\(suffix)"
+    }
+
+    static func isSameOrDescendantRelativePath(_ path: String, of prefix: String) -> Bool {
+        matchesEditorRelativePath(
+            path,
+            targetRelativePath: prefix,
+            includingDescendants: true
+        )
+    }
+
+    /// Folder mutations rewrite descendant identities by relative path first so bookmark-scoped
+    /// browser/search/restore state stays aligned even if route URLs were aliases.
+    static func resolvedRenamedTrustedDescendantURL(
+        existingURL: URL,
+        updatedRelativePath: String,
+        oldFolderURL: URL,
+        newFolderURL: URL,
+        snapshot: WorkspaceSnapshot
+    ) -> URL {
+        if let rewrittenURL = replacingDescendantURL(
+            existingURL,
+            oldPrefix: oldFolderURL,
+            newPrefix: newFolderURL
+        ) {
+            return rewrittenURL
+        }
+
+        if let snapshotURL = snapshot.fileURL(forRelativePath: updatedRelativePath) {
+            return snapshotURL
+        }
+
+        return WorkspaceRelativePath.resolve(
+            updatedRelativePath,
+            within: snapshot.rootURL
+        )
+    }
+
     static func stateForLayoutChange(
         visibleSelection: RegularWorkspaceDetailSelection,
         layout: WorkspaceNavigationLayout,

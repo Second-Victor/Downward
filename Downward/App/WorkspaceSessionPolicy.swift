@@ -12,13 +12,14 @@ struct WorkspaceSessionStateApplication {
     let snapshotToPruneRecentFiles: WorkspaceSnapshot?
 }
 
-struct WorkspaceSnapshotRefreshReconciliation {
-    let navigationState: WorkspaceNavigationState
-    let shouldClearOpenDocument: Bool
-    let shouldClearEditorLoadError: Bool
-    let shouldClearEditorAlertError: Bool
-    let shouldClearRestorableDocumentSession: Bool
+struct WorkspaceSelectionStateApplication {
+    let sessionApplication: WorkspaceSessionStateApplication?
     let workspaceAlertError: UserFacingError?
+}
+
+struct WorkspaceSnapshotRefreshApplication {
+    let sessionApplication: WorkspaceSessionStateApplication
+    let shouldClearRestorableDocumentSession: Bool
 }
 
 enum WorkspaceSessionPolicy {
@@ -103,13 +104,48 @@ enum WorkspaceSessionPolicy {
         )
     }
 
-    static func reconcileAfterApplyingSnapshot(
+    static func selectionApplication(
+        for restoreResult: WorkspaceRestoreResult,
+        replacingActiveWorkspace: Bool
+    ) -> WorkspaceSelectionStateApplication {
+        guard replacingActiveWorkspace else {
+            return WorkspaceSelectionStateApplication(
+                sessionApplication: restoreApplication(for: restoreResult),
+                workspaceAlertError: nil
+            )
+        }
+
+        switch restoreResult {
+        case .noWorkspaceSelected:
+            return WorkspaceSelectionStateApplication(
+                sessionApplication: nil,
+                workspaceAlertError: nil
+            )
+        case let .ready(snapshot):
+            return WorkspaceSelectionStateApplication(
+                sessionApplication: restoreApplication(for: .ready(snapshot)),
+                workspaceAlertError: nil
+            )
+        case let .accessInvalid(accessState):
+            return WorkspaceSelectionStateApplication(
+                sessionApplication: nil,
+                workspaceAlertError: accessState.invalidationError
+            )
+        case let .failed(error):
+            return WorkspaceSelectionStateApplication(
+                sessionApplication: nil,
+                workspaceAlertError: error
+            )
+        }
+    }
+
+    static func refreshApplication(
         _ snapshot: WorkspaceSnapshot,
         navigationState: WorkspaceNavigationState,
         navigationLayout: WorkspaceNavigationLayout,
         openDocument: OpenDocument?,
         visibleEditorRelativePath: String?
-    ) -> WorkspaceSnapshotRefreshReconciliation {
+    ) -> WorkspaceSnapshotRefreshApplication {
         let shouldPreserveCurrentEditor = shouldPreserveCurrentEditor(openDocument)
         let reconciledNavigationState = if shouldPreserveCurrentEditor {
             navigationState
@@ -124,62 +160,78 @@ enum WorkspaceSessionPolicy {
         }
 
         guard let openDocument else {
-            return WorkspaceSnapshotRefreshReconciliation(
-                navigationState: reconciledNavigationState,
-                shouldClearOpenDocument: false,
-                shouldClearEditorLoadError: WorkspaceNavigationPolicy.isShowingEditor(
-                    in: reconciledNavigationState,
-                    layout: navigationLayout
-                ) == false,
-                shouldClearEditorAlertError: WorkspaceNavigationPolicy.isShowingEditor(
-                    in: reconciledNavigationState,
-                    layout: navigationLayout
-                ) == false,
-                shouldClearRestorableDocumentSession: false,
-                workspaceAlertError: nil
+            return WorkspaceSnapshotRefreshApplication(
+                sessionApplication: refreshSessionApplication(
+                    snapshot: snapshot,
+                    navigationState: reconciledNavigationState,
+                    launchState: .workspaceReady,
+                    workspaceAlertError: nil,
+                    shouldClearOpenDocument: false,
+                    shouldClearEditorLoadError: WorkspaceNavigationPolicy.isShowingEditor(
+                        in: reconciledNavigationState,
+                        layout: navigationLayout
+                    ) == false,
+                    shouldClearEditorAlertError: WorkspaceNavigationPolicy.isShowingEditor(
+                        in: reconciledNavigationState,
+                        layout: navigationLayout
+                    ) == false
+                ),
+                shouldClearRestorableDocumentSession: false
             )
         }
 
         guard containsFile(relativePath: openDocument.relativePath, in: snapshot) == false else {
-            return WorkspaceSnapshotRefreshReconciliation(
-                navigationState: reconciledNavigationState,
-                shouldClearOpenDocument: false,
-                shouldClearEditorLoadError: false,
-                shouldClearEditorAlertError: false,
-                shouldClearRestorableDocumentSession: false,
-                workspaceAlertError: nil
+            return WorkspaceSnapshotRefreshApplication(
+                sessionApplication: refreshSessionApplication(
+                    snapshot: snapshot,
+                    navigationState: reconciledNavigationState,
+                    launchState: .workspaceReady,
+                    workspaceAlertError: nil,
+                    shouldClearOpenDocument: false,
+                    shouldClearEditorLoadError: false,
+                    shouldClearEditorAlertError: false
+                ),
+                shouldClearRestorableDocumentSession: false
             )
         }
 
         guard shouldPreserveCurrentEditor == false else {
-            return WorkspaceSnapshotRefreshReconciliation(
-                navigationState: reconciledNavigationState,
-                shouldClearOpenDocument: false,
-                shouldClearEditorLoadError: false,
-                shouldClearEditorAlertError: false,
-                shouldClearRestorableDocumentSession: false,
-                workspaceAlertError: nil
+            return WorkspaceSnapshotRefreshApplication(
+                sessionApplication: refreshSessionApplication(
+                    snapshot: snapshot,
+                    navigationState: reconciledNavigationState,
+                    launchState: .workspaceReady,
+                    workspaceAlertError: nil,
+                    shouldClearOpenDocument: false,
+                    shouldClearEditorLoadError: false,
+                    shouldClearEditorAlertError: false
+                ),
+                shouldClearRestorableDocumentSession: false
             )
         }
 
         let hadVisibleEditor = visibleEditorRelativePath == openDocument.relativePath
-        return WorkspaceSnapshotRefreshReconciliation(
-            navigationState: WorkspaceNavigationPolicy.removingEditorPresentation(
-                from: reconciledNavigationState,
-                workspaceRootURL: snapshot.rootURL,
-                matchingRelativePath: openDocument.relativePath
+        return WorkspaceSnapshotRefreshApplication(
+            sessionApplication: refreshSessionApplication(
+                snapshot: snapshot,
+                navigationState: WorkspaceNavigationPolicy.removingEditorPresentation(
+                    from: reconciledNavigationState,
+                    workspaceRootURL: snapshot.rootURL,
+                    matchingRelativePath: openDocument.relativePath
+                ),
+                launchState: .workspaceReady,
+                workspaceAlertError: hadVisibleEditor
+                    ? UserFacingError(
+                        title: "Document Unavailable",
+                        message: "\(openDocument.displayName) is no longer available in the workspace.",
+                        recoverySuggestion: "Choose another file from the browser."
+                    )
+                    : nil,
+                shouldClearOpenDocument: true,
+                shouldClearEditorLoadError: true,
+                shouldClearEditorAlertError: true
             ),
-            shouldClearOpenDocument: true,
-            shouldClearEditorLoadError: true,
-            shouldClearEditorAlertError: true,
-            shouldClearRestorableDocumentSession: true,
-            workspaceAlertError: hadVisibleEditor
-                ? UserFacingError(
-                    title: "Document Unavailable",
-                    message: "\(openDocument.displayName) is no longer available in the workspace.",
-                    recoverySuggestion: "Choose another file from the browser."
-                )
-                : nil
+            shouldClearRestorableDocumentSession: true
         )
     }
 
@@ -195,6 +247,28 @@ enum WorkspaceSessionPolicy {
 
     static func containsFile(relativePath: String, in snapshot: WorkspaceSnapshot) -> Bool {
         snapshot.containsFile(relativePath: relativePath)
+    }
+
+    private static func refreshSessionApplication(
+        snapshot: WorkspaceSnapshot,
+        navigationState: WorkspaceNavigationState,
+        launchState: RootLaunchState,
+        workspaceAlertError: UserFacingError?,
+        shouldClearOpenDocument: Bool,
+        shouldClearEditorLoadError: Bool,
+        shouldClearEditorAlertError: Bool
+    ) -> WorkspaceSessionStateApplication {
+        return WorkspaceSessionStateApplication(
+            workspaceSnapshot: snapshot,
+            workspaceAccessState: .ready(displayName: snapshot.displayName),
+            launchState: launchState,
+            navigationState: navigationState,
+            workspaceAlertError: workspaceAlertError,
+            shouldClearOpenDocument: shouldClearOpenDocument,
+            shouldClearEditorLoadError: shouldClearEditorLoadError,
+            shouldClearEditorAlertError: shouldClearEditorAlertError,
+            snapshotToPruneRecentFiles: snapshot
+        )
     }
 
     private static func reconciledCompactNavigationPath(

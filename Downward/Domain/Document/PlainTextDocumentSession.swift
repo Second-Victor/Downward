@@ -603,6 +603,7 @@ actor PlainTextDocumentSession {
         to url: URL,
         fallbackName: String
     ) -> Result<CoordinatedDocumentState, AppErrorOrMissing> {
+        let utf8Data = Data(text.utf8)
         var coordinationError: NSError?
         var result: Result<CoordinatedDocumentState, AppErrorOrMissing>?
         let coordinator = NSFileCoordinator(filePresenter: nil)
@@ -619,7 +620,7 @@ actor PlainTextDocumentSession {
                 // Intentionally write straight through the coordinated URL. We avoid layering another
                 // temp-file replace on top because provider-backed folders are calmer when the app keeps
                 // one coordinated in-place write boundary instead of manufacturing an extra replacement step.
-                try writeUTF8Text(text, to: coordinatedURL, fallbackName: fallbackName)
+                try writeUTF8Data(utf8Data, to: coordinatedURL)
 
                 let resourceValues = try coordinatedURL.resourceValues(forKeys: documentResourceKeys)
                 guard resourceValues.isDirectory != true else {
@@ -633,7 +634,7 @@ actor PlainTextDocumentSession {
                     CoordinatedDocumentState(
                         displayName: resourceValues.localizedName ?? resourceValues.name ?? coordinatedURL.lastPathComponent,
                         text: text,
-                        version: makeLoadedVersion(from: resourceValues, text: text)
+                        version: makeLoadedVersion(from: resourceValues, utf8Data: utf8Data)
                     )
                 )
             } catch let error as AppError {
@@ -687,13 +688,13 @@ actor PlainTextDocumentSession {
                 )
             }
 
-            let text = try readUTF8Text(from: url)
+            let contents = try readUTF8TextContents(from: url)
 
             return .success(
                 CoordinatedDocumentState(
                     displayName: resourceValues.localizedName ?? resourceValues.name ?? url.lastPathComponent,
-                    text: text,
-                    version: makeLoadedVersion(from: resourceValues, text: text)
+                    text: contents.text,
+                    version: makeLoadedVersion(from: resourceValues, utf8Data: contents.utf8Data)
                 )
             )
         } catch let error as AppError {
@@ -748,46 +749,44 @@ actor PlainTextDocumentSession {
 
     nonisolated private static func makeLoadedVersion(
         from resourceValues: URLResourceValues,
-        text: String
+        utf8Data: Data
     ) -> DocumentVersion {
-        let data = Data(text.utf8)
         return DocumentVersion(
             contentModificationDate: resourceValues.contentModificationDate,
-            fileSize: resourceValues.fileSize ?? data.count,
-            contentDigest: SHA256.hash(data: data).compactMap { byte in
-                String(format: "%02x", byte)
-            }.joined()
+            fileSize: utf8Data.count,
+            contentDigest: contentDigest(for: utf8Data)
         )
     }
 
     /// The editor treats workspace files as strict UTF-8 plain text. It does not normalize line endings;
     /// whatever line breaks are present in the in-memory buffer are written back as-is.
-    nonisolated private static func readUTF8Text(from url: URL) throws -> String {
-        let data = try Data(contentsOf: url)
-        guard let text = String(data: data, encoding: .utf8) else {
+    nonisolated private static func readUTF8TextContents(from url: URL) throws -> UTF8TextContents {
+        let utf8Data = try Data(contentsOf: url)
+        guard let text = String(data: utf8Data, encoding: .utf8) else {
             throw AppError.documentOpenFailed(
                 name: url.lastPathComponent,
                 details: "The file is not valid UTF-8 text."
             )
         }
 
-        return text
+        return UTF8TextContents(
+            text: text,
+            utf8Data: utf8Data
+        )
     }
 
-    /// Encodes the current editor buffer directly as UTF-8 without rewriting line endings.
-    nonisolated private static func writeUTF8Text(
-        _ text: String,
-        to url: URL,
-        fallbackName: String
+    /// Writes the already-encoded editor buffer directly as UTF-8 without rewriting line endings.
+    nonisolated private static func writeUTF8Data(
+        _ utf8Data: Data,
+        to url: URL
     ) throws {
-        guard let data = text.data(using: .utf8) else {
-            throw AppError.documentSaveFailed(
-                name: fallbackName,
-                details: "The current text could not be encoded as UTF-8."
-            )
-        }
+        try utf8Data.write(to: url, options: [])
+    }
 
-        try data.write(to: url, options: [])
+    nonisolated private static func contentDigest(for utf8Data: Data) -> String {
+        SHA256.hash(data: utf8Data).compactMap { byte in
+            String(format: "%02x", byte)
+        }.joined()
     }
 
     nonisolated private static func wrapFilesystemError<Success>(
@@ -922,6 +921,11 @@ private struct CoordinatedDocumentState: Sendable {
     let displayName: String
     let text: String
     let version: DocumentVersion
+}
+
+private struct UTF8TextContents: Sendable {
+    let text: String
+    let utf8Data: Data
 }
 
 private struct CoordinatedPresenceState: Sendable {

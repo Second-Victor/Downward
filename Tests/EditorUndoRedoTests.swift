@@ -655,7 +655,7 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
-    func testCoordinatorDefersMarkdownRerenderAfterTyping() async {
+    func testCoordinatorRestylesSameLineTypingImmediatelyWithoutDeferredFullRerender() {
         let textBox = MutableBox("Draft")
         let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
@@ -676,6 +676,13 @@ final class EditorUndoRedoTests: XCTestCase {
             force: true
         )
 
+        XCTAssertTrue(
+            coordinator.textView(
+                textView,
+                shouldChangeTextIn: NSRange(location: 5, length: 0),
+                replacementText: " **bold**"
+            )
+        )
         textView.text = "Draft **bold**"
         textView.selectedRange = NSRange(location: (textView.text as NSString).length, length: 0)
 
@@ -683,14 +690,107 @@ final class EditorUndoRedoTests: XCTestCase {
         coordinator.textViewDidChangeSelection(textView)
 
         let markerRange = (textView.text as NSString).range(of: "**")
+        XCTAssertFalse(coordinator.hasPendingFullDocumentRerender)
+        XCTAssertFalse(coordinator.hasPendingDeferredRerender)
         XCTAssertEqual(
-            textView.textStorage.attribute(.markdownSyntaxToken, at: markerRange.location, effectiveRange: nil) as? Int,
-            nil,
-            "Typing should stay on the cheap path until the deferred rerender runs."
+            (textView.textStorage.attribute(.markdownSyntaxToken, at: markerRange.location, effectiveRange: nil) as? Int)
+                .flatMap(MarkdownSyntaxVisibilityRule.init(rawValue:)),
+            .followsMode
+        )
+    }
+
+    @MainActor
+    func testCoordinatorDefersFullMarkdownRerenderAfterLineBreakEdit() async {
+        let textBox = MutableBox("Draft")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let configuration = MarkdownEditorTextView.Configuration(
+            text: textBox.value,
+            documentIdentity: PreviewSampleData.cleanDocument.url,
+            font: .preferredFont(forTextStyle: .body),
+            syntaxMode: .hiddenOutsideCurrentLine,
+            isEditable: true
+        )
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        XCTAssertTrue(
+            coordinator.textView(
+                textView,
+                shouldChangeTextIn: NSRange(location: 5, length: 0),
+                replacementText: "\n**bold**"
+            )
+        )
+        textView.text = "Draft\n**bold**"
+        textView.selectedRange = NSRange(location: (textView.text as NSString).length, length: 0)
+
+        coordinator.textViewDidChange(textView)
+        coordinator.textViewDidChangeSelection(textView)
+
+        let markerRange = (textView.text as NSString).range(of: "**")
+        XCTAssertTrue(coordinator.hasPendingFullDocumentRerender)
+        XCTAssertTrue(coordinator.hasPendingDeferredRerender)
+        XCTAssertNil(
+            textView.textStorage.attribute(.markdownSyntaxToken, at: markerRange.location, effectiveRange: nil) as? Int
         )
 
         try? await Task.sleep(for: MarkdownEditorTextView.Coordinator.deferredRerenderDelay + .milliseconds(80))
 
+        XCTAssertFalse(coordinator.hasPendingFullDocumentRerender)
+        XCTAssertFalse(coordinator.hasPendingDeferredRerender)
+        XCTAssertEqual(
+            (textView.textStorage.attribute(.markdownSyntaxToken, at: markerRange.location, effectiveRange: nil) as? Int)
+                .flatMap(MarkdownSyntaxVisibilityRule.init(rawValue:)),
+            .followsMode
+        )
+    }
+
+    @MainActor
+    func testCoordinatorUsesIncrementalRestyleForLargeSameLineTyping() {
+        let largeParagraph = String(repeating: "word ", count: 12_000)
+        let textBox = MutableBox(largeParagraph)
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let configuration = MarkdownEditorTextView.Configuration(
+            text: textBox.value,
+            documentIdentity: PreviewSampleData.cleanDocument.url,
+            font: .preferredFont(forTextStyle: .body),
+            syntaxMode: .hiddenOutsideCurrentLine,
+            isEditable: true
+        )
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let insertionLocation = (textView.text as NSString).length
+        XCTAssertTrue(
+            coordinator.textView(
+                textView,
+                shouldChangeTextIn: NSRange(location: insertionLocation, length: 0),
+                replacementText: "**bold**"
+            )
+        )
+        textView.text += "**bold**"
+        textView.selectedRange = NSRange(location: (textView.text as NSString).length, length: 0)
+
+        coordinator.textViewDidChange(textView)
+
+        let markerRange = (textView.text as NSString).range(of: "**bold**")
+        XCTAssertFalse(coordinator.hasPendingFullDocumentRerender)
+        XCTAssertFalse(coordinator.hasPendingDeferredRerender)
         XCTAssertEqual(
             (textView.textStorage.attribute(.markdownSyntaxToken, at: markerRange.location, effectiveRange: nil) as? Int)
                 .flatMap(MarkdownSyntaxVisibilityRule.init(rawValue:)),

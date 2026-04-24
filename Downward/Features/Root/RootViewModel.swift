@@ -65,12 +65,15 @@ final class RootViewModel {
     }
 
     func clearWorkspace() {
+        // App-owned one-shot action: coordinator transition generations prevent stale workspace
+        // results from applying if another restore/reconnect/clear flow wins first.
         Task {
             await coordinator.clearWorkspace()
         }
     }
 
     func retryRestore() {
+        // App-owned one-shot action guarded by coordinator workspace transition generations.
         Task {
             await coordinator.retryRestore()
         }
@@ -85,6 +88,8 @@ final class RootViewModel {
     }
 
     func handleFolderSelection(_ result: Result<[URL], Error>) {
+        // Folder picker results are session-level work, not view-local state. The coordinator owns
+        // stale-result suppression while workspace identity changes.
         Task {
             await coordinator.handleFolderPickerResult(result)
         }
@@ -93,6 +98,8 @@ final class RootViewModel {
     func handleScenePhaseChange(_ phase: ScenePhase) {
         switch phase {
         case .active:
+            // Foreground validation is intentionally app-owned fire-and-forget; refresh application
+            // is generation-gated in the coordinator.
             Task {
                 await coordinator.handleSceneDidBecomeActive()
             }

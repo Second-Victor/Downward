@@ -21,12 +21,16 @@ The strongest current foundations are:
 - seamless top editor underlay with a shared safe-area-driven first-line inset, an outer-geometry top-clearance source, and explicit document-open viewport reset,
 - a shared resolved editor theme pipeline for renderer colors, TextKit backgrounds, and a transparent-by-default keyboard accessory host,
 - a split editor bridge where the representable, coordinator, accessory view, keyboard geometry, and `UITextView` subclass now live in focused files,
+- a bounded current-line restyle path so ordinary same-line markdown edits no longer automatically fall back to whole-document rerenders,
 - an explicit markdown syntax visibility contract for future renderer work,
 - a maintained card-style settings shell with compact push navigation and a dedicated regular-width iPad sheet,
+- a clearer app-coordinator boundary where workspace selection/refresh session application now flows through `WorkspaceSessionPolicy`, mutation preflight and browser-kind rules live in `WorkspaceMutationPolicy`, mutation execution metadata lives in `WorkspaceMutationService`, and trusted route/recent-file decisions live in `WorkspaceNavigationPolicy`,
+- leaner document-session version bookkeeping where open/reload hash raw file bytes and save/autosave reuse the exact UTF-8 payload being written,
+- an async lifecycle audit that keeps workspace refresh/mutation application generation-gated and makes delayed editor conflict-resolution tasks cancel/identity-check before applying results,
 - recent files and editor appearance persistence,
 - a broad test suite around risky behaviors.
 
-The main risks now are **maintainability**, **large-file pressure**, **renderer/theme extensibility**, and **real-device UI polish**, not basic correctness. The main editor-specific risks are still real-device verification of initial first-line placement on iPhone/iPad and of the shared theme/accessory pipeline on non-standard backgrounds; the settings shell is now real, but theme management and JSON import/export are still future work.
+The main risks now are **maintainability**, **broader large-file rendering work**, **renderer/theme extensibility**, and **real-device UI polish**, not basic correctness. Async lifecycle ownership is in better shape after the audit, but new unstructured tasks still need explicit ownership and stale-result guards. The main editor-specific risks are still real-device verification of initial first-line placement on iPhone/iPad and of the shared theme/accessory pipeline on non-standard backgrounds; the settings shell is now real, but theme management and JSON import/export are still future work.
 
 ---
 
@@ -41,6 +45,7 @@ These are not backlog items. They are shipping expectations.
 - Autosave should remain quiet.
 - Conflict UI should remain exceptional.
 - Refreshes and mutations must continue to reconcile under one explicit winner policy.
+- Async work that can mutate state after suspension must be owned by a session/model boundary and guarded by cancellation, generation, or workspace/document identity.
 - Settings and editor polish must not push unrelated logic into Views or into `PlainTextDocumentSession`.
 
 ---
@@ -57,6 +62,7 @@ These are not backlog items. They are shipping expectations.
 
 - new navigation rules land in `WorkspaceNavigationPolicy`,
 - workspace-state application rules land in `WorkspaceSessionPolicy`,
+- repeated mutation execution, preflight, or error rules land in focused mutation seams instead of new inline coordinator branches,
 - the coordinator stays an orchestrator instead of becoming the architecture.
 
 ### 2. Protect `PlainTextDocumentSession` and the renderer from feature creep
@@ -112,8 +118,8 @@ Any editor, navigation, or settings change should be reflected in:
 
 ## Intentional debt that is acceptable for now
 
-- `AppCoordinator.swift` is still large, but not yet a rewrite case.
-- `PlainTextDocumentSession.swift` is still dense, but it is currently the right file-session boundary.
+- `AppCoordinator.swift` is still large, but refresh application, replacement selection, trusted route/recent-file decisions, and repeated mutation execution/error paths no longer need to grow inline there.
+- `PlainTextDocumentSession.swift` is still dense, but it is currently the right file-session boundary and its version bookkeeping no longer needs extra whole-buffer UTF-8 round-trips on open/save.
 - The app still uses one whole workspace snapshot and simple filename/path search.
 - URL-only open paths still exist for compatibility, but should stay secondary.
 

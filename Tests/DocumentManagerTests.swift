@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import XCTest
 @testable import Downward
@@ -29,6 +30,51 @@ final class DocumentManagerTests: XCTestCase {
         XCTAssertTrue(document.text.contains("Plain text body."))
         XCTAssertFalse(document.loadedVersion.contentDigest.isEmpty)
         XCTAssertFalse(document.isDirty)
+    }
+
+    @MainActor
+    func testOpenDocumentLoadedVersionMatchesRawUTF8FileBytes() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let contents = """
+        # Entry
+
+        Cafe
+        Emoji: 😀
+        """
+        let fileURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Entry.md",
+            contents: contents
+        )
+        let expectedData = Data(contents.utf8)
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+
+        let document = try await manager.openDocument(at: fileURL, in: workspaceURL)
+
+        XCTAssertEqual(document.text, contents)
+        XCTAssertEqual(document.loadedVersion.fileSize, expectedData.count)
+        XCTAssertEqual(document.loadedVersion.contentDigest, expectedDigest(for: expectedData))
+    }
+
+    @MainActor
+    func testOpenDocumentLoadedVersionMatchesEmptyFileBytes() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let fileURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Empty.md",
+            contents: ""
+        )
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+
+        let document = try await manager.openDocument(at: fileURL, in: workspaceURL)
+
+        XCTAssertEqual(document.text, "")
+        XCTAssertEqual(document.loadedVersion.fileSize, 0)
+        XCTAssertEqual(document.loadedVersion.contentDigest, expectedDigest(for: Data()))
     }
 
     @MainActor
@@ -530,6 +576,65 @@ final class DocumentManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testSuccessfulSaveLoadedVersionMatchesWrittenUTF8Bytes() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let fileURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Saved.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+        var document = try await manager.openDocument(at: fileURL, in: workspaceURL)
+        document.text = "# Entry\n\nCafe 😀\nLine two."
+        document.isDirty = true
+        document.saveState = .unsaved
+
+        let savedDocument = try await manager.saveDocument(document, overwriteConflict: false)
+        let writtenData = try Data(contentsOf: fileURL)
+
+        XCTAssertEqual(savedDocument.loadedVersion.fileSize, writtenData.count)
+        XCTAssertEqual(savedDocument.loadedVersion.contentDigest, expectedDigest(for: writtenData))
+        XCTAssertEqual(savedDocument.text, String(decoding: writtenData, as: UTF8.self))
+    }
+
+    @MainActor
+    func testLargeFileOpenAndSaveLoadedVersionMatchesBytes() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let originalContents = String(repeating: "Alpha beta gamma delta.\n", count: 12_000)
+        let updatedContents = String(repeating: "Updated line with unicode 😀.\n", count: 12_000)
+        let fileURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Large.md",
+            contents: originalContents
+        )
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+
+        let openedDocument = try await manager.openDocument(at: fileURL, in: workspaceURL)
+        XCTAssertEqual(openedDocument.loadedVersion.fileSize, Data(originalContents.utf8).count)
+        XCTAssertEqual(
+            openedDocument.loadedVersion.contentDigest,
+            expectedDigest(for: Data(originalContents.utf8))
+        )
+
+        var documentToSave = openedDocument
+        documentToSave.text = updatedContents
+        documentToSave.isDirty = true
+        documentToSave.saveState = .unsaved
+
+        let savedDocument = try await manager.saveDocument(documentToSave, overwriteConflict: false)
+        let writtenData = try Data(contentsOf: fileURL)
+
+        XCTAssertEqual(savedDocument.loadedVersion.fileSize, writtenData.count)
+        XCTAssertEqual(savedDocument.loadedVersion.contentDigest, expectedDigest(for: writtenData))
+        XCTAssertEqual(writtenData.count, Data(updatedContents.utf8).count)
+    }
+
+    @MainActor
     func testRelocatedSessionSavesRenamedDocumentAtNewPath() async throws {
         let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
         defer { removeItemIfPresent(at: workspaceURL) }
@@ -893,6 +998,12 @@ final class DocumentManagerTests: XCTestCase {
 
     private func removeItemIfPresent(at url: URL) {
         try? FileManager.default.removeItem(at: url)
+    }
+
+    private func expectedDigest(for data: Data) -> String {
+        SHA256.hash(data: data).compactMap { byte in
+            String(format: "%02x", byte)
+        }.joined()
     }
 
     @MainActor

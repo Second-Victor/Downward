@@ -6,6 +6,10 @@ extension MarkdownEditorTextView {
     final class Coordinator: NSObject, UITextViewDelegate {
         nonisolated static let deferredRerenderDelay: Duration = .milliseconds(120)
         typealias ViewportInsetsSnapshot = EditorKeyboardGeometryController.ViewportInsetsSnapshot
+        private struct TextMutationContext {
+            let changedRangeBeforeEdit: NSRange
+            let touchedLineBreaks: Bool
+        }
 
         @Binding private var text: String
         private let onEditorFocusChange: @MainActor (Bool) -> Void
@@ -19,12 +23,16 @@ extension MarkdownEditorTextView {
         private var lastHandledRedoCommandToken: Int?
         private var lastHandledDismissKeyboardCommandToken: Int?
         private weak var activeTextView: EditorChromeAwareTextView?
-        private var pendingTextChangeTouchesLineBreaks = false
+        private var pendingTextMutationContext: TextMutationContext?
         private var lastTextChangeTouchedLineBreaks = false
-        private var hasUnrenderedTextMutation = false
+        private(set) var hasPendingFullDocumentRerender = false
         private var deferredRerenderTask: Task<Void, Never>?
         private var deferredRerenderGeneration = 0
         private var viewportResetTask: Task<Void, Never>?
+
+        var hasPendingDeferredRerender: Bool {
+            deferredRerenderTask != nil
+        }
 
         init(
             text: Binding<String>,
@@ -89,7 +97,7 @@ extension MarkdownEditorTextView {
                 cancelViewportReset()
                 textView.selectedRange = NSRange(location: 0, length: 0)
                 lastRevealedLineRange = nil
-                hasUnrenderedTextMutation = false
+                hasPendingFullDocumentRerender = false
                 lastHandledUndoCommandToken = undoCommandToken
                 lastHandledRedoCommandToken = redoCommandToken
                 lastHandledDismissKeyboardCommandToken = dismissKeyboardCommandToken
@@ -190,7 +198,10 @@ extension MarkdownEditorTextView {
             let currentText = (textView.text ?? "") as NSString
             let removedRange = safeRange(range, forTextLength: currentText.length)
             let removedText = currentText.substring(with: removedRange)
-            pendingTextChangeTouchesLineBreaks = removedText.containsLineBreak || text.containsLineBreak
+            pendingTextMutationContext = TextMutationContext(
+                changedRangeBeforeEdit: removedRange,
+                touchedLineBreaks: removedText.containsLineBreak || text.containsLineBreak
+            )
             return true
         }
 
@@ -200,16 +211,17 @@ extension MarkdownEditorTextView {
             }
 
             let updatedText = textView.text ?? ""
-            lastTextChangeTouchedLineBreaks = pendingTextChangeTouchesLineBreaks
-            hasUnrenderedTextMutation = true
-            pendingTextChangeTouchesLineBreaks = false
+            let hadPendingFullDocumentRerender = hasPendingFullDocumentRerender
+            let mutationContext = pendingTextMutationContext
+            lastTextChangeTouchedLineBreaks = mutationContext?.touchedLineBreaks ?? false
+            pendingTextMutationContext = nil
             text = updatedText
 
             guard let configuration else {
                 return
             }
 
-            self.configuration = Configuration(
+            let updatedConfiguration = Configuration(
                 text: updatedText,
                 documentIdentity: configuration.documentIdentity,
                 font: configuration.font,
@@ -217,6 +229,23 @@ extension MarkdownEditorTextView {
                 syntaxMode: configuration.syntaxMode,
                 isEditable: configuration.isEditable
             )
+            self.configuration = updatedConfiguration
+
+            if
+                hadPendingFullDocumentRerender == false,
+                let mutationContext,
+                applyIncrementalLineRestyleIfPossible(
+                    in: textView,
+                    using: updatedConfiguration,
+                    mutationContext: mutationContext
+                )
+            {
+                publishUndoRedoAvailability(for: textView)
+                updateKeyboardAccessoryState(for: textView)
+                return
+            }
+
+            hasPendingFullDocumentRerender = true
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
             scheduleDeferredRerender(in: textView)
@@ -259,7 +288,7 @@ extension MarkdownEditorTextView {
                 isEditable: configuration.isEditable
             )
 
-            if hasUnrenderedTextMutation {
+            if hasPendingFullDocumentRerender {
                 self.configuration = updatedConfiguration
                 scheduleDeferredRerender(in: textView)
             } else {
@@ -372,7 +401,7 @@ extension MarkdownEditorTextView {
             }
             isApplyingProgrammaticChange = false
             lastRevealedLineRange = revealedLineRange
-            hasUnrenderedTextMutation = false
+            hasPendingFullDocumentRerender = false
             self.configuration = configuration
         }
 
@@ -396,6 +425,7 @@ extension MarkdownEditorTextView {
             textView.setContentOffset(contentOffset, animated: false)
             isApplyingProgrammaticChange = false
             lastRevealedLineRange = revealedLineRange
+            hasPendingFullDocumentRerender = false
             self.configuration = configuration
         }
 
@@ -406,10 +436,6 @@ extension MarkdownEditorTextView {
             to textView: UITextView
         ) {
             let textStorage = textView.textStorage
-            guard textStorage.isEqual(attributedText) == false else {
-                return
-            }
-
             textStorage.beginEditing()
             if textStorage.string == attributedText.string {
                 // Preserve the live character buffer when only markdown presentation changed.
@@ -423,6 +449,207 @@ extension MarkdownEditorTextView {
                 textStorage.setAttributedString(attributedText)
             }
             textStorage.endEditing()
+        }
+
+        /// Same-line inline edits can restyle just the current line immediately instead of paying
+        /// for a whole-document markdown pass. Broader-context edits still fall back to the
+        /// deferred full rerender path below.
+        private func applyIncrementalLineRestyleIfPossible(
+            in textView: UITextView,
+            using configuration: Configuration,
+            mutationContext: TextMutationContext
+        ) -> Bool {
+            guard
+                mutationContext.touchedLineBreaks == false,
+                textView.markedTextRange == nil
+            else {
+                return false
+            }
+
+            let selectionRange = safeSelectedRange(for: textView, text: configuration.text)
+            guard
+                selectionRange.length == 0,
+                let previousRevealedLineRange = lastRevealedLineRange,
+                let currentLineRange = renderer.revealedLineRange(for: selectionRange, in: configuration.text),
+                previousRevealedLineRange.location == currentLineRange.location
+            else {
+                return false
+            }
+
+            let currentText = configuration.text as NSString
+            guard
+                incrementalLineRestyleIsSafe(
+                    for: currentLineRange,
+                    in: textView.textStorage,
+                    text: currentText
+                )
+            else {
+                return false
+            }
+
+            let lineText = currentText.substring(with: currentLineRange)
+            let localLineLength = (lineText as NSString).length
+            let renderedLine = renderer.render(
+                configuration: .init(
+                    text: lineText,
+                    baseFont: configuration.font,
+                    resolvedTheme: configuration.resolvedTheme,
+                    syntaxMode: configuration.syntaxMode,
+                    revealedRange: configuration.syntaxMode == .hiddenOutsideCurrentLine
+                        ? NSRange(location: 0, length: localLineLength)
+                        : nil
+                )
+            )
+
+            let clampedLineRange = safeRange(currentLineRange, forTextLength: textView.textStorage.length)
+            guard clampedLineRange.length == renderedLine.length else {
+                return false
+            }
+
+            let preservedContentOffset = textView.contentOffset
+            isApplyingProgrammaticChange = true
+            applyAttributedFragmentInPlace(renderedLine, to: textView.textStorage, at: clampedLineRange)
+            updateTypingAttributes(for: textView, font: configuration.font, resolvedTheme: configuration.resolvedTheme)
+            textView.selectedRange = safeRange(selectionRange, forTextLength: textView.textStorage.length)
+            textView.setContentOffset(preservedContentOffset, animated: false)
+            isApplyingProgrammaticChange = false
+
+            cancelDeferredRerender()
+            lastRevealedLineRange = currentLineRange
+            hasPendingFullDocumentRerender = false
+            self.configuration = configuration
+            return true
+        }
+
+        private func applyAttributedFragmentInPlace(
+            _ attributedText: NSAttributedString,
+            to textStorage: NSTextStorage,
+            at characterRange: NSRange
+        ) {
+            guard
+                characterRange.length == attributedText.length,
+                textStorage.attributedSubstring(from: characterRange).isEqual(attributedText) == false
+            else {
+                return
+            }
+
+            textStorage.beginEditing()
+            textStorage.setAttributes(nil, range: characterRange)
+            let localRange = NSRange(location: 0, length: attributedText.length)
+            attributedText.enumerateAttributes(in: localRange) { attributes, range, _ in
+                textStorage.setAttributes(
+                    attributes,
+                    range: NSRange(location: characterRange.location + range.location, length: range.length)
+                )
+            }
+            textStorage.endEditing()
+        }
+
+        private func incrementalLineRestyleIsSafe(
+            for lineRange: NSRange,
+            in textStorage: NSTextStorage,
+            text: NSString
+        ) -> Bool {
+            let trimmedCurrentLine = trimmedLineText(in: lineRange, text: text)
+            guard
+                lineContainsFenceDelimiter(trimmedCurrentLine) == false,
+                isSetextUnderlineLine(trimmedCurrentLine) == false,
+                lineStartsBlockquote(trimmedCurrentLine) == false,
+                lineContainsBlockquoteAttributes(in: lineRange, textStorage: textStorage) == false,
+                lineContainsBlockCodeBackground(in: lineRange, textStorage: textStorage) == false
+            else {
+                return false
+            }
+
+            if let nextLineRange = nextLineRange(after: lineRange, text: text) {
+                let trimmedNextLine = trimmedLineText(in: nextLineRange, text: text)
+                if isSetextUnderlineLine(trimmedNextLine) || lineContainsFenceDelimiter(trimmedNextLine) {
+                    return false
+                }
+            }
+
+            return true
+        }
+
+        private func trimmedLineText(
+            in lineRange: NSRange,
+            text: NSString
+        ) -> String {
+            var end = NSMaxRange(lineRange)
+            while end > lineRange.location {
+                let scalar = text.character(at: end - 1)
+                guard scalar == 10 || scalar == 13 else {
+                    break
+                }
+                end -= 1
+            }
+
+            return text.substring(with: NSRange(location: lineRange.location, length: end - lineRange.location))
+        }
+
+        private func nextLineRange(
+            after lineRange: NSRange,
+            text: NSString
+        ) -> NSRange? {
+            let nextLocation = NSMaxRange(lineRange)
+            guard nextLocation < text.length else {
+                return nil
+            }
+
+            return text.lineRange(for: NSRange(location: nextLocation, length: 0))
+        }
+
+        private func lineStartsBlockquote(_ lineText: String) -> Bool {
+            lineText.trimmingCharacters(in: .whitespaces).hasPrefix(">")
+        }
+
+        private func lineContainsFenceDelimiter(_ lineText: String) -> Bool {
+            let trimmed = lineText.trimmingCharacters(in: .whitespaces)
+            return trimmed.hasPrefix("```")
+        }
+
+        private func isSetextUnderlineLine(_ lineText: String) -> Bool {
+            let compact = lineText.filter { $0.isWhitespace == false }
+            guard compact.count >= 3, let marker = compact.first else {
+                return false
+            }
+
+            return (marker == "=" || marker == "-") && Set(compact).count == 1
+        }
+
+        private func lineContainsBlockquoteAttributes(
+            in lineRange: NSRange,
+            textStorage: NSTextStorage
+        ) -> Bool {
+            var containsBlockquote = false
+            textStorage.enumerateAttribute(.markdownBlockquoteGroupID, in: lineRange) { value, _, stop in
+                guard value != nil else {
+                    return
+                }
+
+                containsBlockquote = true
+                stop.pointee = true
+            }
+            return containsBlockquote
+        }
+
+        private func lineContainsBlockCodeBackground(
+            in lineRange: NSRange,
+            textStorage: NSTextStorage
+        ) -> Bool {
+            var containsBlockCode = false
+            textStorage.enumerateAttribute(.markdownCodeBackgroundKind, in: lineRange) { value, _, stop in
+                guard
+                    let rawValue = value as? Int,
+                    rawValue == MarkdownCodeBackgroundKind.block.rawValue
+                else {
+                    return
+                }
+
+                containsBlockCode = true
+                stop.pointee = true
+            }
+            return containsBlockCode
         }
 
         /// Coalesce expensive full markdown passes so rapid typing and caret movement stay on the
@@ -448,7 +675,7 @@ extension MarkdownEditorTextView {
                     let self,
                     let textView,
                     self.deferredRerenderGeneration == generation,
-                    self.hasUnrenderedTextMutation,
+                    self.hasPendingFullDocumentRerender,
                     textView.markedTextRange == nil,
                     let latestConfiguration = self.configuration,
                     latestConfiguration.documentIdentity == documentIdentity

@@ -108,13 +108,12 @@ It coordinates:
 - bootstrap and restore,
 - reconnect and workspace replacement,
 - open/reopen flows,
-- workspace refresh application,
-- mutation reconciliation,
+- workspace refresh and mutation sequencing,
 - handoff between workspace state and editor state,
 - route changes for compact and regular navigation.
 
 It is intentionally still the orchestration hub, but it should not become the architecture again.
-Prefer extracting policy before adding new inline rules.
+Selection/refresh state application should resolve through app policies rather than growing new inline coordinator branches, and repeated mutation guard rules should not accumulate here.
 
 ### Policy seams
 
@@ -122,8 +121,22 @@ The current policy seams are:
 
 - `WorkspaceNavigationPolicy`
 - `WorkspaceSessionPolicy`
+- `WorkspaceMutationPolicy`
 
 Use them before expanding coordinator logic.
+
+`WorkspaceNavigationPolicy` owns route/detail derivation, trusted editor route resolution, stale recent-file open decisions, and route rewriting/removal during workspace changes.
+`WorkspaceSessionPolicy` owns restore/reconnect/refresh session-state application decisions.
+`WorkspaceMutationPolicy` owns mutation preflight rules and browser item classification.
+
+### App services
+
+The app layer also has focused services for coordinator-adjacent mechanics:
+
+- `WorkspaceMutationService` builds mutation operations and keeps direct workspace mutation execution metadata out of `AppCoordinator`,
+- `WorkspaceMutationErrorPresenter` owns fallback mutation error text.
+
+The coordinator still sequences async work, applies generation guards, persists restorable editor state, and performs side effects that cross multiple dependencies.
 
 ---
 
@@ -165,6 +178,7 @@ Responsibilities:
 - relocate the live session after in-app rename.
 
 `PlainTextDocumentSession` is dense but important. Keep non-session editor features out of it.
+Its version bookkeeping should derive from raw read bytes and reused save payloads so large files do not pay avoidable extra whole-buffer UTF-8 round-trips.
 
 ### Persistence domain
 
@@ -263,12 +277,19 @@ Theme changes are allowed to trigger whole-document restyling at first, but the 
 
 The current renderer is still fundamentally whole-document oriented. That is acceptable for document open, explicit theme changes, and occasional full recovery passes. It should not become the permanent behavior for every caret movement, every selection change, or every ordinary keystroke in very large files.
 
+The current shipping editor now has one conservative local-work step before broader incremental rendering exists:
+
+- ordinary same-line inline edits can restyle the current line immediately,
+- line-break edits and edits near fenced-code / blockquote / setext-sensitive context still fall back to the deferred whole-document pass,
+- document open, explicit theme changes, and recovery paths may still remain global work.
+
 The performance path should be staged:
 
 1. **Immediate pre-feature cleanup**
    - keep glyph-level hidden syntax,
    - update `NSTextStorage` in place where possible instead of replacing the full `attributedText`,
    - coalesce expensive full rerenders after edits,
+   - use bounded current-line restyling for ordinary same-line inline edits where broader markdown context is unchanged,
    - skip no-op hidden-syntax attribute writes,
    - avoid avoidable allocations in glyph generation and protected-range checks.
 
@@ -335,10 +356,18 @@ UI-facing state and feature view models remain main-actor oriented.
 ### Background work
 
 Enumeration, bookmark resolution, reads, writes, and version/digest work should not block the main actor.
+When versioning document contents, prefer hashing the raw bytes already read from disk or the exact UTF-8 payload already being written instead of recreating another full buffer.
 
 ### Generation-sensitive flows
 
 Refresh, restore, file-open, and mutation application paths use explicit generation or winner policies where newer state could race older async completions.
+
+Unstructured task ownership should stay explicit:
+
+- app/session-owned one-shot tasks may be launched from UI events only when `AppCoordinator` or a domain actor gates stale results,
+- view-model-owned tasks that mutate UI state after suspension should be stored and canceled when the route, workspace, or document identity changes,
+- delayed editor work should carry the document identity it was created for and re-check it before applying results,
+- intentionally detached writes must be documented at the file-session boundary and merge back through the editor buffer's current identity instead of replacing state blindly.
 
 ---
 

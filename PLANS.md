@@ -43,6 +43,7 @@ The current tree already contains the important optimization layer. In the curre
 
 - `MarkdownEditorTextView.Coordinator.applyRenderedText(...)` updates `textStorage` in place instead of replacing `attributedText` wholesale.
 - `textViewDidChangeSelection(...)` stays on the cheaper reveal/hide path unless a pending text mutation still needs a deferred full pass.
+- ordinary same-line inline edits now take a bounded current-line restyle path instead of automatically scheduling a whole-document markdown rerender.
 - `MarkdownCodeBackgroundLayoutManager.shouldGenerateGlyphs(...)` walks effective `.markdownHiddenSyntax` runs instead of allocating a hidden-range array per glyph batch.
 - `MarkdownStyledTextRenderer.updateHiddenSyntaxVisibility(...)` skips no-op attribute changes and invalidates only the changed ranges.
 
@@ -55,6 +56,8 @@ The current tree already contains the important optimization layer. In the curre
 - [x] In hidden-syntax visibility updates, skip no-op attribute changes.
 - [x] Invalidate layout/display for the actual changed syntax ranges instead of broader line ranges when possible.
 - [x] Add or restore tests for deferred rerender behavior and no-op hidden-syntax updates.
+- [x] For ordinary same-line inline edits, restyle the current line immediately and skip the deferred whole-document pass when broader markdown context is unchanged.
+- [x] Keep line-break edits and broader block-context edits on the deferred whole-document fallback path.
 - [x] Manually verify typing, fast caret movement, selection dragging, undo/redo, and IME/marked-text input on large files.
 
 **Likely files**
@@ -305,14 +308,16 @@ Note: the shipping settings surface is now a maintained shell, but theme managem
 
 **Current finding**
 
-Most long-lived tasks are tracked and canceled, but some UI event tasks in `RootViewModel` and `EditorViewModel` are intentionally fire-and-forget. That can be fine, but the distinction should be explicit before more async settings/import/theme work is added.
+Most long-lived tasks are tracked and canceled, and the 2026-04-24 async lifecycle audit made the remaining ownership split explicit. `RootViewModel` still has app-owned one-shot tasks, but they delegate to coordinator flows with transition/apply-generation guards. `WorkspaceViewModel` snapshot loads and file operations are model-owned and generation-gated. `EditorViewModel` load, autosave, observation, and conflict-resolution tasks are model-owned and cancel or re-check document identity before applying state.
 
 **Plan**
 
-- [ ] Audit unstructured `Task { ... }` usage in view models.
-- [ ] Store and cancel tasks that can outlive the UI state they mutate.
-- [ ] Leave truly fire-and-forget actions as documented one-shot tasks.
-- [ ] Add generation checks where an old async action can overwrite newer state.
+- [x] Audit unstructured `Task { ... }` usage in view models.
+- [x] Store and cancel tasks that can outlive the UI state they mutate.
+- [x] Leave truly fire-and-forget actions as documented one-shot tasks.
+- [x] Add generation checks where an old async action can overwrite newer state.
+
+Note: this pass fixed the unsafe conflict-resolution path in `EditorViewModel`: delayed reload/overwrite actions are now stored, canceled on route/document identity changes, and guarded by generation plus logical-document checks before applying results. The audit left coordinator-owned root actions as one-shot tasks because stale workspace application is already guarded by coordinator transition/apply generations.
 
 **Likely files**
 
@@ -326,20 +331,27 @@ Most long-lived tasks are tracked and canceled, but some UI event tasks in `Root
 
 **Current finding**
 
-`AppCoordinator.swift` is still the central orchestration file and remains large. The current policy seams are working, but future markdown/theme work should not add editor-specific decisions here.
+`AppCoordinator.swift` is still the central orchestration file and remains large. The current policy and service seams are working, but future markdown/theme work should not add editor-specific decisions here.
 
 **Plan**
 
-- [ ] Extract repeated mutation error-handling helpers if coordinator growth continues.
-- [ ] Keep navigation decisions inside `WorkspaceNavigationPolicy` where possible.
-- [ ] Keep workspace snapshot application decisions inside `WorkspaceSessionPolicy` where possible.
+- [x] Extract repeated mutation error-handling helpers if coordinator growth continues.
+- [x] Keep navigation decisions inside `WorkspaceNavigationPolicy` where possible.
+- [x] Keep workspace snapshot application decisions inside `WorkspaceSessionPolicy` where possible.
 - [ ] Do not route editor theme or markdown parser state through the coordinator unless it affects route/session state.
+
+Note: the first cleanup pass moved workspace selection/replacement application and refresh session application through `WorkspaceSessionPolicy`, introduced `WorkspaceMutationPolicy` for repeated mutation preflight rules, and collapsed create/rename/move/delete mutation execution onto one shared coordinator error-handling path. The follow-up coordinator cleanup moved mutation execution metadata and fallback text into `WorkspaceMutationService` / `WorkspaceMutationErrorPresenter`, moved browser item kind lookup into `WorkspaceMutationPolicy`, and moved trusted editor route resolution plus stale recent-file open decisions into `WorkspaceNavigationPolicy`.
+
+Remaining coordinator work: mutation result application still contains the side-effect-heavy rename/delete/move reconciliation for open-document relocation, recents, pending presentations, and restorable-session updates. That should be extracted only behind a focused mutation result applier with tests, not by scattering those side effects across existing policies.
 
 **Likely files**
 
 - `Downward/App/AppCoordinator.swift`
 - `Downward/App/WorkspaceNavigationPolicy.swift`
 - `Downward/App/WorkspaceSessionPolicy.swift`
+- `Downward/App/WorkspaceMutationPolicy.swift`
+- `Downward/App/WorkspaceMutationService.swift`
+- `Downward/App/WorkspaceMutationErrorPresenter.swift`
 
 ---
 
@@ -372,6 +384,37 @@ Most long-lived tasks are tracked and canceled, but some UI event tasks in `Root
 - `Tests/EditorKeyboardGeometryControllerTests.swift`
 
 Note: this was a pure responsibility split. The current top underlay, first-line placement, document-open viewport reset, keyboard accessory transparency, and resolved theme pipeline are intentionally unchanged.
+
+---
+
+### 10b. Reduce large-file memory churn in `PlainTextDocumentSession`
+
+**Current finding**
+
+The editor-side large-file typing work is in place, but document open/save version bookkeeping was still doing avoidable whole-buffer UTF-8 churn:
+
+- read/open/reload loaded `Data`, decoded it to `String`, then re-encoded `String` back to `Data` for the digest,
+- save/autosave encoded the text for writing and separately repeated the UTF-8 conversion for the loaded-version digest.
+
+**Plan**
+
+- [x] Hash the raw UTF-8 file data already loaded on read/open/reload before version bookkeeping instead of re-encoding decoded text.
+- [x] Reuse the exact UTF-8 payload already being written on save/autosave for loaded-version digest and file-size updates.
+- [x] Keep autosave, revalidation, and conflict behavior unchanged while reducing avoidable whole-buffer churn.
+- [x] Add focused regression coverage for empty-file, raw-byte digest correctness, and large-file open/save version tracking.
+
+**Likely files**
+
+- `Downward/Domain/Document/PlainTextDocumentSession.swift`
+- `Tests/DocumentManagerTests.swift`
+
+Note: this pass keeps the current session/file-truth architecture intact. The optimization is strictly about deriving `DocumentVersion` from already-available bytes rather than manufacturing another full UTF-8 buffer.
+
+Manual perf check:
+
+- Open a large markdown file under Instruments Allocations and confirm the read path shows one raw file `Data` load, one decode to `String`, and no extra digest-only `String -> Data` copy.
+- Save a large edited markdown file and confirm the version/digest bookkeeping reuses the write payload instead of allocating a second full UTF-8 buffer for the same text.
+- Trigger revalidation on an unchanged large file and confirm it does not regress into extra versioning allocations beyond the required disk read/decode path.
 
 ---
 
@@ -450,6 +493,8 @@ Reduce edit-time work without committing to a full parser rewrite immediately.
 
 **Plan**
 
+- [x] Land a conservative current-line restyle path for ordinary same-line inline edits.
+- [x] Keep a whole-document fallback for line breaks and edits near broader markdown block context.
 - [ ] Track the edited character range from `UITextViewDelegate` callbacks.
 - [ ] Convert the edit range into a dirty line range.
 - [ ] Expand to include previous and next lines.
@@ -460,6 +505,8 @@ Reduce edit-time work without committing to a full parser rewrite immediately.
 - [ ] Clear and replace attributes only inside the dirty window.
 - [ ] Fall back to whole-document rendering when the safe window cannot be proven.
 - [ ] Add large-file tests that assert the dirty range stays bounded for ordinary inline edits.
+
+Note: the shipping editor now has a conservative first bounded step: same-line inline edits can restyle the current line immediately when the line is outside fenced-code / blockquote / setext-sensitive context. Broader dirty-window expansion is still future work.
 
 ---
 
