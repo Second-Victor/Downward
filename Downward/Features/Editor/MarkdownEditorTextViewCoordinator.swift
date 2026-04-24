@@ -174,6 +174,8 @@ extension MarkdownEditorTextView {
         }
 
         private func applyResolvedTheme(_ resolvedTheme: ResolvedEditorTheme, to textView: UITextView) {
+            textView.backgroundColor = resolvedTheme.editorBackground
+            textView.isOpaque = true
             textView.tintColor = resolvedTheme.accent
             if let layoutManager = textView.layoutManager as? MarkdownCodeBackgroundLayoutManager {
                 layoutManager.resolvedTheme = resolvedTheme

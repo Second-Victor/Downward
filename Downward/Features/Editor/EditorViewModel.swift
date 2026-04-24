@@ -19,6 +19,7 @@ final class EditorViewModel {
 
     private let coordinator: AppCoordinator
     private let editorAppearanceStore: EditorAppearanceStore
+    private let themeStore: ThemeStore
     private var autosaveTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
     private var conflictResolutionTask: Task<Void, Never>?
@@ -37,11 +38,13 @@ final class EditorViewModel {
         session: AppSession,
         coordinator: AppCoordinator,
         editorAppearanceStore: EditorAppearanceStore,
+        themeStore: ThemeStore = ThemeStore(),
         autosaveDelay: Duration = .milliseconds(750)
     ) {
         self.session = session
         self.coordinator = coordinator
         self.editorAppearanceStore = editorAppearanceStore
+        self.themeStore = themeStore
         self.autosaveDelay = autosaveDelay
     }
 
@@ -163,7 +166,7 @@ final class EditorViewModel {
     }
 
     var resolvedEditorTheme: ResolvedEditorTheme {
-        editorAppearanceStore.resolvedTheme
+        editorAppearanceStore.resolvedTheme(using: themeStore)
     }
 
     func handleTextChange(_ text: String) {

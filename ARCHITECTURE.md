@@ -101,9 +101,10 @@ Settings presentation still lives in the app/session navigation seam:
 
 Settings pages should use existing stores and app actions rather than creating parallel state:
 
-- editor font, font size, and markdown syntax visibility flow through `EditorAppearanceStore`,
+- editor font, font size, markdown syntax visibility, selected theme identity, and match-menu preference flow through `EditorAppearanceStore`,
+- custom themes load and persist through `ThemeStore`/`ThemePersistenceService`; JSON import/export flows through `ThemeExchangeDocument`,
 - workspace reconnect/clear still delegate to root/coordinator actions,
-- Theme, New Theme, Tips, Information, and About may expose disabled or placeholder-backed controls until the backing theme, StoreKit, review, and URL infrastructure exists.
+- Tips, Information, and About may expose disabled or placeholder-backed controls until the backing StoreKit, review, and URL infrastructure exists.
 
 It should stay declarative and lightweight.
 It is not the place for file-system rules.
@@ -265,7 +266,7 @@ The current hidden-syntax implementation is intentionally a TextKit/layout conce
 
 New markdown features should be added through semantic roles, not by scattering more direct attributed-string mutations through the renderer. Before adding features such as task lists, tables, footnotes, front matter, highlight syntax, or richer code blocks, define the token roles those features need and keep theme mapping separate from recognition.
 
-A future JSON theme system should deserialize into an internal `EditorTheme`-style model. The JSON schema should not leak directly into parsing or TextKit code. Theme roles should describe intent, for example:
+The custom JSON theme path deserializes into `CustomTheme`, then maps into the internal `EditorTheme`/`ResolvedEditorTheme` runtime model. The JSON schema should not leak directly into parsing or TextKit code. Theme roles should describe intent, for example:
 
 - plain text,
 - syntax marker,

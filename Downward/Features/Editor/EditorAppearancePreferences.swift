@@ -4,15 +4,21 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
     var fontChoice: EditorFontChoice
     var fontSize: Double
     var markdownSyntaxMode: MarkdownSyntaxMode
+    var selectedThemeID: String
+    var matchSystemChromeToTheme: Bool
 
     init(
         fontChoice: EditorFontChoice,
         fontSize: Double,
-        markdownSyntaxMode: MarkdownSyntaxMode = .visible
+        markdownSyntaxMode: MarkdownSyntaxMode = .visible,
+        selectedThemeID: String = EditorTheme.adaptive.id,
+        matchSystemChromeToTheme: Bool = true
     ) {
         self.fontChoice = fontChoice
         self.fontSize = fontSize
         self.markdownSyntaxMode = markdownSyntaxMode
+        self.selectedThemeID = selectedThemeID
+        self.matchSystemChromeToTheme = matchSystemChromeToTheme
     }
 
     static let `default` = EditorAppearancePreferences(
@@ -25,6 +31,8 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         case fontChoice
         case fontSize
         case markdownSyntaxMode
+        case selectedThemeID
+        case matchSystemChromeToTheme
     }
 
     init(from decoder: any Decoder) throws {
@@ -35,6 +43,14 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
             MarkdownSyntaxMode.self,
             forKey: .markdownSyntaxMode
         ) ?? .visible
+        selectedThemeID = try container.decodeIfPresent(
+            String.self,
+            forKey: .selectedThemeID
+        ) ?? EditorTheme.adaptive.id
+        matchSystemChromeToTheme = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .matchSystemChromeToTheme
+        ) ?? true
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -42,5 +58,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         try container.encode(fontChoice, forKey: .fontChoice)
         try container.encode(fontSize, forKey: .fontSize)
         try container.encode(markdownSyntaxMode, forKey: .markdownSyntaxMode)
+        try container.encode(selectedThemeID, forKey: .selectedThemeID)
+        try container.encode(matchSystemChromeToTheme, forKey: .matchSystemChromeToTheme)
     }
 }

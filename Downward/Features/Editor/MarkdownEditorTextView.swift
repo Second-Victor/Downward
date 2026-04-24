@@ -34,8 +34,8 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         layoutManager.addTextContainer(textContainer)
 
         let textView = EditorChromeAwareTextView(frame: .zero, textContainer: textContainer)
-        textView.backgroundColor = .clear
-        textView.isOpaque = false
+        textView.backgroundColor = resolvedTheme.editorBackground
+        textView.isOpaque = true
         textView.tintColor = resolvedTheme.accent
         textView.delegate = context.coordinator
         // Keep the editor surface continuous under the top chrome, but derive the visible first

@@ -10,6 +10,7 @@ final class RootViewModel {
     let workspaceViewModel: WorkspaceViewModel
     let editorViewModel: EditorViewModel
     let editorAppearanceStore: EditorAppearanceStore
+    let themeStore: ThemeStore
     var isShowingFolderPicker = false
 
     private let coordinator: AppCoordinator
@@ -19,13 +20,15 @@ final class RootViewModel {
         coordinator: AppCoordinator,
         workspaceViewModel: WorkspaceViewModel,
         editorViewModel: EditorViewModel,
-        editorAppearanceStore: EditorAppearanceStore
+        editorAppearanceStore: EditorAppearanceStore,
+        themeStore: ThemeStore
     ) {
         self.session = session
         self.coordinator = coordinator
         self.workspaceViewModel = workspaceViewModel
         self.editorViewModel = editorViewModel
         self.editorAppearanceStore = editorAppearanceStore
+        self.themeStore = themeStore
     }
 
     var launchState: RootLaunchState {

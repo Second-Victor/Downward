@@ -10,8 +10,13 @@ struct EditorScreen: View {
 
     var body: some View {
         GeometryReader { proxy in
-            editorContent(topViewportInset: proxy.safeAreaInsets.top)
-                .background(Color(uiColor: resolvedTheme.editorBackground))
+            ZStack {
+                Color(uiColor: resolvedTheme.editorBackground)
+                    .ignoresSafeArea(.all)
+
+                editorContent(topViewportInset: proxy.safeAreaInsets.top)
+            }
+                .background(Color(uiColor: resolvedTheme.editorBackground).ignoresSafeArea(.all))
                 .navigationTitle(viewModel.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .editorNavigationSubtitle(viewModel.documentLocationText)

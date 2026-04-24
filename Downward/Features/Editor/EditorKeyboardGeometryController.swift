@@ -53,7 +53,7 @@ final class EditorKeyboardGeometryController: NSObject {
     }
 
     /// Match the prototype behavior: reserve the full keyboard overlap in the scroll view insets
-    /// and let the transparent accessory simply overlay the text view content.
+    /// and let the accessory overlay the text view content without adding a second compensation.
     func viewportInsetsSnapshot(for textView: UITextView) -> ViewportInsetsSnapshot {
         let keyboardOverlapInset = (textView as? EditorChromeAwareTextView)?.keyboardOverlapInset ?? 0
         let contentInsetBottom = max(0, keyboardOverlapInset)

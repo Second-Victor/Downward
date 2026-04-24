@@ -158,7 +158,7 @@ Note: `.visible` remains the rendered editing mode, not a fully raw markdown mod
 - [x] Add fallback/default theme values matching the current UI exactly.
 - [x] Add tests that default theme output matches current expected styling.
 
-Note: the shipping editor now resolves one runtime theme object for the editor background, text roles, syntax roles, code backgrounds, blockquote drawing, caret tint, and keyboard accessory styling. The accessory host stays transparent by default, and any future painted underlay should be an explicit opt-in through this same seam. JSON import/export and editable custom themes should map into this same seam later.
+Note: the shipping editor now resolves one runtime theme object for the editor background, text roles, syntax roles, code backgrounds, blockquote drawing, caret tint, and keyboard accessory styling. The accessory host is painted from the same editor surface role so UIKit keyboard host wrappers cannot flash their default light background. JSON import/export and editable custom themes should map into this same seam later.
 
 **Likely files**
 
@@ -186,11 +186,11 @@ That means the old opaque-bar regression can still come back if toolbar transpar
 
 - [x] Reintroduce explicit transparent `UIToolbarAppearance` configuration for the keyboard accessory.
 - [x] Reapply that appearance when the accessory moves into a window or traits change.
-- [x] Add a regression test proving the wrapper and toolbar are transparent by configuration.
+- [x] Add a regression test proving the wrapper and toolbar use the resolved underlay by configuration.
 - [x] When editor themes are added, drive the editor background, TextKit background drawing, and accessory underlay from the same resolved theme model.
 - [ ] Add manual QA coverage for light, dark, and at least one non-standard editor background color.
 
-Note: the resolved theme pipeline now treats the accessory host underlay as transparent by default. A non-clear accessory underlay is reserved for an explicit future theme decision instead of being the shipping default.
+Note: the resolved theme pipeline now paints the accessory host underlay with the editor surface color. This avoids relying on transparency through UIKit's private keyboard-host hierarchy, which can otherwise show a white band during keyboard presentation or interactive dismissal.
 
 **Likely files**
 
@@ -288,13 +288,14 @@ The settings surface is now a prototype-aligned sheet with a native inset-groupe
 - [x] Keep the shipping workspace, editor font, editor font size, and markdown display settings fully functional.
 - [x] Present compact-width settings as a dedicated sheet while keeping the workspace/editor navigation stack underneath.
 - [x] Present regular-width settings as a dedicated sheet while keeping the editor or placeholder detail visible underneath.
-- [x] Keep future theme/import work as explicit placeholders instead of fake-complete controls.
+- [x] Keep unsupported work as explicit placeholders instead of fake-complete controls.
 - [x] Add focused session-level coverage for the regular-width settings presentation fallback behavior.
 - [x] Add representative previews for loaded workspace, no workspace, large Dynamic Type, and the regular-width sheet presentation.
 - [x] Add the nested Settings hierarchy for Editor, Theme, New Theme, Markdown, Tips, Information, and About.
-- [x] Wire real supported settings through existing persistence: app appearance, monospaced/proportional editor font family, font size, and markdown syntax visibility.
-- [x] Keep unsupported controls disabled or placeholder-backed: line numbers, larger heading text, persisted theme selection, match-menus preference, theme import/export, custom-theme persistence, StoreKit tips, App Store rating, and legal URLs.
-- [x] Add focused tests for home summary values, editor/markdown store updates, and placeholder feature honesty.
+- [x] Wire real supported settings through existing persistence: app appearance, monospaced/proportional editor font family, font size, markdown syntax visibility, built-in theme selection, custom theme persistence, and the match-menus preference.
+- [x] Add JSON custom-theme import/export through a bounded exchange document path and keep it out of document save paths.
+- [x] Keep unsupported controls disabled or placeholder-backed: line numbers, larger heading text, StoreKit tips, App Store rating, and legal URLs.
+- [x] Add focused tests for home summary values, editor/markdown store updates, theme persistence/import-export seams, and placeholder feature honesty.
 - [ ] Manually verify iPhone flow, iPad flow, reconnect, clear confirmation, editor font changes, markdown mode changes, and Dynamic Type on device.
 
 **Likely files**
@@ -305,7 +306,7 @@ The settings surface is now a prototype-aligned sheet with a native inset-groupe
 - `Tests/AppSessionSettingsPresentationTests.swift`
 - `Tests/SettingsScreenModelTests.swift`
 
-Note: the shipping settings surface is now a maintained sheet-based hierarchy. Theme/New Theme, Tips, Information, and About exist as product surfaces, but persisted built-in themes, StoreKit purchases, App Store review routing, configured legal URLs, custom-theme persistence, and JSON import/export are still future work and stay labeled or disabled as such.
+Note: the shipping settings surface is now a maintained sheet-based hierarchy. Theme/New Theme now use a real `ThemeStore`, built-in/custom theme selection persists through `EditorAppearanceStore`, and JSON import/export is available through a custom-theme exchange document. StoreKit purchases, App Store review routing, configured legal URLs, line numbers, and larger heading text remain future work and stay disabled or placeholder-backed.
 
 ---
 
@@ -556,9 +557,9 @@ Theme switches should eventually avoid reparsing markdown.
 
 - [ ] Add a versioned JSON schema.
 - [ ] Support partial themes with default fallback values.
-- [ ] Validate color strings before storing them.
+- [x] Validate color strings before storing them.
 - [ ] Clamp font sizes and reject unsupported font families gracefully.
-- [ ] Keep imported theme data separate from the resolved runtime theme.
+- [x] Keep imported theme data separate from the resolved runtime theme.
 - [ ] Add tests for missing fields, invalid colors, unknown roles, and future schema versions.
 
 ---
@@ -567,11 +568,11 @@ Theme switches should eventually avoid reparsing markdown.
 
 **Plan**
 
-- [ ] Add built-in default themes first.
+- [x] Add built-in default themes first.
 - [ ] Add a preview surface before applying imported themes globally.
 - [ ] Make reset-to-default obvious.
-- [ ] Avoid applying malformed JSON directly to the live editor.
-- [ ] Keep theme import/export out of document save paths.
+- [x] Avoid applying malformed JSON directly to the live editor.
+- [x] Keep theme import/export out of document save paths.
 
 ---
 

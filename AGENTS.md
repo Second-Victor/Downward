@@ -178,9 +178,10 @@ Do not create parallel feature trees or alternate ownership paths without updati
 ### Settings rules
 
 - Keep Settings navigation and visual hierarchy inside the Settings feature.
-- Wire real settings through existing stores such as `EditorAppearanceStore`.
+- Wire real settings through existing stores such as `EditorAppearanceStore` and `ThemeStore`.
 - Keep workspace actions delegated to the root/coordinator flow; do not move file-system or bookmark logic into Settings views.
-- Leave JSON theme import/export, StoreKit tips, App Store review routing, legal URLs, and custom theme persistence visibly placeholder-only until their backing infrastructure is implemented.
+- Leave StoreKit tips, App Store review routing, and legal URLs visibly placeholder-only until their backing infrastructure is implemented.
+- Only enable new theme import/export or persistence affordances when they have backing store/exchange infrastructure and focused tests.
 
 ### Documentation comments
 

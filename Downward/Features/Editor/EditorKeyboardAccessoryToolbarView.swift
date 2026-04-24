@@ -43,14 +43,18 @@ final class KeyboardAccessoryToolbarView: UIView {
 
         super.init(frame: .zero)
 
+        // Match the prototype: let UIKit's keyboard host render its own blurred/translucent
+        // background. Painting the accessory view (or walking up the superview chain to
+        // paint the private keyboard host wrappers) caused the whole screen to adopt the
+        // editor background color during presentation and interactive dismissal.
+        backgroundColor = .clear
         isOpaque = false
         autoresizingMask = [.flexibleWidth, .flexibleHeight]
 
         addSubview(toolbar)
-        toolbar.isOpaque = false
-        toolbar.isTranslucent = true
         toolbar.autoresizingMask = [.flexibleWidth]
         toolbar.items = [undoButton, redoButton, .flexibleSpace(), dismissButton]
+
         applyResolvedTheme(resolvedTheme)
     }
 
@@ -74,16 +78,6 @@ final class KeyboardAccessoryToolbarView: UIView {
         toolbar.frame = CGRect(x: 0, y: 0, width: bounds.width, height: toolbarHeight)
     }
 
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        applyResolvedTheme(resolvedTheme)
-    }
-
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-        applyResolvedTheme(resolvedTheme)
-    }
-
     func update(canUndo: Bool, canRedo: Bool, canDismiss: Bool) {
         undoButton.isEnabled = canUndo
         redoButton.isEnabled = canRedo
@@ -94,33 +88,9 @@ final class KeyboardAccessoryToolbarView: UIView {
 
     func applyResolvedTheme(_ resolvedTheme: ResolvedEditorTheme) {
         self.resolvedTheme = resolvedTheme
-        isOpaque = false
-        // Keep the accessory host visually transparent unless a future theme opts into painting
-        // its own underlay on purpose.
-        backgroundColor = resolvedTheme.keyboardAccessoryUnderlayBackground
-        toolbar.backgroundColor = .clear
-        toolbar.barTintColor = .clear
-        toolbar.isOpaque = false
+        // The toolbar's tint drives the bar-button (undo / redo / dismiss) icon color.
+        // Background stays clear so the keyboard host's own material shows through, which
+        // keeps the accessory visually consistent with the status bar / nav bar buttons.
         toolbar.tintColor = resolvedTheme.accent
-        applyTransparentToolbarAppearance()
-    }
-
-    /// Keep the accessory visually transparent even when the keyboard host is recreated or traits
-    /// change. This is especially important once editor background colors become theme-driven.
-    private func applyTransparentToolbarAppearance() {
-        let appearance = UIToolbarAppearance()
-        appearance.configureWithTransparentBackground()
-        appearance.backgroundColor = .clear
-        appearance.shadowColor = .clear
-
-        toolbar.standardAppearance = appearance
-        toolbar.compactAppearance = appearance
-        toolbar.scrollEdgeAppearance = appearance
-        if #available(iOS 15.0, *) {
-            toolbar.compactScrollEdgeAppearance = appearance
-        }
-
-        toolbar.setBackgroundImage(UIImage(), forToolbarPosition: .any, barMetrics: .default)
-        toolbar.setShadowImage(UIImage(), forToolbarPosition: .any)
     }
 }

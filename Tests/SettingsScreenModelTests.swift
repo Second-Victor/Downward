@@ -92,10 +92,6 @@ final class SettingsScreenModelTests: XCTestCase {
             .largerHeadingText,
             .colorFormattedTextToggle,
             .tapToToggleTasks,
-            .themeSelection,
-            .matchMenusToTheme,
-            .themeImport,
-            .customThemePersistence,
             .tipsPurchases,
             .rateTheApp,
             .legalLinks

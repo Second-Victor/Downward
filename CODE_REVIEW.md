@@ -62,14 +62,15 @@ This refresh was done against the latest uploaded `Downward.zip` after the repo 
 - **Existing real controls remain wired through `EditorAppearanceStore`.** Editor font family, editor font size, and markdown syntax visibility still persist through the existing appearance pipeline.
 - **Editor settings now match the prototype section structure more closely.** The Editor destination uses a native grouped form with a segmented monospaced/proportional picker, prototype-style font rows, section footers, and persisted proportional font choices for SF Pro, New York, and Georgia where available.
 - **Appearance is now a real picker.** The top-level Appearance row matches the prototype menu picker and persists System/Light/Dark through `AppColorScheme`, which the app root applies with `preferredColorScheme`.
+- **Theme settings now have backing infrastructure.** Built-in theme selection persists through `EditorAppearanceStore`; custom themes persist through `ThemeStore`; New Theme/Edit Theme use a live markdown preview, palette picker, contrast warning, save/delete/edit actions, and JSON import/export through `ThemeExchangeDocument`.
 - **Workspace actions remain reachable from Settings.** The Workspace row opens reconnect/clear actions without moving file-system logic into the view.
-- **Unsupported product areas stay honest.** Line numbers, larger heading text, persisted theme selection, match-menus preference, theme import/export, custom-theme persistence, StoreKit tips, App Store rating, and legal URLs are disabled or placeholder-backed rather than presented as complete features.
-- **Coverage now includes settings display seams.** `SettingsScreenModelTests` covers home summary font/theme/workspace values, editor/markdown store updates, and placeholder feature flags.
+- **Unsupported product areas stay honest.** Line numbers, larger heading text, StoreKit tips, App Store rating, and legal URLs are disabled or placeholder-backed rather than presented as complete features.
+- **Coverage now includes settings display seams.** `SettingsScreenModelTests` covers home summary font/theme/workspace values, editor/markdown store updates, and placeholder feature flags; `ThemeStoreTests` covers custom-theme persistence and exchange document round-trips.
 
 ### Remaining settings work
 
-- Persisted built-in theme selection still needs a real theme model/store update before Theme rows become interactive.
-- New Theme currently edits a local preview only; persistence/export/import remain future JSON theme work.
+- Theme import currently adds themes without an import-preview confirmation step.
+- The JSON exchange format still needs richer schema/version migration tests before broadening the format.
 - Tips need StoreKit product IDs and purchase infrastructure.
 - Rate the App, Privacy Policy, and Terms rows need configured production URLs/routes.
 - Real-device verification is still needed for the new hierarchy on iPhone and iPad with larger Dynamic Type.
@@ -82,7 +83,7 @@ This refresh was done against the latest uploaded `Downward.zip` after the repo 
 - **P1 top chrome / first-line placement in code** — fixed in current code. The editor surface underlaps the top chrome again, while `EditorScreen` and `MarkdownEditorTextView` now share one safe-area-driven top inset contract for the first line and placeholder instead of reconstructing clearance from navigation-bar/window geometry. The final regression fix also moved the `topViewportInset` measurement out of the ignored-safe-area editor subtree so document opens do not accidentally see zero top clearance.
 - **P1 initial document-open viewport anchoring** — fixed in current code. `MarkdownEditorTextView` no longer preserves stale `contentOffset` values across document identity changes, and top-inset changes only re-anchor the viewport when the editor is already resting at document start.
 - **P1 dead `showsKeyboardToolbar` state** — fixed. The property is gone and tests now target the actual UIKit accessory view.
-- **P1 accessory appearance hardening** — fixed in current code. The accessory wrapper and embedded `UIToolbar` configure transparent appearance explicitly again, and the default accessory host underlay is transparent instead of painting an opaque system background.
+- **P1 accessory appearance hardening** — fixed in current code. The accessory wrapper, embedded `UIToolbar`, and UIKit keyboard host chain are explicitly painted with the resolved editor surface underlay so private host views cannot show a white background during presentation or interactive dismissal.
 - **P1 resolved editor theme pipeline** — fixed in current code. The editor surface, renderer text colors, TextKit code/blockquote drawing, caret tint, and keyboard accessory styling now resolve from one runtime theme model with focused regression coverage.
 - **P1 editor bridge split** — fixed in current code. `MarkdownEditorTextView.swift` is now a thin representable file, while the coordinator, accessory view, keyboard geometry, and `UITextView` subclass live in focused collaborators with the existing editor regressions still covered by tests.
 - **P0 large-file same-line typing latency** — fixed in current code. Ordinary same-line inline edits now take a bounded current-line restyle path instead of automatically scheduling a whole-document markdown rerender, while line-break and broader block-context edits still use the deferred full fallback.
@@ -93,8 +94,8 @@ This refresh was done against the latest uploaded `Downward.zip` after the repo 
 
 - Undo/redo/dismiss still have two command paths: visible accessory actions plus token commands.
 - Real-device verification is still needed for top chrome / first-line placement on iPhone and iPad.
-- Real-device verification is still needed for light, dark, and non-standard editor backgrounds now that the shared theme/accessory pipeline exists and the accessory host is transparent-by-default again.
-- User-facing custom theme management and JSON import/export are still future work.
+- Real-device verification is still needed for light, dark, and non-standard editor backgrounds now that the shared theme/accessory pipeline paints the accessory host from the editor surface.
+- User-facing custom theme management and JSON import/export now have initial backing infrastructure; richer schema validation and import-preview UX remain future work.
 - Settings now ship as a maintained sheet with a native inset-grouped home list, and regular-width iPad settings present as a dedicated sheet instead of replacing the split-view detail pane.
 - Workspace snapshot path lookup, search, and recents pruning are still relevant performance items.
 - Large files still need broader incremental rendering work and real-device verification, but the immediate same-line typing-latency regression is no longer open.
@@ -568,7 +569,7 @@ The old bridge file used to own all of these responsibilities at once:
 
 **Status after 2026-04-23 refactor**
 - Done in current code.
-- Focused coverage still passes for sizing, viewport reset, same-document scroll preservation, transparent accessory behavior, deferred rerendering, and the extracted keyboard geometry helper.
+- Focused coverage still passes for sizing, viewport reset, same-document scroll preservation, painted accessory underlay behavior, deferred rerendering, and the extracted keyboard geometry helper.
 
 ---
 

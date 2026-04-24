@@ -7,6 +7,7 @@ final class AppContainer {
     let sessionStore: any SessionStore
     let recentFilesStore: RecentFilesStore
     let editorAppearanceStore: EditorAppearanceStore
+    let themeStore: ThemeStore
     let workspaceManager: any WorkspaceManager
     let documentManager: any DocumentManager
     let errorReporter: any ErrorReporter
@@ -23,6 +24,7 @@ final class AppContainer {
         sessionStore: any SessionStore = StubSessionStore(),
         recentFilesStore: RecentFilesStore,
         editorAppearanceStore: EditorAppearanceStore,
+        themeStore: ThemeStore = ThemeStore(),
         workspaceManager: any WorkspaceManager,
         documentManager: any DocumentManager,
         errorReporter: any ErrorReporter,
@@ -33,6 +35,7 @@ final class AppContainer {
         self.sessionStore = sessionStore
         self.recentFilesStore = recentFilesStore
         self.editorAppearanceStore = editorAppearanceStore
+        self.themeStore = themeStore
         self.workspaceManager = workspaceManager
         self.documentManager = documentManager
         self.errorReporter = errorReporter
@@ -63,7 +66,8 @@ final class AppContainer {
         let editorViewModel = EditorViewModel(
             session: session,
             coordinator: coordinator,
-            editorAppearanceStore: editorAppearanceStore
+            editorAppearanceStore: editorAppearanceStore,
+            themeStore: themeStore
         )
         self.editorViewModel = editorViewModel
 
@@ -72,7 +76,8 @@ final class AppContainer {
             coordinator: coordinator,
             workspaceViewModel: workspaceViewModel,
             editorViewModel: editorViewModel,
-            editorAppearanceStore: editorAppearanceStore
+            editorAppearanceStore: editorAppearanceStore,
+            themeStore: themeStore
         )
     }
 
@@ -83,6 +88,7 @@ final class AppContainer {
         let sessionStore = UserDefaultsSessionStore()
         let recentFilesStore = RecentFilesStore()
         let editorAppearanceStore = EditorAppearanceStore()
+        let themeStore = ThemeStore()
         let workspaceManager = LiveWorkspaceManager(
             bookmarkStore: bookmarkStore,
             securityScopedAccess: securityScopedAccess,
@@ -100,6 +106,7 @@ final class AppContainer {
             sessionStore: sessionStore,
             recentFilesStore: recentFilesStore,
             editorAppearanceStore: editorAppearanceStore,
+            themeStore: themeStore,
             workspaceManager: workspaceManager,
             documentManager: documentManager,
             errorReporter: errorReporter,
@@ -121,6 +128,7 @@ final class AppContainer {
         let sessionStore = StubSessionStore()
         let recentFilesStore = RecentFilesStore(initialItems: recentFiles)
         let editorAppearanceStore = EditorAppearanceStore(initialPreferences: editorAppearancePreferences)
+        let themeStore = ThemeStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-themes-\(UUID().uuidString).json"))
         let forcedRestoreResult: WorkspaceRestoreResult? = switch launchState {
         case .noWorkspaceSelected:
             .noWorkspaceSelected
@@ -153,6 +161,7 @@ final class AppContainer {
             sessionStore: sessionStore,
             recentFilesStore: recentFilesStore,
             editorAppearanceStore: editorAppearanceStore,
+            themeStore: themeStore,
             workspaceManager: workspaceManager,
             documentManager: documentManager,
             errorReporter: errorReporter,

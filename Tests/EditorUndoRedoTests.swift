@@ -64,8 +64,8 @@ final class EditorUndoRedoTests: XCTestCase {
         }
 
         XCTAssertNotNil(textView.keyboardAccessoryToolbarView)
-        XCTAssertClear(accessoryView.backgroundColor)
-        XCTAssertFalse(accessoryView.isOpaque)
+        XCTAssertSameResolvedColor(accessoryView.backgroundColor, .systemBackground)
+        XCTAssertTrue(accessoryView.isOpaque)
         XCTAssertEqual(accessoryView.toolbar.items?.count, 4)
         XCTAssertFalse(textView.undoAccessoryItem?.isEnabled ?? true)
         XCTAssertFalse(textView.redoAccessoryItem?.isEnabled ?? true)
@@ -339,19 +339,49 @@ final class EditorUndoRedoTests: XCTestCase {
         let fittedSize = accessoryView.sizeThatFits(CGSize(width: 320, height: UIView.noIntrinsicMetric))
 
         XCTAssertGreaterThan(fittedSize.height, 0)
-        XCTAssertClear(accessoryView.backgroundColor)
-        XCTAssertClear(accessoryView.toolbar.backgroundColor)
+        XCTAssertSameResolvedColor(accessoryView.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
+        XCTAssertSameResolvedColor(accessoryView.toolbar.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
         XCTAssertTrue(accessoryView.toolbar.isTranslucent)
         XCTAssertEqual(accessoryView.toolbar.tintColor, theme.accent)
-        XCTAssertNilOrClear(accessoryView.toolbar.standardAppearance.backgroundColor)
-        XCTAssertNilOrClear(accessoryView.toolbar.compactAppearance?.backgroundColor)
-        XCTAssertNilOrClear(accessoryView.toolbar.scrollEdgeAppearance?.backgroundColor)
+        XCTAssertSameResolvedColor(accessoryView.toolbar.standardAppearance.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
+        XCTAssertSameResolvedColor(accessoryView.toolbar.compactAppearance?.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
+        XCTAssertSameResolvedColor(accessoryView.toolbar.scrollEdgeAppearance?.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
         XCTAssertNilOrClear(accessoryView.toolbar.standardAppearance.shadowColor)
         XCTAssertGreaterThan(accessoryView.intrinsicContentSize.height, 0)
     }
 
     @MainActor
-    func testDefaultThemeReapplicationRestoresTransparentAccessoryHost() {
+    func testKeyboardAccessoryPaintsUIKitHostBackground() {
+        let actionTarget = AccessoryActionTarget()
+        let accessoryView = KeyboardAccessoryToolbarView(
+            target: actionTarget,
+            undoAction: #selector(AccessoryActionTarget.performAction),
+            redoAction: #selector(AccessoryActionTarget.performAction),
+            dismissAction: #selector(AccessoryActionTarget.performAction),
+            resolvedTheme: .default
+        )
+        let hostView = UIView()
+        hostView.backgroundColor = .white
+        hostView.isOpaque = true
+
+        hostView.addSubview(accessoryView)
+        accessoryView.frame = CGRect(x: 0, y: 0, width: 320, height: 52)
+        accessoryView.layoutIfNeeded()
+
+        XCTAssertSameResolvedColor(hostView.backgroundColor, .systemBackground)
+        XCTAssertTrue(hostView.isOpaque)
+
+        let paintedTheme = makeResolvedTheme(keyboardAccessoryUnderlayBackground: .brown)
+        hostView.backgroundColor = .white
+        hostView.isOpaque = true
+        accessoryView.applyResolvedTheme(paintedTheme)
+
+        XCTAssertEqual(hostView.backgroundColor, .brown)
+        XCTAssertTrue(hostView.isOpaque)
+    }
+
+    @MainActor
+    func testDefaultThemeReapplicationRestoresPaintedAccessoryHost() {
         let actionTarget = AccessoryActionTarget()
         let accessoryView = KeyboardAccessoryToolbarView(
             target: actionTarget,
@@ -389,11 +419,11 @@ final class EditorUndoRedoTests: XCTestCase {
 
         accessoryView.applyResolvedTheme(.default)
 
-        XCTAssertClear(accessoryView.backgroundColor)
-        XCTAssertClear(accessoryView.toolbar.backgroundColor)
-        XCTAssertNilOrClear(accessoryView.toolbar.standardAppearance.backgroundColor)
-        XCTAssertNilOrClear(accessoryView.toolbar.compactAppearance?.backgroundColor)
-        XCTAssertNilOrClear(accessoryView.toolbar.scrollEdgeAppearance?.backgroundColor)
+        XCTAssertSameResolvedColor(accessoryView.backgroundColor, .systemBackground)
+        XCTAssertSameResolvedColor(accessoryView.toolbar.backgroundColor, .systemBackground)
+        XCTAssertSameResolvedColor(accessoryView.toolbar.standardAppearance.backgroundColor, .systemBackground)
+        XCTAssertSameResolvedColor(accessoryView.toolbar.compactAppearance?.backgroundColor, .systemBackground)
+        XCTAssertSameResolvedColor(accessoryView.toolbar.scrollEdgeAppearance?.backgroundColor, .systemBackground)
     }
 
     @MainActor
@@ -457,6 +487,8 @@ final class EditorUndoRedoTests: XCTestCase {
         XCTAssertEqual(accessoryView.backgroundColor, theme.keyboardAccessoryUnderlayBackground)
         XCTAssertEqual(accessoryView.toolbar.tintColor, theme.accent)
         XCTAssertEqual(layoutManager.resolvedTheme, theme)
+        XCTAssertEqual(textView.backgroundColor, theme.editorBackground)
+        XCTAssertTrue(textView.isOpaque)
         XCTAssertEqual(textView.tintColor, theme.accent)
         XCTAssertEqual(
             textView.typingAttributes[.foregroundColor] as? UIColor,
@@ -927,6 +959,35 @@ private final class MutableBox<Value> {
 
 private final class AccessoryActionTarget: NSObject {
     @objc func performAction() {}
+}
+
+private func makeResolvedTheme(
+    keyboardAccessoryUnderlayBackground: UIColor,
+    accent: UIColor = .orange
+) -> ResolvedEditorTheme {
+    ResolvedEditorTheme(
+        editorBackground: .black,
+        keyboardAccessoryUnderlayBackground: keyboardAccessoryUnderlayBackground,
+        accent: accent,
+        primaryText: .label,
+        secondaryText: .secondaryLabel,
+        tertiaryText: .tertiaryLabel,
+        headingText: .label,
+        emphasisText: .label,
+        strikethroughText: .label,
+        syntaxMarkerText: .secondaryLabel,
+        subtleSyntaxMarkerText: .tertiaryLabel,
+        linkText: .link,
+        imageAltText: .secondaryLabel,
+        inlineCodeText: .label,
+        inlineCodeBackground: .secondarySystemFill,
+        codeBlockText: .label,
+        codeBlockBackground: .secondarySystemFill,
+        blockquoteText: .label,
+        blockquoteBackground: .secondarySystemFill,
+        blockquoteBar: .tertiaryLabel,
+        horizontalRuleText: .tertiaryLabel
+    )
 }
 
 private func XCTAssertClear(

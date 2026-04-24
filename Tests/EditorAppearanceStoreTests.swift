@@ -23,6 +23,8 @@ final class EditorAppearanceStoreTests: XCTestCase {
         store.setFontChoice(.menlo)
         store.setFontSize(19)
         store.setMarkdownSyntaxMode(.hiddenOutsideCurrentLine)
+        store.setSelectedThemeID(EditorTheme.monokai.id)
+        store.setMatchSystemChromeToTheme(false)
 
         let reloadedStore = EditorAppearanceStore(
             userDefaults: userDefaults,
@@ -35,7 +37,9 @@ final class EditorAppearanceStoreTests: XCTestCase {
             EditorAppearancePreferences(
                 fontChoice: .menlo,
                 fontSize: 19,
-                markdownSyntaxMode: .hiddenOutsideCurrentLine
+                markdownSyntaxMode: .hiddenOutsideCurrentLine,
+                selectedThemeID: EditorTheme.monokai.id,
+                matchSystemChromeToTheme: false
             )
         )
     }
@@ -83,6 +87,37 @@ final class EditorAppearanceStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testEditorAppearanceStoreResolvesSelectedThemeThroughThemeStore() async {
+        let customTheme = CustomTheme(
+            id: UUID(),
+            name: "Custom",
+            background: HexColor(hex: "#1E1E1E"),
+            text: HexColor(hex: "#D4D4D4"),
+            tint: HexColor(hex: "#569CD6"),
+            boldItalicMarker: HexColor(hex: "#72727F"),
+            inlineCode: HexColor(hex: "#CE9178"),
+            codeBackground: HexColor(hex: "#2D2D2D"),
+            horizontalRule: HexColor(hex: "#404040"),
+            checkboxUnchecked: HexColor(hex: "#F44747"),
+            checkboxChecked: HexColor(hex: "#6A9955")
+        )
+        let themeStore = ThemeStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "editor-theme-\(UUID().uuidString).json"))
+        let didAddTheme = await themeStore.add(customTheme)
+        XCTAssertTrue(didAddTheme)
+
+        let store = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 16,
+                selectedThemeID: customTheme.id.uuidString
+            )
+        )
+
+        XCTAssertEqual(store.selectedThemeLabel(using: themeStore), "Custom")
+        XCTAssertSameResolvedColor(store.resolvedTheme(using: themeStore).editorBackground, customTheme.background.uiColor)
+    }
+
+    @MainActor
     func testEditorFontResolverFallsBackToDefaultWhenSavedFontIsUnavailable() {
         let resolver = EditorFontResolver(isRuntimeFontAvailable: { _ in false })
 
@@ -122,7 +157,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
         let theme = store.resolvedTheme
 
         XCTAssertSameResolvedColor(theme.editorBackground, .systemBackground)
-        XCTAssertSameResolvedColor(theme.keyboardAccessoryUnderlayBackground, .clear)
+        XCTAssertSameResolvedColor(theme.keyboardAccessoryUnderlayBackground, .systemBackground)
         XCTAssertSameResolvedColor(theme.primaryText, .label)
         XCTAssertSameResolvedColor(theme.syntaxMarkerText, .secondaryLabel)
         XCTAssertSameResolvedColor(theme.subtleSyntaxMarkerText, .tertiaryLabel)

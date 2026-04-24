@@ -64,10 +64,26 @@ final class EditorAppearanceStore {
         effectivePreferences.markdownSyntaxMode
     }
 
+    var selectedThemeID: String {
+        effectivePreferences.selectedThemeID
+    }
+
+    var matchSystemChromeToTheme: Bool {
+        effectivePreferences.matchSystemChromeToTheme
+    }
+
     var resolvedTheme: ResolvedEditorTheme {
-        // Persisted appearance is still limited to font and syntax mode. Future custom themes and
-        // imported JSON palettes should resolve into this same runtime theme seam.
-        .default
+        // Compatibility path for tests and callers that do not own a ThemeStore.
+        // Runtime editor rendering should prefer resolvedTheme(using:).
+        EditorTheme.adaptive.resolvedEditorTheme
+    }
+
+    func resolvedTheme(using themeStore: ThemeStore) -> ResolvedEditorTheme {
+        themeStore.resolve(selectedThemeID).resolvedEditorTheme
+    }
+
+    func selectedThemeLabel(using themeStore: ThemeStore) -> String {
+        themeStore.resolve(selectedThemeID).label
     }
 
     var effectivePreferences: EditorAppearancePreferences {
@@ -103,6 +119,24 @@ final class EditorAppearanceStore {
         persist()
     }
 
+    func setSelectedThemeID(_ id: String) {
+        guard preferences.selectedThemeID != id else {
+            return
+        }
+
+        preferences.selectedThemeID = id
+        persist()
+    }
+
+    func setMatchSystemChromeToTheme(_ isEnabled: Bool) {
+        guard preferences.matchSystemChromeToTheme != isEnabled else {
+            return
+        }
+
+        preferences.matchSystemChromeToTheme = isEnabled
+        persist()
+    }
+
     private func persist() {
         guard let data = try? encoder.encode(effectivePreferences) else {
             return
@@ -133,7 +167,9 @@ final class EditorAppearanceStore {
         EditorAppearancePreferences(
             fontChoice: resolver.normalizedChoice(preferences.fontChoice),
             fontSize: clampFontSize(preferences.fontSize),
-            markdownSyntaxMode: preferences.markdownSyntaxMode
+            markdownSyntaxMode: preferences.markdownSyntaxMode,
+            selectedThemeID: preferences.selectedThemeID,
+            matchSystemChromeToTheme: preferences.matchSystemChromeToTheme
         )
     }
 

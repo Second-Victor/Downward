@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct SettingsHomeSummary: Equatable {
     let fontName: String
@@ -11,46 +12,13 @@ struct SettingsHomeSummary: Equatable {
     init(
         workspaceName: String?,
         editorAppearanceStore: EditorAppearanceStore,
-        selectedTheme: SettingsBuiltInTheme = .adaptive,
+        selectedTheme: EditorTheme = .adaptive,
         appearanceName: String = "System"
     ) {
         self.fontName = SettingsFontOption.displayName(for: editorAppearanceStore.selectedFontChoice)
-        self.themeName = selectedTheme.displayName
+        self.themeName = selectedTheme.label
         self.workspaceName = workspaceName ?? "None"
         self.appearanceName = appearanceName
-    }
-}
-
-enum SettingsBuiltInTheme: String, CaseIterable, Hashable {
-    case adaptive
-    case greyAdaptive
-    case monokai
-    case solarized
-
-    var displayName: String {
-        switch self {
-        case .adaptive:
-            "Adaptive"
-        case .greyAdaptive:
-            "Grey Adaptive"
-        case .monokai:
-            "Monokai"
-        case .solarized:
-            "Solarized"
-        }
-    }
-
-    var colors: [Color] {
-        switch self {
-        case .adaptive:
-            [.black, .white, .blue, .gray]
-        case .greyAdaptive:
-            [.black, .white, .gray, Color(uiColor: .systemGray4)]
-        case .monokai:
-            [Color(red: 0.12, green: 0.14, blue: 0.11), Color(red: 0.80, green: 0.92, blue: 0.93), .pink, .orange]
-        case .solarized:
-            [Color(red: 0.99, green: 0.96, blue: 0.89), Color(red: 0.03, green: 0.21, blue: 0.26), .orange, .teal]
-        }
     }
 }
 
@@ -59,10 +27,6 @@ enum SettingsPlaceholderFeature: Equatable {
     case largerHeadingText
     case colorFormattedTextToggle
     case tapToToggleTasks
-    case themeSelection
-    case matchMenusToTheme
-    case themeImport
-    case customThemePersistence
     case tipsPurchases
     case rateTheApp
     case legalLinks
@@ -76,6 +40,7 @@ struct SettingsScreen: View {
     let workspaceName: String?
     let accessState: WorkspaceAccessState
     let editorAppearanceStore: EditorAppearanceStore
+    let themeStore: ThemeStore
     let reconnectWorkspaceAction: () -> Void
     let clearWorkspaceAction: () -> Void
     var dismissAction: (() -> Void)? = nil
@@ -90,7 +55,6 @@ struct SettingsScreen: View {
         NavigationStack(path: $navigationPath) {
             SettingsHomePage(
                 summary: summary,
-                selectedTheme: .adaptive,
                 appColorScheme: appColorSchemeBinding,
                 accessState: accessState,
                 doneAction: done,
@@ -140,12 +104,29 @@ struct SettingsScreen: View {
             )
         case .theme:
             ThemeSettingsPage(
-                selectedTheme: .adaptive,
+                editorAppearanceStore: editorAppearanceStore,
+                themeStore: themeStore,
                 push: push,
                 backAction: pop
             )
         case .newTheme:
-            NewThemeSettingsPage(backAction: pop)
+            ThemeEditorSettingsPage(
+                editorAppearanceStore: editorAppearanceStore,
+                themeStore: themeStore,
+                editing: nil,
+                backAction: pop
+            )
+        case let .editTheme(id):
+            if let theme = themeStore.theme(withID: id) {
+                ThemeEditorSettingsPage(
+                    editorAppearanceStore: editorAppearanceStore,
+                    themeStore: themeStore,
+                    editing: theme,
+                    backAction: pop
+                )
+            } else {
+                ContentUnavailableView("Theme Missing", systemImage: "paintpalette", description: Text("The selected custom theme could not be found."))
+            }
         case .markdown:
             MarkdownSettingsPage(
                 editorAppearanceStore: editorAppearanceStore,
@@ -167,6 +148,7 @@ struct SettingsScreen: View {
         SettingsHomeSummary(
             workspaceName: workspaceName,
             editorAppearanceStore: editorAppearanceStore,
+            selectedTheme: themeStore.resolve(editorAppearanceStore.selectedThemeID),
             appearanceName: appColorSchemeBinding.wrappedValue.label
         )
     }
@@ -231,6 +213,7 @@ private enum SettingsPage: Hashable {
     case editor
     case theme
     case newTheme
+    case editTheme(UUID)
     case markdown
     case tips
     case information
@@ -312,7 +295,6 @@ private struct SettingsFontOption: Identifiable, Equatable {
 
 private struct SettingsHomePage: View {
     let summary: SettingsHomeSummary
-    let selectedTheme: SettingsBuiltInTheme
     @Binding var appColorScheme: AppColorScheme
     let accessState: WorkspaceAccessState
     let doneAction: () -> Void
@@ -659,158 +641,523 @@ private struct SettingsFontRow: View {
 }
 
 private struct ThemeSettingsPage: View {
-    let selectedTheme: SettingsBuiltInTheme
+    let editorAppearanceStore: EditorAppearanceStore
+    let themeStore: ThemeStore
     let push: (SettingsPage) -> Void
     let backAction: () -> Void
 
-    @State private var matchMenusToTheme = true
+    @State private var isImportingTheme = false
 
     var body: some View {
-        SettingsShell {
-            SettingsPageHeader(title: "Theme", backAction: backAction)
-
-            SettingsCard {
-                ForEach(SettingsBuiltInTheme.allCases, id: \.self) { theme in
-                    SettingsThemeRow(
+        Form {
+            Section {
+                ForEach(EditorTheme.builtIn) { theme in
+                    ThemeSelectionRow(
                         theme: theme,
-                        isSelected: theme == selectedTheme,
-                        isEnabled: false
-                    )
-
-                    if theme != SettingsBuiltInTheme.allCases.last {
-                        SettingsDivider(leadingInset: 118)
+                        isSelected: editorAppearanceStore.selectedThemeID == theme.id
+                    ) {
+                        editorAppearanceStore.setSelectedThemeID(theme.id)
                     }
+                }
+            } footer: {
+                Text("Follows the system appearance automatically.")
+                    .settingsFooterStyle()
+            }
+
+            Section {
+                ForEach(themeStore.themes) { customTheme in
+                    ThemeSelectionRow(
+                        theme: EditorTheme(from: customTheme),
+                        isSelected: editorAppearanceStore.selectedThemeID == customTheme.id.uuidString,
+                        onEdit: { push(.editTheme(customTheme.id)) }
+                    ) {
+                        editorAppearanceStore.setSelectedThemeID(customTheme.id.uuidString)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            Task {
+                                let wasSelected = editorAppearanceStore.selectedThemeID == customTheme.id.uuidString
+                                let didDelete = await themeStore.delete(id: customTheme.id)
+                                if didDelete, wasSelected {
+                                    editorAppearanceStore.setSelectedThemeID(EditorTheme.adaptive.id)
+                                }
+                            }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                    .swipeActions(edge: .leading) {
+                        Button {
+                            push(.editTheme(customTheme.id))
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+                        .tint(.orange)
+                    }
+                }
+
+                Button {
+                    push(.newTheme)
+                } label: {
+                    SettingsHomeLabel(title: "New Theme", systemName: "plus.circle.fill", colors: [.green])
+                }
+
+                Button {
+                    isImportingTheme = true
+                } label: {
+                    SettingsHomeLabel(title: "Import Theme", systemName: "square.and.arrow.down.fill", colors: [.blue])
+                }
+            } header: {
+                Text("Custom")
+            } footer: {
+                Text("Create custom palettes, import them from JSON, or export a theme to share it.")
+                    .settingsFooterStyle()
+            }
+
+            Section {
+                Toggle(
+                    "Match Menus to Theme",
+                    isOn: Binding(
+                        get: { editorAppearanceStore.matchSystemChromeToTheme },
+                        set: { editorAppearanceStore.setMatchSystemChromeToTheme($0) }
+                    )
+                )
+            } footer: {
+                Text("When enabled, editor menus and keyboard etc, will follow the current theme instead of the app appearance.")
+                    .settingsFooterStyle()
+            }
+        }
+        .navigationTitle("Theme")
+        .fontDesign(.rounded)
+        .fileImporter(
+            isPresented: $isImportingTheme,
+            allowedContentTypes: [.json]
+        ) { result in
+            Task {
+                await handleImport(result: result)
+            }
+        }
+        .alert("Theme Error", isPresented: themeErrorBinding) {
+            Button("OK") { themeStore.lastError = nil }
+        } message: {
+            if let error = themeStore.lastError {
+                Text(error)
+            }
+        }
+    }
+
+    private var themeErrorBinding: Binding<Bool> {
+        Binding(
+            get: { themeStore.lastError != nil },
+            set: { isPresented in
+                if isPresented == false {
+                    themeStore.lastError = nil
+                }
+            }
+        )
+    }
+
+    private func handleImport(result: Result<URL, Error>) async {
+        do {
+            let url = try result.get()
+            let accessedSecurityScope = url.startAccessingSecurityScopedResource()
+            defer {
+                if accessedSecurityScope {
+                    url.stopAccessingSecurityScopedResource()
                 }
             }
 
-            SettingsHelperText("Follows the system appearance automatically.")
+            let fileSize = try await Task.detached(priority: .userInitiated) {
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                return attributes[.size] as? Int ?? 0
+            }.value
 
-            Text("Custom")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 6)
-                .padding(.horizontal, 28)
-
-            SettingsCard {
-                SettingsNavigationRow(
-                    icon: .symbol("plus.circle.fill"),
-                    iconTint: .green.opacity(0.45),
-                    title: "New Theme",
-                    value: nil,
-                    action: { push(.newTheme) }
-                )
-                SettingsDivider()
-                SettingsNavigationRow(
-                    icon: .symbol("square.and.arrow.down.fill"),
-                    iconTint: .blue.opacity(0.35),
-                    title: "Import Theme",
-                    value: nil,
-                    isEnabled: false,
-                    action: {}
-                )
-                .accessibilityHint("JSON theme import is not implemented yet.")
+            guard fileSize <= 5 * 1024 * 1024 else {
+                themeStore.lastError = "The theme file is too large to import (maximum 5 MB)."
+                return
             }
 
-            SettingsHelperText("Create custom palettes, import them from JSON, or export a theme to share it.")
-
-            SettingsCard {
-                SettingsToggleRow(
-                    title: "Match Menus to Theme",
-                    isOn: $matchMenusToTheme,
-                    isEnabled: false,
-                    accessibilityHint: "The editor chrome currently follows the resolved theme; this user preference is not implemented yet."
-                )
+            let data = try await Task.detached(priority: .userInitiated) {
+                try Data(contentsOf: url)
+            }.value
+            let document = try ThemeExchangeDocument(data: data)
+            _ = await themeStore.importThemes(document.themes)
+        } catch {
+            guard isUserCancelled(error) == false else {
+                return
             }
+            themeStore.lastError = "Could not import the theme JSON: \(error.localizedDescription)"
+        }
+    }
 
-            SettingsHelperText(
-                "When enabled, editor menus and keyboard etc, will follow the current theme instead of the app appearance."
-            )
+    private func isUserCancelled(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSCocoaErrorDomain && nsError.code == CocoaError.userCancelled.rawValue
+    }
+}
+
+private struct ThemeSelectionRow: View {
+    let theme: EditorTheme
+    let isSelected: Bool
+    var onEdit: (() -> Void)?
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: action) {
+                HStack {
+                    ThemePreviewSwatch(theme: theme)
+                    Text(theme.label)
+                    Spacer()
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(.tint)
+                            .bold()
+                    }
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+
+            if let onEdit {
+                Button("Edit", systemImage: "slider.horizontal.3", action: onEdit)
+                    .labelStyle(.iconOnly)
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, height: 32)
+                    .contentShape(.rect)
+                    .buttonStyle(.plain)
+            }
         }
     }
 }
 
-private struct NewThemeSettingsPage: View {
-    let backAction: () -> Void
-
-    @State private var themeName = ""
-    @State private var background = Color(red: 0.12, green: 0.12, blue: 0.12)
-    @State private var text = Color(red: 0.82, green: 0.82, blue: 0.82)
-    @State private var accent = Color(red: 0.41, green: 0.62, blue: 0.83)
-    @State private var marker = Color(red: 0.48, green: 0.48, blue: 0.54)
-    @State private var strike = Color(red: 0.50, green: 0.50, blue: 0.50)
-    @State private var code = Color(red: 0.74, green: 0.54, blue: 0.44)
-    @State private var isShowingPersistencePlaceholder = false
+private struct ThemePreviewSwatch: View {
+    let theme: EditorTheme
 
     var body: some View {
-        SettingsShell {
-            SettingsPageHeader(
-                title: "New Theme",
-                titlePlacement: .center,
-                backAction: backAction,
-                trailing: {
-                    Button("Save") {
-                        isShowingPersistencePlaceholder = true
-                    }
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(isThemeNameValid ? .primary : .secondary)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 12)
-                    .background(.regularMaterial, in: Capsule(style: .continuous))
-                    .disabled(isThemeNameValid == false)
-                }
-            )
-
-            SettingsMarkdownPreview(
-                background: background,
-                text: text,
-                accent: accent,
-                marker: marker,
-                strike: strike,
-                code: code
-            )
-
-            Text("Name")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 8)
-                .padding(.horizontal, 28)
-
-            TextField("Theme Name", text: $themeName)
-                .font(.body)
-                .textInputAutocapitalization(.words)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule(style: .continuous))
-
-            Text("Colours")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 22)
-                .padding(.horizontal, 28)
-
-            SettingsCard {
-                SettingsColourRow(title: "Background", color: $background)
-                SettingsDivider()
-                SettingsColourRow(title: "Text", color: $text)
-                SettingsDivider()
-                SettingsColourRow(title: "Accent", color: $accent)
-                SettingsDivider()
-                SettingsColourRow(title: "Bold / Italic Markers", color: $marker)
-                SettingsDivider()
-                SettingsColourRow(title: "Strikethrough Text", color: $strike)
-                SettingsDivider()
-                SettingsColourRow(title: "Code", color: $code)
-            }
+        HStack(spacing: 0) {
+            Color(uiColor: theme.background)
+            Color(uiColor: theme.text)
+            Color(uiColor: theme.tint)
+            Color(uiColor: theme.boldItalicMarker)
+            Color(uiColor: theme.horizontalRule)
         }
-        .alert("Custom Themes", isPresented: $isShowingPersistencePlaceholder) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("The custom theme editor shell is ready, but custom theme persistence is future work.")
+        .frame(width: 60, height: 28)
+        .clipShape(.rect(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(.quaternary, lineWidth: 1)
+        )
+    }
+}
+
+private struct ThemeEditorSettingsPage: View {
+    let editorAppearanceStore: EditorAppearanceStore
+    let themeStore: ThemeStore
+    let editing: CustomTheme?
+    let backAction: () -> Void
+
+    @State private var name: String
+    @State private var background: Color
+    @State private var text: Color
+    @State private var tint: Color
+    @State private var boldItalicMarker: Color
+    @State private var inlineCode: Color
+    @State private var codeBackground: Color
+    @State private var horizontalRule: Color
+    @State private var checkboxUnchecked: Color
+    @State private var checkboxChecked: Color
+    @State private var editingColor: ThemeColorProperty?
+    @State private var isSaving = false
+    @State private var exportDocument: ThemeExchangeDocument?
+    @State private var exportFilename = "Theme.json"
+
+    init(
+        editorAppearanceStore: EditorAppearanceStore,
+        themeStore: ThemeStore,
+        editing: CustomTheme? = nil,
+        backAction: @escaping () -> Void
+    ) {
+        self.editorAppearanceStore = editorAppearanceStore
+        self.themeStore = themeStore
+        self.editing = editing
+        self.backAction = backAction
+
+        if let editing {
+            _name = State(initialValue: editing.name)
+            _background = State(initialValue: Color(uiColor: editing.background.uiColor))
+            _text = State(initialValue: Color(uiColor: editing.text.uiColor))
+            _tint = State(initialValue: Color(uiColor: editing.tint.uiColor))
+            _boldItalicMarker = State(initialValue: Color(uiColor: editing.boldItalicMarker.uiColor))
+            _inlineCode = State(initialValue: Color(uiColor: editing.inlineCode.uiColor))
+            _codeBackground = State(initialValue: Color(uiColor: editing.codeBackground.uiColor))
+            _horizontalRule = State(initialValue: Color(uiColor: editing.horizontalRule.uiColor))
+            _checkboxUnchecked = State(initialValue: Color(uiColor: editing.checkboxUnchecked.uiColor))
+            _checkboxChecked = State(initialValue: Color(uiColor: editing.checkboxChecked.uiColor))
+        } else {
+            _name = State(initialValue: "")
+            _background = State(initialValue: Color(uiColor: UIColor(red: 0.118, green: 0.118, blue: 0.118, alpha: 1)))
+            _text = State(initialValue: Color(uiColor: UIColor(red: 0.831, green: 0.831, blue: 0.831, alpha: 1)))
+            _tint = State(initialValue: Color(uiColor: UIColor(red: 0.337, green: 0.612, blue: 0.839, alpha: 1)))
+            _boldItalicMarker = State(initialValue: Color(uiColor: UIColor(red: 0.45, green: 0.45, blue: 0.50, alpha: 1)))
+            _inlineCode = State(initialValue: Color(uiColor: UIColor(red: 0.808, green: 0.569, blue: 0.471, alpha: 1)))
+            _codeBackground = State(initialValue: Color(uiColor: UIColor(red: 0.176, green: 0.176, blue: 0.176, alpha: 1)))
+            _horizontalRule = State(initialValue: Color(uiColor: UIColor(red: 0.251, green: 0.251, blue: 0.251, alpha: 1)))
+            _checkboxUnchecked = State(initialValue: Color(uiColor: UIColor(red: 0.957, green: 0.278, blue: 0.278, alpha: 1)))
+            _checkboxChecked = State(initialValue: Color(uiColor: UIColor(red: 0.416, green: 0.600, blue: 0.333, alpha: 1)))
         }
     }
 
-    private var isThemeNameValid: Bool {
-        themeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    var body: some View {
+        List {
+            Section("Name") {
+                TextField("Theme Name", text: $name)
+            }
+
+            Section("Colours") {
+                if hasLowContrast {
+                    Label {
+                        Text("Text and background contrast is \(textBackgroundContrastRatio, specifier: "%.1f"):1 - WCAG AA requires 4.5:1. The editor may be difficult to read.")
+                            .font(.footnote)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.yellow)
+                    }
+                    .listRowBackground(Color.yellow.opacity(0.12))
+                }
+
+                ForEach(ThemeColorProperty.allCases) { property in
+                    Button {
+                        editingColor = property
+                    } label: {
+                        HStack {
+                            Text(property.title)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Circle()
+                                .fill(colorValue(for: property))
+                                .frame(width: 28, height: 28)
+                                .overlay(
+                                    Circle().strokeBorder(
+                                        Color(uiColor: UIColor(colorValue(for: property)).darkerShade()),
+                                        lineWidth: 2
+                                    )
+                                )
+                        }
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            SettingsMarkdownPreview(
+                background: background,
+                text: text,
+                accent: tint,
+                marker: boldItalicMarker,
+                strike: horizontalRule,
+                code: inlineCode
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+            .background(.ultraThinMaterial)
+        }
+        .navigationTitle(editing == nil ? "New Theme" : "Edit Theme")
+        .navigationBarTitleDisplayMode(.inline)
+        .fontDesign(.rounded)
+        .toolbar {
+            if editing != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Export", systemImage: "square.and.arrow.up") {
+                        exportTheme()
+                    }
+                }
+            }
+
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") {
+                    Task {
+                        await saveTheme()
+                    }
+                }
+                .disabled(isSaveDisabled)
+            }
+        }
+        .sheet(item: $editingColor) { property in
+            PaletteColorPicker(
+                title: property.title,
+                selection: colorBinding(for: property)
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
+        .fileExporter(
+            isPresented: exportPresentationBinding,
+            document: exportDocument,
+            contentType: .json,
+            defaultFilename: exportFilename
+        ) { result in
+            if case let .failure(error) = result, isUserCancelled(error) == false {
+                themeStore.lastError = "Could not export the theme JSON: \(error.localizedDescription)"
+            }
+            exportDocument = nil
+        }
+        .alert("Theme Error", isPresented: themeErrorBinding) {
+            Button("OK") { themeStore.lastError = nil }
+        } message: {
+            if let error = themeStore.lastError {
+                Text(error)
+            }
+        }
+    }
+
+    private var isSaveDisabled: Bool {
+        isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var textBackgroundContrastRatio: Double {
+        UIColor(text).wcagContrastRatio(against: UIColor(background))
+    }
+
+    private var hasLowContrast: Bool {
+        textBackgroundContrastRatio < 4.5
+    }
+
+    private var exportPresentationBinding: Binding<Bool> {
+        Binding(
+            get: { exportDocument != nil },
+            set: { isPresented in
+                if isPresented == false {
+                    exportDocument = nil
+                }
+            }
+        )
+    }
+
+    private var themeErrorBinding: Binding<Bool> {
+        Binding(
+            get: { themeStore.lastError != nil },
+            set: { isPresented in
+                if isPresented == false {
+                    themeStore.lastError = nil
+                }
+            }
+        )
+    }
+
+    private func colorValue(for property: ThemeColorProperty) -> Color {
+        switch property {
+        case .background: background
+        case .text: text
+        case .tint: tint
+        case .boldItalicMarker: boldItalicMarker
+        case .inlineCode: inlineCode
+        case .codeBackground: codeBackground
+        case .horizontalRule: horizontalRule
+        case .checkboxUnchecked: checkboxUnchecked
+        case .checkboxChecked: checkboxChecked
+        }
+    }
+
+    private func colorBinding(for property: ThemeColorProperty) -> Binding<Color> {
+        switch property {
+        case .background: $background
+        case .text: $text
+        case .tint: $tint
+        case .boldItalicMarker: $boldItalicMarker
+        case .inlineCode: $inlineCode
+        case .codeBackground: $codeBackground
+        case .horizontalRule: $horizontalRule
+        case .checkboxUnchecked: $checkboxUnchecked
+        case .checkboxChecked: $checkboxChecked
+        }
+    }
+
+    private func saveTheme() async {
+        guard isSaving == false else { return }
+        isSaving = true
+        defer { isSaving = false }
+
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let theme = makeTheme(id: editing?.id ?? UUID(), name: trimmedName)
+
+        if editing != nil {
+            guard await themeStore.update(theme) else { return }
+        } else {
+            guard await themeStore.add(theme) else { return }
+            editorAppearanceStore.setSelectedThemeID(theme.id.uuidString)
+        }
+
+        backAction()
+    }
+
+    private func makeTheme(id: UUID, name: String? = nil) -> CustomTheme {
+        CustomTheme(
+            id: id,
+            name: name ?? self.name.trimmingCharacters(in: .whitespacesAndNewlines),
+            background: HexColor(UIColor(background)),
+            text: HexColor(UIColor(text)),
+            tint: HexColor(UIColor(tint)),
+            boldItalicMarker: HexColor(UIColor(boldItalicMarker)),
+            inlineCode: HexColor(UIColor(inlineCode)),
+            codeBackground: HexColor(UIColor(codeBackground)),
+            horizontalRule: HexColor(UIColor(horizontalRule)),
+            checkboxUnchecked: HexColor(UIColor(checkboxUnchecked)),
+            checkboxChecked: HexColor(UIColor(checkboxChecked))
+        )
+    }
+
+    private func exportTheme() {
+        let theme = makeTheme(id: editing?.id ?? UUID())
+        exportDocument = ThemeExchangeDocument(theme: theme)
+        exportFilename = sanitizedExportFilename(for: theme.name)
+    }
+
+    private func sanitizedExportFilename(for themeName: String) -> String {
+        let trimmed = themeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let invalidCharacters = CharacterSet(charactersIn: "/\\?%*|\"<>:")
+        let cleaned = trimmed
+            .components(separatedBy: invalidCharacters)
+            .joined(separator: "-")
+            .replacing(" ", with: "-")
+        let filename = cleaned.isEmpty ? "Theme" : cleaned
+        return "\(filename).json"
+    }
+
+    private func isUserCancelled(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSCocoaErrorDomain && nsError.code == CocoaError.userCancelled.rawValue
+    }
+}
+
+private enum ThemeColorProperty: String, Identifiable, CaseIterable {
+    case background
+    case text
+    case tint
+    case boldItalicMarker
+    case inlineCode
+    case codeBackground
+    case horizontalRule
+    case checkboxUnchecked
+    case checkboxChecked
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .background: "Background"
+        case .text: "Text"
+        case .tint: "Accent"
+        case .boldItalicMarker: "Bold / Italic Markers"
+        case .inlineCode: "Code"
+        case .codeBackground: "Code Background"
+        case .horizontalRule: "Horizontal Rule"
+        case .checkboxUnchecked: "Unchecked Task"
+        case .checkboxChecked: "Checked Task"
+        }
     }
 }
 
@@ -1358,56 +1705,6 @@ private struct SettingsHelperText: View {
     }
 }
 
-private struct SettingsThemeRow: View {
-    let theme: SettingsBuiltInTheme
-    let isSelected: Bool
-    let isEnabled: Bool
-
-    var body: some View {
-        HStack(spacing: 20) {
-            SettingsPalettePreview(colors: theme.colors)
-
-            Text(theme.displayName)
-                .font(.body)
-                .foregroundStyle(.primary)
-
-            Spacer(minLength: 12)
-
-            if isSelected {
-                Image(systemName: "checkmark")
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(.blue)
-            }
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-        .opacity(isEnabled ? 1 : 0.75)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint(isEnabled ? "" : "Theme switching is not implemented yet.")
-    }
-}
-
-private struct SettingsPalettePreview: View {
-    let colors: [Color]
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(colors.enumerated()), id: \.offset) { _, color in
-                color
-                    .frame(width: 15, height: 28)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.45), lineWidth: 1)
-        )
-        .frame(width: 60, height: 28, alignment: .leading)
-        .accessibilityHidden(true)
-    }
-}
-
 private struct SettingsMarkdownPreview: View {
     let background: Color
     let text: Color
@@ -1464,52 +1761,6 @@ private struct SettingsMarkdownPreview: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .padding(.top, 4)
-    }
-}
-
-private struct SettingsColourRow: View {
-    let title: String
-    @Binding var color: Color
-    @State private var isShowingPicker = false
-
-    var body: some View {
-        Button {
-            isShowingPicker = true
-        } label: {
-            HStack {
-                Text(title)
-                    .font(.body)
-                    .foregroundStyle(.blue)
-
-                Spacer(minLength: 12)
-
-                Circle()
-                    .fill(color)
-                    .frame(width: 30, height: 30)
-                    .overlay(Circle().stroke(.black.opacity(0.18), lineWidth: 2))
-                    .accessibilityHidden(true)
-            }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-        }
-        .buttonStyle(.plain)
-        .sheet(isPresented: $isShowingPicker) {
-            NavigationStack {
-                ColorPicker(title, selection: $color, supportsOpacity: false)
-                    .font(.body)
-                    .padding(24)
-                    .navigationTitle(title)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Done") {
-                                isShowingPicker = false
-                            }
-                        }
-                    }
-            }
-            .presentationDetents([.medium])
-        }
     }
 }
 
@@ -1581,6 +1832,11 @@ private struct AppIconPlaceholder: View {
     }
 }
 
+@MainActor
+private func makePreviewThemeStore() -> ThemeStore {
+    ThemeStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-themes-\(UUID().uuidString).json"))
+}
+
 #Preview("Settings Home - Workspace Loaded") {
     SettingsScreen(
         workspaceName: PreviewSampleData.nestedWorkspace.displayName,
@@ -1592,6 +1848,7 @@ private struct AppIconPlaceholder: View {
                 markdownSyntaxMode: .visible
             )
         ),
+        themeStore: makePreviewThemeStore(),
         reconnectWorkspaceAction: {},
         clearWorkspaceAction: {}
     )
@@ -1602,6 +1859,7 @@ private struct AppIconPlaceholder: View {
         workspaceName: nil,
         accessState: .noneSelected,
         editorAppearanceStore: EditorAppearanceStore(),
+        themeStore: makePreviewThemeStore(),
         reconnectWorkspaceAction: {},
         clearWorkspaceAction: {}
     )
@@ -1618,6 +1876,7 @@ private struct AppIconPlaceholder: View {
                 markdownSyntaxMode: .hiddenOutsideCurrentLine
             )
         ),
+        themeStore: makePreviewThemeStore(),
         reconnectWorkspaceAction: {},
         clearWorkspaceAction: {}
     )
@@ -1638,14 +1897,20 @@ private struct AppIconPlaceholder: View {
 
 #Preview("Theme Settings") {
     ThemeSettingsPage(
-        selectedTheme: .adaptive,
+        editorAppearanceStore: EditorAppearanceStore(),
+        themeStore: makePreviewThemeStore(),
         push: { _ in },
         backAction: {}
     )
 }
 
 #Preview("New Theme") {
-    NewThemeSettingsPage(backAction: {})
+    ThemeEditorSettingsPage(
+        editorAppearanceStore: EditorAppearanceStore(),
+        themeStore: makePreviewThemeStore(),
+        editing: nil,
+        backAction: {}
+    )
 }
 
 #Preview("Markdown Settings") {
@@ -1677,6 +1942,7 @@ private struct AppIconPlaceholder: View {
         workspaceName: PreviewSampleData.nestedWorkspace.displayName,
         accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
         editorAppearanceStore: EditorAppearanceStore(),
+        themeStore: makePreviewThemeStore(),
         reconnectWorkspaceAction: {},
         clearWorkspaceAction: {},
         dismissAction: {}
