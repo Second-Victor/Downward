@@ -1,4 +1,76 @@
 import SwiftUI
+import UIKit
+
+struct SettingsHomeSummary: Equatable {
+    let fontName: String
+    let themeName: String
+    let workspaceName: String
+    let appearanceName: String
+
+    @MainActor
+    init(
+        workspaceName: String?,
+        editorAppearanceStore: EditorAppearanceStore,
+        selectedTheme: SettingsBuiltInTheme = .adaptive,
+        appearanceName: String = "System"
+    ) {
+        self.fontName = SettingsFontOption.displayName(for: editorAppearanceStore.selectedFontChoice)
+        self.themeName = selectedTheme.displayName
+        self.workspaceName = workspaceName ?? "None"
+        self.appearanceName = appearanceName
+    }
+}
+
+enum SettingsBuiltInTheme: String, CaseIterable, Hashable {
+    case adaptive
+    case greyAdaptive
+    case monokai
+    case solarized
+
+    var displayName: String {
+        switch self {
+        case .adaptive:
+            "Adaptive"
+        case .greyAdaptive:
+            "Grey Adaptive"
+        case .monokai:
+            "Monokai"
+        case .solarized:
+            "Solarized"
+        }
+    }
+
+    var colors: [Color] {
+        switch self {
+        case .adaptive:
+            [.black, .white, .blue, .gray]
+        case .greyAdaptive:
+            [.black, .white, .gray, Color(uiColor: .systemGray4)]
+        case .monokai:
+            [Color(red: 0.12, green: 0.14, blue: 0.11), Color(red: 0.80, green: 0.92, blue: 0.93), .pink, .orange]
+        case .solarized:
+            [Color(red: 0.99, green: 0.96, blue: 0.89), Color(red: 0.03, green: 0.21, blue: 0.26), .orange, .teal]
+        }
+    }
+}
+
+enum SettingsPlaceholderFeature: Equatable {
+    case lineNumbers
+    case largerHeadingText
+    case colorFormattedTextToggle
+    case tapToToggleTasks
+    case themeSelection
+    case matchMenusToTheme
+    case themeImport
+    case customThemePersistence
+    case tipsPurchases
+    case rateTheApp
+    case legalLinks
+
+    nonisolated var isImplemented: Bool {
+        false
+    }
+}
 
 struct SettingsScreen: View {
     let workspaceName: String?
@@ -8,187 +80,41 @@ struct SettingsScreen: View {
     let clearWorkspaceAction: () -> Void
     var dismissAction: (() -> Void)? = nil
 
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage(AppColorScheme.storageKey) private var appColorSchemeRaw = AppColorScheme.system.rawValue
+    @State private var navigationPath: [SettingsPage] = []
+    @State private var isShowingWorkspaceActions = false
     @State private var isShowingClearConfirmation = false
 
     var body: some View {
-        ZStack {
-            Color(uiColor: .systemGroupedBackground)
-                .ignoresSafeArea()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    SettingsWorkspaceSummaryCard(
-                        workspaceName: workspaceName,
-                        accessDescription: accessDescription,
-                        helperText: accessibilityAccessHint,
-                        isWorkspaceReady: isWorkspaceReady
-                    )
-
-                    SettingsSectionBlock(
-                        title: "Editor",
-                        detail: "Live editor preferences that apply immediately to the current document."
-                    ) {
-                        SettingsCard {
-                            VStack(spacing: 0) {
-                                SettingsCardRow {
-                                    LabeledContent {
-                                        Picker("Font Family", selection: fontChoiceBinding) {
-                                            ForEach(editorAppearanceStore.availableFontChoices, id: \.self) { choice in
-                                                Text(choice.displayName).tag(choice)
-                                            }
-                                        }
-                                        .labelsHidden()
-                                        .pickerStyle(.menu)
-                                    } label: {
-                                        SettingsRowLabel(
-                                            title: "Font Family",
-                                            caption: "Used for the live editor and placeholder preview."
-                                        )
-                                    }
-                                }
-
-                                SettingsCardDivider()
-
-                                SettingsCardRow {
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                                            SettingsRowLabel(
-                                                title: "Font Size",
-                                                caption: "Applies immediately without reopening the document."
-                                            )
-                                            Spacer(minLength: 16)
-                                            Text(fontSizeText)
-                                                .font(.subheadline.weight(.semibold))
-                                                .foregroundStyle(.secondary)
-                                                .monospacedDigit()
-                                        }
-
-                                        Stepper(value: fontSizeBinding, in: 12...24, step: 1) {
-                                            Text("Font Size")
-                                                .font(.subheadline)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .labelsHidden()
-                                    }
-                                }
-                            }
-                        }
-
-                        SettingsEditorPreviewCard(editorAppearanceStore: editorAppearanceStore)
-                    }
-
-                    SettingsSectionBlock(
-                        title: "Markdown",
-                        detail: "Controls how markdown syntax appears while you edit."
-                    ) {
-                        SettingsCard {
-                            VStack(spacing: 0) {
-                                SettingsCardRow {
-                                    LabeledContent {
-                                        Picker("Markdown Display", selection: markdownSyntaxModeBinding) {
-                                            ForEach(MarkdownSyntaxMode.allCases, id: \.self) { mode in
-                                                Text(mode.displayName).tag(mode)
-                                            }
-                                        }
-                                        .labelsHidden()
-                                        .pickerStyle(.menu)
-                                    } label: {
-                                        SettingsRowLabel(
-                                            title: "Markdown Display",
-                                            caption: editorAppearanceStore.markdownSyntaxMode.previewDescription
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    SettingsSectionBlock(
-                        title: "Workspace",
-                        detail: "Connection status and workspace maintenance for the currently selected folder."
-                    ) {
-                        SettingsCard {
-                            VStack(spacing: 0) {
-                                SettingsCardRow {
-                                    LabeledContent("Name", value: workspaceName ?? "None")
-                                        .foregroundStyle(workspaceName == nil ? .secondary : .primary)
-                                }
-
-                                SettingsCardDivider()
-
-                                SettingsCardRow {
-                                    LabeledContent("Access", value: accessDescription)
-                                        .accessibilityHint(accessibilityAccessHint)
-                                }
-                            }
-                        }
-
-                        SettingsCard {
-                            VStack(spacing: 0) {
-                                Button(action: reconnectWorkspaceAction) {
-                                    SettingsActionRow(
-                                        title: reconnectButtonTitle,
-                                        caption: reconnectHint,
-                                        systemImage: accessState == .noneSelected ? "folder.badge.plus" : "arrow.clockwise"
-                                    )
-                                }
-                                .buttonStyle(.plain)
-
-                                SettingsCardDivider()
-
-                                Button(role: .destructive) {
-                                    isShowingClearConfirmation = true
-                                } label: {
-                                    SettingsActionRow(
-                                        title: "Clear Workspace",
-                                        caption: "Removes the saved workspace and closes any open document.",
-                                        systemImage: "trash"
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(canClearWorkspace == false)
-                            }
-                        }
-                    }
-
-                    SettingsSectionBlock(
-                        title: "Coming Next",
-                        detail: "Future settings are shown here intentionally so the current surface stays truthful."
-                    ) {
-                        SettingsCard {
-                            VStack(spacing: 0) {
-                                SettingsPlaceholderRow(
-                                    title: "Theme Management",
-                                    caption: "Custom editor themes and live color editing will land here later.",
-                                    systemImage: "paintpalette"
-                                )
-
-                                SettingsCardDivider()
-
-                                SettingsPlaceholderRow(
-                                    title: "Theme Import / Export",
-                                    caption: "JSON theme sharing is planned, but not shipping yet.",
-                                    systemImage: "square.and.arrow.down"
-                                )
-                            }
-                        }
-                    }
-                }
-                .frame(maxWidth: contentWidth, alignment: .leading)
-                .padding(.horizontal, horizontalPadding)
-                .padding(.top, 24)
-                .padding(.bottom, 32)
+        NavigationStack(path: $navigationPath) {
+            SettingsHomePage(
+                summary: summary,
+                selectedTheme: .adaptive,
+                appColorScheme: appColorSchemeBinding,
+                accessState: accessState,
+                doneAction: done,
+                workspaceAction: { isShowingWorkspaceActions = true }
+            )
+            .navigationDestination(for: SettingsPage.self) { page in
+                destination(for: page)
             }
         }
-        .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(dismissAction == nil ? .large : .inline)
-        .toolbar {
-            if let dismissAction {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done", action: dismissAction)
-                }
+        .confirmationDialog(
+            "Workspace",
+            isPresented: $isShowingWorkspaceActions,
+            titleVisibility: .visible
+        ) {
+            Button(reconnectButtonTitle, action: reconnectWorkspaceAction)
+
+            Button("Clear Workspace", role: .destructive) {
+                isShowingClearConfirmation = true
             }
+            .disabled(canClearWorkspace == false)
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(workspaceActionMessage)
         }
         .confirmationDialog(
             "Clear Workspace",
@@ -202,50 +128,54 @@ struct SettingsScreen: View {
         }
     }
 
-    private var contentWidth: CGFloat? {
-        horizontalSizeClass == .regular ? 720 : nil
-    }
-
-    private var horizontalPadding: CGFloat {
-        horizontalSizeClass == .regular ? 28 : 20
-    }
-
-    private var fontChoiceBinding: Binding<EditorFontChoice> {
-        Binding(
-            get: { editorAppearanceStore.selectedFontChoice },
-            set: { editorAppearanceStore.setFontChoice($0) }
-        )
-    }
-
-    private var fontSizeBinding: Binding<Double> {
-        Binding(
-            get: { editorAppearanceStore.fontSize },
-            set: { editorAppearanceStore.setFontSize($0) }
-        )
-    }
-
-    private var markdownSyntaxModeBinding: Binding<MarkdownSyntaxMode> {
-        Binding(
-            get: { editorAppearanceStore.markdownSyntaxMode },
-            set: { editorAppearanceStore.setMarkdownSyntaxMode($0) }
-        )
-    }
-
-    private var fontSizeText: String {
-        "\(Int(editorAppearanceStore.fontSize)) pt"
-    }
-
-    private var accessDescription: String {
-        switch accessState {
-        case .noneSelected:
-            "None Selected"
-        case .restorable:
-            "Restorable"
-        case .ready:
-            "Ready"
-        case .invalid:
-            "Needs Reconnect"
+    @ViewBuilder
+    private func destination(for page: SettingsPage) -> some View {
+        switch page {
+        case .home:
+            EmptyView()
+        case .editor:
+            EditorSettingsPage(
+                editorAppearanceStore: editorAppearanceStore,
+                backAction: pop
+            )
+        case .theme:
+            ThemeSettingsPage(
+                selectedTheme: .adaptive,
+                push: push,
+                backAction: pop
+            )
+        case .newTheme:
+            NewThemeSettingsPage(backAction: pop)
+        case .markdown:
+            MarkdownSettingsPage(
+                editorAppearanceStore: editorAppearanceStore,
+                backAction: pop
+            )
+        case .tips:
+            TipsSettingsPage(backAction: pop)
+        case .information:
+            InformationSettingsPage(
+                push: push,
+                backAction: pop
+            )
+        case .about:
+            AboutSettingsPage(backAction: pop)
         }
+    }
+
+    private var summary: SettingsHomeSummary {
+        SettingsHomeSummary(
+            workspaceName: workspaceName,
+            editorAppearanceStore: editorAppearanceStore,
+            appearanceName: appColorSchemeBinding.wrappedValue.label
+        )
+    }
+
+    private var appColorSchemeBinding: Binding<AppColorScheme> {
+        Binding(
+            get: { AppColorScheme(rawValue: appColorSchemeRaw) ?? .system },
+            set: { appColorSchemeRaw = $0.rawValue }
+        )
     }
 
     private var reconnectButtonTitle: String {
@@ -254,6 +184,15 @@ struct SettingsScreen: View {
             "Choose Workspace"
         case .restorable, .ready, .invalid:
             "Reconnect Workspace"
+        }
+    }
+
+    private var workspaceActionMessage: String {
+        switch accessState {
+        case .noneSelected:
+            "Choose a folder from Files."
+        case .restorable, .ready, .invalid:
+            "Reconnect or clear the current workspace."
         }
     }
 
@@ -266,55 +205,897 @@ struct SettingsScreen: View {
         }
     }
 
-    private var reconnectHint: String {
-        switch accessState {
-        case .noneSelected:
-            "Choose a folder from Files."
-        case .restorable, .ready, .invalid:
-            "Choose the workspace folder again."
+    private func push(_ page: SettingsPage) {
+        navigationPath.append(page)
+    }
+
+    private func pop() {
+        guard navigationPath.isEmpty == false else {
+            return
+        }
+
+        navigationPath.removeLast()
+    }
+
+    private func done() {
+        if let dismissAction {
+            dismissAction()
+        } else {
+            dismiss()
+        }
+    }
+}
+
+private enum SettingsPage: Hashable {
+    case home
+    case editor
+    case theme
+    case newTheme
+    case markdown
+    case tips
+    case information
+    case about
+}
+
+private enum SettingsFontCategory: String, CaseIterable {
+    case monospaced = "Monospaced"
+    case proportional = "Proportional"
+}
+
+private struct SettingsFontOption: Identifiable, Equatable {
+    let choice: EditorFontChoice
+    let displayName: String
+
+    var id: EditorFontChoice {
+        choice
+    }
+
+    static let monospacedOptions = [
+        SettingsFontOption(choice: .systemMonospaced, displayName: "SF Mono"),
+        SettingsFontOption(choice: .menlo, displayName: "Menlo"),
+        SettingsFontOption(choice: .courierNew, displayName: "Courier New")
+    ]
+
+    static let proportionalOptions = [
+        SettingsFontOption(choice: .default, displayName: "SF Pro"),
+        SettingsFontOption(choice: .newYork, displayName: "New York"),
+        SettingsFontOption(choice: .georgia, displayName: "Georgia")
+    ]
+
+    var category: SettingsFontCategory {
+        switch choice {
+        case .systemMonospaced, .menlo, .courier, .courierNew:
+            .monospaced
+        case .default, .newYork, .georgia:
+            .proportional
         }
     }
 
-    private var accessibilityAccessHint: String {
+    var previewFont: Font {
+        let size = UIFont.preferredFont(forTextStyle: .body).pointSize
+
+        switch choice {
+        case .default:
+            return .system(.body, design: .default)
+        case .systemMonospaced:
+            return .system(.body, design: .monospaced)
+        case .menlo:
+            return .custom("Menlo", size: size)
+        case .courier, .courierNew:
+            return .custom("Courier New", size: size)
+        case .newYork:
+            return .system(.body, design: .serif)
+        case .georgia:
+            return .custom("Georgia", size: size)
+        }
+    }
+
+    static func displayName(for choice: EditorFontChoice) -> String {
+        switch choice {
+        case .default:
+            "SF Pro"
+        case .systemMonospaced:
+            "SF Mono"
+        case .menlo:
+            "Menlo"
+        case .courier:
+            "Courier"
+        case .courierNew:
+            "Courier New"
+        case .newYork:
+            "New York"
+        case .georgia:
+            "Georgia"
+        }
+    }
+}
+
+private struct SettingsHomePage: View {
+    let summary: SettingsHomeSummary
+    let selectedTheme: SettingsBuiltInTheme
+    @Binding var appColorScheme: AppColorScheme
+    let accessState: WorkspaceAccessState
+    let doneAction: () -> Void
+    let workspaceAction: () -> Void
+
+    var body: some View {
+        List {
+            Section {
+                NavigationLink(value: SettingsPage.editor) {
+                    SettingsHomeRow(
+                        systemName: "textformat.size",
+                        colors: [.blue],
+                        title: "Editor",
+                        detail: summary.fontName
+                    )
+                }
+
+                NavigationLink(value: SettingsPage.theme) {
+                    SettingsHomeRow(
+                        systemName: "paintpalette.fill",
+                        colors: [.pink, .orange],
+                        title: "Theme",
+                        detail: summary.themeName,
+                        usesMulticolor: true
+                    )
+                }
+
+                NavigationLink(value: SettingsPage.markdown) {
+                    SettingsHomeRow(
+                        systemName: "checklist",
+                        colors: [.purple],
+                        title: "Markdown",
+                        detail: nil
+                    )
+                }
+
+                Picker(selection: $appColorScheme) {
+                    ForEach(AppColorScheme.allCases, id: \.self) { scheme in
+                        Text(scheme.label).tag(scheme)
+                    }
+                } label: {
+                    SettingsHomeLabel(
+                        title: "Appearance",
+                        systemName: appColorScheme.systemImage,
+                        colors: [appColorScheme.accentColor]
+                    )
+                }
+                .pickerStyle(.menu)
+                .tint(.primary)
+                .accessibilityLabel("Appearance mode")
+            }
+
+            Section {
+                Button(action: workspaceAction) {
+                    SettingsHomeRow(
+                        systemName: "folder",
+                        colors: [.blue],
+                        title: "Workspace",
+                        detail: summary.workspaceName
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(workspaceHint)
+            }
+
+            Section {
+                NavigationLink(value: SettingsPage.tips) {
+                    SettingsHomeRow(
+                        systemName: "banknote.fill",
+                        colors: [.green],
+                        title: "Tips",
+                        detail: nil
+                    )
+                }
+
+                NavigationLink(value: SettingsPage.information) {
+                    SettingsHomeRow(
+                        systemName: "info.circle",
+                        colors: [.blue],
+                        title: "Information",
+                        detail: nil
+                    )
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Settings")
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done", action: doneAction)
+            }
+        }
+        .fontDesign(.rounded)
+    }
+
+    private var workspaceHint: String {
         switch accessState {
         case .noneSelected:
-            "No workspace is currently selected."
+            "Choose a workspace folder."
         case .restorable:
             "A saved workspace can be restored."
         case .ready:
-            "The current workspace is available."
+            "The current workspace is ready."
         case .invalid:
             "The saved workspace needs to be reconnected."
         }
     }
+}
 
-    private var isWorkspaceReady: Bool {
-        if case .ready = accessState {
-            return true
+private struct SettingsHomeRow: View {
+    let systemName: String
+    let colors: [Color]
+    let title: String
+    let detail: String?
+    var usesMulticolor = false
+
+    var body: some View {
+        HStack {
+            SettingsHomeLabel(
+                title: title,
+                systemName: systemName,
+                colors: colors,
+                usesMulticolor: usesMulticolor
+            )
+
+            Spacer()
+
+            if let detail, detail.isEmpty == false {
+                Text(detail)
+                    .foregroundStyle(.secondary)
+            }
         }
-
-        return false
     }
 }
 
-private struct SettingsSectionBlock<Content: View>: View {
+private struct SettingsHomeLabel: View {
     let title: String
-    let detail: String
+    let systemName: String
+    let colors: [Color]
+    var usesMulticolor = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            SettingsHomeSymbol(
+                systemName: systemName,
+                colors: colors,
+                usesMulticolor: usesMulticolor
+            )
+            Text(title)
+        }
+    }
+}
+
+private struct SettingsHomeSymbol: View {
+    let systemName: String
+    let colors: [Color]
+    var usesMulticolor = false
+
+    var body: some View {
+        Image(systemName: systemName)
+            .symbolRenderingMode(usesMulticolor ? .multicolor : .hierarchical)
+            .foregroundStyle(gradient)
+            .frame(width: 22)
+            .accessibilityHidden(true)
+    }
+
+    private var gradient: LinearGradient {
+        let resolvedColors: [Color]
+
+        if colors.isEmpty {
+            resolvedColors = [.primary, .primary.opacity(0.7)]
+        } else if colors.count == 1, let color = colors.first {
+            resolvedColors = [color, color.opacity(0.7)]
+        } else {
+            resolvedColors = colors
+        }
+
+        return LinearGradient(
+            colors: resolvedColors,
+            startPoint: .bottom,
+            endPoint: .top
+        )
+    }
+}
+
+private extension View {
+    func settingsFooterStyle() -> some View {
+        font(.system(.footnote, design: .rounded))
+    }
+}
+
+private struct EditorSettingsPage: View {
+    let editorAppearanceStore: EditorAppearanceStore
+    let backAction: () -> Void
+
+    @State private var selectedCategory: SettingsFontCategory = .monospaced
+    @State private var lineNumbers = false
+    @State private var largerHeadingText = false
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Font Type", selection: $selectedCategory) {
+                    ForEach(SettingsFontCategory.allCases, id: \.self) { category in
+                        Text(category.rawValue).tag(category)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: selectedCategory) { _, category in
+                    selectFirstAvailableFont(in: category)
+                }
+
+                ForEach(availableFontOptions) { option in
+                    SettingsFontRow(
+                        option: option,
+                        isSelected: editorAppearanceStore.selectedFontChoice == option.choice
+                    ) {
+                        editorAppearanceStore.setFontChoice(option.choice)
+                    }
+                }
+            } footer: {
+                Text("Choose your favourite font.")
+                    .settingsFooterStyle()
+            }
+
+            Section {
+                Stepper(value: fontSizeBinding, in: 12...24, step: 1) {
+                    LabeledContent {
+                        Text("\(Int(editorAppearanceStore.fontSize)) pt")
+                            .foregroundStyle(.secondary)
+                    } label: {
+                        SettingsHomeLabel(
+                            title: "Font Size",
+                            systemName: "textformat.size",
+                            colors: [.blue]
+                        )
+                    }
+                }
+            } footer: {
+                Text("Adjust the editor font size relative to the system default.")
+                    .settingsFooterStyle()
+            }
+
+            if selectedCategory == .monospaced {
+                Section {
+                    Toggle("Line Numbers", isOn: $lineNumbers)
+                        .disabled(true)
+                        .accessibilityHint("Line numbers are not implemented yet.")
+                } footer: {
+                    Text("Show line numbers along the left edge of the editor.")
+                        .settingsFooterStyle()
+                }
+            }
+
+            Section {
+                Toggle("Larger Heading Text", isOn: $largerHeadingText)
+                    .disabled(true)
+                    .accessibilityHint("Larger heading text is not implemented as a user setting yet.")
+            } footer: {
+                Text(largerHeadingHelperText)
+                    .settingsFooterStyle()
+            }
+        }
+        .navigationTitle("Editor")
+        .fontDesign(.rounded)
+        .onAppear {
+            selectedCategory = category(for: editorAppearanceStore.selectedFontChoice)
+        }
+    }
+
+    private var fontSizeBinding: Binding<Double> {
+        Binding(
+            get: { editorAppearanceStore.fontSize },
+            set: { editorAppearanceStore.setFontSize($0) }
+        )
+    }
+
+    private var availableFontOptions: [SettingsFontOption] {
+        options(for: selectedCategory).filter { option in
+            editorAppearanceStore.availableFontChoices.contains(option.choice)
+        }
+    }
+
+    private func options(for category: SettingsFontCategory) -> [SettingsFontOption] {
+        switch category {
+        case .monospaced:
+            SettingsFontOption.monospacedOptions
+        case .proportional:
+            SettingsFontOption.proportionalOptions
+        }
+    }
+
+    private func category(for choice: EditorFontChoice) -> SettingsFontCategory {
+        if let option = (SettingsFontOption.monospacedOptions + SettingsFontOption.proportionalOptions)
+            .first(where: { $0.choice == choice }) {
+            return option.category
+        }
+
+        return .proportional
+    }
+
+    private func selectFirstAvailableFont(in category: SettingsFontCategory) {
+        guard let first = options(for: category).first(where: { option in
+            editorAppearanceStore.availableFontChoices.contains(option.choice)
+        }) else {
+            return
+        }
+
+        editorAppearanceStore.setFontChoice(first.choice)
+    }
+
+    private var largerHeadingHelperText: String {
+        if lineNumbers {
+            return "Larger heading text is unavailable while line numbers are enabled."
+        }
+
+        return "Larger heading text will be wired after heading-size preferences are implemented."
+    }
+}
+
+private struct SettingsFontRow: View {
+    let option: SettingsFontOption
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(option.displayName)
+                    .font(option.previewFont)
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                        .bold()
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct ThemeSettingsPage: View {
+    let selectedTheme: SettingsBuiltInTheme
+    let push: (SettingsPage) -> Void
+    let backAction: () -> Void
+
+    @State private var matchMenusToTheme = true
+
+    var body: some View {
+        SettingsShell {
+            SettingsPageHeader(title: "Theme", backAction: backAction)
+
+            SettingsCard {
+                ForEach(SettingsBuiltInTheme.allCases, id: \.self) { theme in
+                    SettingsThemeRow(
+                        theme: theme,
+                        isSelected: theme == selectedTheme,
+                        isEnabled: false
+                    )
+
+                    if theme != SettingsBuiltInTheme.allCases.last {
+                        SettingsDivider(leadingInset: 118)
+                    }
+                }
+            }
+
+            SettingsHelperText("Follows the system appearance automatically.")
+
+            Text("Custom")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.top, 6)
+                .padding(.horizontal, 28)
+
+            SettingsCard {
+                SettingsNavigationRow(
+                    icon: .symbol("plus.circle.fill"),
+                    iconTint: .green.opacity(0.45),
+                    title: "New Theme",
+                    value: nil,
+                    action: { push(.newTheme) }
+                )
+                SettingsDivider()
+                SettingsNavigationRow(
+                    icon: .symbol("square.and.arrow.down.fill"),
+                    iconTint: .blue.opacity(0.35),
+                    title: "Import Theme",
+                    value: nil,
+                    isEnabled: false,
+                    action: {}
+                )
+                .accessibilityHint("JSON theme import is not implemented yet.")
+            }
+
+            SettingsHelperText("Create custom palettes, import them from JSON, or export a theme to share it.")
+
+            SettingsCard {
+                SettingsToggleRow(
+                    title: "Match Menus to Theme",
+                    isOn: $matchMenusToTheme,
+                    isEnabled: false,
+                    accessibilityHint: "The editor chrome currently follows the resolved theme; this user preference is not implemented yet."
+                )
+            }
+
+            SettingsHelperText(
+                "When enabled, editor menus and keyboard etc, will follow the current theme instead of the app appearance."
+            )
+        }
+    }
+}
+
+private struct NewThemeSettingsPage: View {
+    let backAction: () -> Void
+
+    @State private var themeName = ""
+    @State private var background = Color(red: 0.12, green: 0.12, blue: 0.12)
+    @State private var text = Color(red: 0.82, green: 0.82, blue: 0.82)
+    @State private var accent = Color(red: 0.41, green: 0.62, blue: 0.83)
+    @State private var marker = Color(red: 0.48, green: 0.48, blue: 0.54)
+    @State private var strike = Color(red: 0.50, green: 0.50, blue: 0.50)
+    @State private var code = Color(red: 0.74, green: 0.54, blue: 0.44)
+    @State private var isShowingPersistencePlaceholder = false
+
+    var body: some View {
+        SettingsShell {
+            SettingsPageHeader(
+                title: "New Theme",
+                titlePlacement: .center,
+                backAction: backAction,
+                trailing: {
+                    Button("Save") {
+                        isShowingPersistencePlaceholder = true
+                    }
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(isThemeNameValid ? .primary : .secondary)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 12)
+                    .background(.regularMaterial, in: Capsule(style: .continuous))
+                    .disabled(isThemeNameValid == false)
+                }
+            )
+
+            SettingsMarkdownPreview(
+                background: background,
+                text: text,
+                accent: accent,
+                marker: marker,
+                strike: strike,
+                code: code
+            )
+
+            Text("Name")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.top, 8)
+                .padding(.horizontal, 28)
+
+            TextField("Theme Name", text: $themeName)
+                .font(.body)
+                .textInputAutocapitalization(.words)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule(style: .continuous))
+
+            Text("Colours")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.top, 22)
+                .padding(.horizontal, 28)
+
+            SettingsCard {
+                SettingsColourRow(title: "Background", color: $background)
+                SettingsDivider()
+                SettingsColourRow(title: "Text", color: $text)
+                SettingsDivider()
+                SettingsColourRow(title: "Accent", color: $accent)
+                SettingsDivider()
+                SettingsColourRow(title: "Bold / Italic Markers", color: $marker)
+                SettingsDivider()
+                SettingsColourRow(title: "Strikethrough Text", color: $strike)
+                SettingsDivider()
+                SettingsColourRow(title: "Code", color: $code)
+            }
+        }
+        .alert("Custom Themes", isPresented: $isShowingPersistencePlaceholder) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("The custom theme editor shell is ready, but custom theme persistence is future work.")
+        }
+    }
+
+    private var isThemeNameValid: Bool {
+        themeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+}
+
+private struct MarkdownSettingsPage: View {
+    let editorAppearanceStore: EditorAppearanceStore
+    let backAction: () -> Void
+
+    @State private var colorFormattedText = true
+    @State private var tapToToggleTasks = true
+
+    private var hideMarkdownFormattingBinding: Binding<Bool> {
+        Binding(
+            get: { editorAppearanceStore.markdownSyntaxMode == .hiddenOutsideCurrentLine },
+            set: { isHidden in
+                editorAppearanceStore.setMarkdownSyntaxMode(
+                    isHidden ? .hiddenOutsideCurrentLine : .visible
+                )
+            }
+        )
+    }
+
+    var body: some View {
+        SettingsShell {
+            SettingsPageHeader(title: "Markdown", backAction: backAction)
+
+            SettingsCard {
+                SettingsToggleRow(
+                    title: "Colour Formatted Text",
+                    isOn: $colorFormattedText,
+                    isEnabled: false,
+                    accessibilityHint: "The current renderer always applies theme styling; a separate toggle is not implemented yet."
+                )
+            }
+            SettingsHelperText(
+                "Apply the theme's accent colour to heading, bold, and italic text, matching the syntax markers."
+            )
+
+            SettingsCard {
+                SettingsToggleRow(
+                    title: "Hide Markdown Formatting",
+                    isOn: hideMarkdownFormattingBinding
+                )
+            }
+            SettingsHelperText("Hide markdown syntax until the cursor moves into the formatted content.")
+
+            SettingsCard {
+                SettingsToggleRow(
+                    title: "Tap to Toggle Tasks",
+                    isOn: $tapToToggleTasks,
+                    isEnabled: false,
+                    accessibilityHint: "Task checkbox tapping is not implemented yet."
+                )
+            }
+            SettingsHelperText("Tap a task checkbox to mark it as done or undone.")
+        }
+    }
+}
+
+private struct TipsSettingsPage: View {
+    let backAction: () -> Void
+
+    private let tips = [
+        TipRow(icon: "cup.and.saucer.fill", tint: Color.brown.opacity(0.65), title: "Small Coffee", caption: "Buy me a small coffee", price: "£0.99"),
+        TipRow(icon: "mug.fill", tint: .orange.opacity(0.75), title: "Large Coffee", caption: "Buy me a large coffee", price: "£2.99"),
+        TipRow(icon: "fork.knife", tint: .teal.opacity(0.65), title: "Lunch", caption: "Buy me Lunch", price: "£4.99"),
+        TipRow(icon: "wineglass.fill", tint: .red.opacity(0.7), title: "Dinner", caption: "Buy me dinner", price: "£9.99")
+    ]
+
+    var body: some View {
+        SettingsShell {
+            SettingsPageHeader(title: "Tips", backAction: backAction)
+
+            SettingsCard {
+                ForEach(tips) { tip in
+                    SettingsTipRow(tip: tip)
+
+                    if tip != tips.last {
+                        SettingsDivider(leadingInset: 86)
+                    }
+                }
+            }
+
+            SettingsHelperText("Tips help support the ongoing development of Downward.\nThank you.")
+        }
+    }
+}
+
+private struct InformationSettingsPage: View {
+    let push: (SettingsPage) -> Void
+    let backAction: () -> Void
+
+    var body: some View {
+        SettingsShell {
+            SettingsPageHeader(title: "Information", backAction: backAction)
+
+            SettingsCard {
+                SettingsNavigationRow(
+                    icon: .symbol("star.fill"),
+                    iconTint: .yellow,
+                    title: "Rate the App",
+                    value: nil,
+                    isEnabled: false,
+                    action: {}
+                )
+                .accessibilityHint("App Store review routing is not implemented yet.")
+            }
+
+            SettingsHelperText("If Downward is working well for you, leaving a rating helps.")
+
+            SettingsCard {
+                SettingsNavigationRow(
+                    icon: .symbol("info.circle"),
+                    iconTint: .blue.opacity(0.55),
+                    title: "About",
+                    value: nil,
+                    action: { push(.about) }
+                )
+            }
+
+            SettingsHelperText("Version details, privacy policy, and terms are available in About.")
+        }
+    }
+}
+
+private struct AboutSettingsPage: View {
+    let backAction: () -> Void
+
+    var body: some View {
+        SettingsShell {
+            SettingsPageHeader(title: "", backAction: backAction)
+
+            VStack(spacing: 14) {
+                AppIconPlaceholder()
+
+            Text("Downward")
+                    .font(.title.weight(.bold))
+
+                Text(versionText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Text("Second Victor Ltd.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 24)
+            .padding(.bottom, 12)
+
+            SettingsCard {
+                SettingsNavigationRow(
+                    icon: .symbol("hand.raised.fill"),
+                    iconTint: .blue,
+                    title: "Privacy Policy",
+                    value: nil,
+                    isEnabled: false,
+                    action: {}
+                )
+                .accessibilityHint("Privacy Policy URL is not configured yet.")
+                SettingsDivider()
+                SettingsNavigationRow(
+                    icon: .symbol("doc.text.fill"),
+                    iconTint: .blue,
+                    title: "Terms & Conditions",
+                    value: nil,
+                    isEnabled: false,
+                    action: {}
+                )
+                .accessibilityHint("Terms and Conditions URL is not configured yet.")
+            }
+        }
+    }
+
+    private var versionText: String {
+        let infoDictionary = Bundle.main.infoDictionary
+        let version = infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "v\(version) (\(build))"
+    }
+}
+
+private struct SettingsShell<Content: View>: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.title3.weight(.semibold))
+        ZStack {
+            Color(uiColor: .systemGroupedBackground)
+                .ignoresSafeArea()
 
-                Text(detail)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    content
+                }
+                .frame(maxWidth: contentWidth, alignment: .leading)
+                .padding(.horizontal, horizontalPadding)
+                .padding(.top, 24)
+                .padding(.bottom, 34)
             }
-
-            content
         }
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private var contentWidth: CGFloat? {
+        horizontalSizeClass == .regular ? 720 : nil
+    }
+
+    private var horizontalPadding: CGFloat {
+        horizontalSizeClass == .regular ? 32 : 20
+    }
+}
+
+private enum SettingsHeaderTitlePlacement {
+    case leading
+    case center
+}
+
+private struct SettingsPageHeader<Trailing: View>: View {
+    let title: String
+    var titlePlacement: SettingsHeaderTitlePlacement = .leading
+    var backAction: (() -> Void)?
+    @ViewBuilder let trailing: Trailing
+
+    init(
+        title: String,
+        titlePlacement: SettingsHeaderTitlePlacement = .leading,
+        backAction: (() -> Void)? = nil,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        self.title = title
+        self.titlePlacement = titlePlacement
+        self.backAction = backAction
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            HStack {
+                if let backAction {
+                    Button(action: backAction) {
+                        Image(systemName: "chevron.left")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 52, height: 52)
+                            .background(.regularMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if titlePlacement == .center {
+                    Spacer(minLength: 12)
+                    Text(title)
+                        .font(.headline.weight(.bold))
+                        .lineLimit(1)
+                    Spacer(minLength: 12)
+                } else {
+                    Spacer(minLength: 12)
+                }
+
+                trailing
+            }
+            .frame(minHeight: 52)
+
+            if titlePlacement == .leading, title.isEmpty == false {
+                Text(title)
+                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .minimumScaleFactor(0.65)
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
+private extension SettingsPageHeader where Trailing == EmptyView {
+    init(
+        title: String,
+        titlePlacement: SettingsHeaderTitlePlacement = .leading,
+        backAction: (() -> Void)? = nil
+    ) {
+        self.init(
+            title: title,
+            titlePlacement: titlePlacement,
+            backAction: backAction,
+            trailing: { EmptyView() }
+        )
     }
 }
 
@@ -329,255 +1110,576 @@ private struct SettingsCard<Content: View>: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(Color(uiColor: .secondarySystemGroupedBackground))
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 1)
-        )
     }
 }
 
-private struct SettingsCardRow<Content: View>: View {
-    @ViewBuilder let content: Content
+private struct SettingsDivider: View {
+    var leadingInset: CGFloat = 74
 
-    var body: some View {
-        content
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct SettingsCardDivider: View {
     var body: some View {
         Divider()
-            .padding(.horizontal, 18)
+            .padding(.leading, leadingInset)
+            .padding(.trailing, 28)
     }
 }
 
-private struct SettingsRowLabel: View {
+private enum SettingsIcon {
+    case symbol(String)
+    case text(String)
+}
+
+private struct SettingsNavigationRow: View {
+    let icon: SettingsIcon
+    let iconTint: Color
     let title: String
-    let caption: String
+    let value: String?
+    var isEnabled = true
+    let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.body.weight(.medium))
-
-            Text(caption)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        Button(action: action) {
+            SettingsRowContent(
+                icon: icon,
+                iconTint: iconTint,
+                title: title,
+                value: value,
+                showsChevron: true
+            )
         }
+        .buttonStyle(.plain)
+        .disabled(isEnabled == false)
+        .opacity(isEnabled ? 1 : 0.5)
     }
 }
 
-private struct SettingsActionRow: View {
+private struct SettingsMenuStyleRow: View {
+    let icon: SettingsIcon
+    let iconTint: Color
     let title: String
-    let caption: String
-    let systemImage: String
+    let value: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.headline)
-                .foregroundStyle(.tint)
-                .frame(width: 24, height: 24)
+        SettingsRowContent(
+            icon: icon,
+            iconTint: iconTint,
+            title: title,
+            value: value,
+            showsChevron: false,
+            trailingSystemImage: "chevron.up.chevron.down"
+        )
+        .opacity(0.9)
+        .accessibilityHint("App appearance selection is not implemented yet.")
+    }
+}
 
-            SettingsRowLabel(title: title, caption: caption)
+private struct SettingsRowContent: View {
+    let icon: SettingsIcon
+    let iconTint: Color
+    let title: String
+    let value: String?
+    var showsChevron = false
+    var trailingSystemImage: String?
+
+    var body: some View {
+        HStack(spacing: 18) {
+            SettingsIconView(icon: icon, tint: iconTint)
+
+            Text(title)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
 
             Spacer(minLength: 12)
 
-            Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .padding(.top, 4)
+            if let value {
+                Text(value)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+            }
+
+            if let trailingSystemImage {
+                Image(systemName: trailingSystemImage)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
         }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
         .contentShape(Rectangle())
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct SettingsPlaceholderRow: View {
+private struct SettingsIconView: View {
+    let icon: SettingsIcon
+    let tint: Color
+
+    var body: some View {
+        Group {
+            switch icon {
+            case let .symbol(systemName):
+                Image(systemName: systemName)
+                    .font(.body.weight(.semibold))
+            case let .text(text):
+                Text(text)
+                    .font(.body.weight(.medium))
+            }
+        }
+        .foregroundStyle(tint)
+        .frame(width: 22, height: 22)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct SettingsSelectableRow: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+
+                Spacer(minLength: 12)
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(.blue)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct SettingsStepperRow: View {
+    let icon: SettingsIcon
+    let iconTint: Color
+    let title: String
+    let value: String
+    let decrementAction: () -> Void
+    let incrementAction: () -> Void
+    let canDecrement: Bool
+    let canIncrement: Bool
+
+    var body: some View {
+        HStack(spacing: 18) {
+            SettingsIconView(icon: icon, tint: iconTint)
+
+            Text(title)
+                .font(.body)
+
+            Spacer(minLength: 10)
+
+            Text(value)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+
+            HStack(spacing: 0) {
+                Button(action: decrementAction) {
+                    Image(systemName: "minus")
+                        .frame(width: 46, height: 34)
+                }
+                .disabled(canDecrement == false)
+
+                Divider()
+                    .frame(height: 24)
+
+                Button(action: incrementAction) {
+                    Image(systemName: "plus")
+                        .frame(width: 46, height: 34)
+                }
+                .disabled(canIncrement == false)
+            }
+            .font(.body.weight(.bold))
+            .foregroundStyle(.primary)
+            .background(Color(uiColor: .tertiarySystemFill), in: Capsule(style: .continuous))
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+    }
+}
+
+private struct SettingsToggleRow: View {
+    let title: String
+    @Binding var isOn: Bool
+    var isEnabled = true
+    var accessibilityHint: String?
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            Text(title)
+                .font(.body)
+                .foregroundStyle(.primary)
+        }
+        .toggleStyle(.switch)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+        .disabled(isEnabled == false)
+        .opacity(isEnabled ? 1 : 0.5)
+        .accessibilityHint(accessibilityHint ?? "")
+    }
+}
+
+private struct SettingsHelperText: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 28)
+            .padding(.top, -12)
+    }
+}
+
+private struct SettingsThemeRow: View {
+    let theme: SettingsBuiltInTheme
+    let isSelected: Bool
+    let isEnabled: Bool
+
+    var body: some View {
+        HStack(spacing: 20) {
+            SettingsPalettePreview(colors: theme.colors)
+
+            Text(theme.displayName)
+                .font(.body)
+                .foregroundStyle(.primary)
+
+            Spacer(minLength: 12)
+
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.blue)
+            }
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+        .opacity(isEnabled ? 1 : 0.75)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(isEnabled ? "" : "Theme switching is not implemented yet.")
+    }
+}
+
+private struct SettingsPalettePreview: View {
+    let colors: [Color]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(colors.enumerated()), id: \.offset) { _, color in
+                color
+                    .frame(width: 15, height: 28)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color(uiColor: .separator).opacity(0.45), lineWidth: 1)
+        )
+        .frame(width: 60, height: 28, alignment: .leading)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct SettingsMarkdownPreview: View {
+    let background: Color
+    let text: Color
+    let accent: Color
+    let marker: Color
+    let strike: Color
+    let code: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Text("#")
+                    .foregroundStyle(accent)
+                Text("Heading")
+                    .foregroundStyle(text)
+            }
+            .font(.system(.body, design: .monospaced).weight(.bold))
+
+            HStack(spacing: 12) {
+                Text("**Bold**")
+                    .fontWeight(.bold)
+                Text("and")
+                Text("*italic*")
+                    .italic()
+            }
+            .foregroundStyle(text)
+            .font(.system(.body, design: .monospaced))
+
+            Text("~~Strike Through~~")
+                .foregroundStyle(strike)
+                .strikethrough()
+                .font(.system(.body, design: .monospaced))
+
+            Text("`inline code`")
+                .foregroundStyle(code)
+                .font(.system(.body, design: .monospaced))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            Text("---")
+                .foregroundStyle(marker.opacity(0.7))
+                .frame(maxWidth: .infinity, alignment: .center)
+                .font(.system(.body, design: .monospaced))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("- [ ] To do")
+                Text("- [x] Done")
+            }
+            .foregroundStyle(text)
+            .font(.system(.body, design: .monospaced))
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.top, 4)
+    }
+}
+
+private struct SettingsColourRow: View {
+    let title: String
+    @Binding var color: Color
+    @State private var isShowingPicker = false
+
+    var body: some View {
+        Button {
+            isShowingPicker = true
+        } label: {
+            HStack {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(.blue)
+
+                Spacer(minLength: 12)
+
+                Circle()
+                    .fill(color)
+                    .frame(width: 30, height: 30)
+                    .overlay(Circle().stroke(.black.opacity(0.18), lineWidth: 2))
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $isShowingPicker) {
+            NavigationStack {
+                ColorPicker(title, selection: $color, supportsOpacity: false)
+                    .font(.body)
+                    .padding(24)
+                    .navigationTitle(title)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") {
+                                isShowingPicker = false
+                            }
+                        }
+                    }
+            }
+            .presentationDetents([.medium])
+        }
+    }
+}
+
+private struct TipRow: Identifiable, Equatable {
+    let icon: String
+    let tint: Color
     let title: String
     let caption: String
-    let systemImage: String
+    let price: String
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.headline)
-                .foregroundStyle(.secondary)
-                .frame(width: 24, height: 24)
+    var id: String {
+        title
+    }
 
-            SettingsRowLabel(title: title, caption: caption)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
+    static func == (lhs: TipRow, rhs: TipRow) -> Bool {
+        lhs.id == rhs.id
     }
 }
 
-private struct SettingsWorkspaceSummaryCard: View {
-    let workspaceName: String?
-    let accessDescription: String
-    let helperText: String
-    let isWorkspaceReady: Bool
+private struct SettingsTipRow: View {
+    let tip: TipRow
 
     var body: some View {
-        SettingsCard {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .center, spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.accentColor.opacity(0.14))
-                            .frame(width: 44, height: 44)
+        HStack(spacing: 20) {
+            Image(systemName: tip.icon)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(tip.tint)
+                .frame(width: 34)
 
-                        Image(systemName: workspaceName == nil ? "gearshape" : "folder")
-                            .font(.headline)
-                            .foregroundStyle(Color.accentColor)
-                    }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(tip.title)
+                    .font(.body)
+                    .foregroundStyle(.primary)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Downward Settings")
-                            .font(.headline)
-
-                        Text(workspaceName ?? "No workspace selected")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-
-                    Spacer(minLength: 12)
-
-                    Text(accessDescription)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(isWorkspaceReady ? .green : .secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill((isWorkspaceReady ? Color.green : Color.secondary).opacity(0.12))
-                        )
-                }
-
-                Text(helperText)
-                    .font(.subheadline)
+                Text(tip.caption)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(20)
+
+            Spacer(minLength: 12)
+
+            Text(tip.price)
+                .font(.body.weight(.bold))
+                .monospacedDigit()
         }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
+        .accessibilityHint("StoreKit purchases are not implemented yet.")
     }
 }
 
-private struct SettingsEditorPreviewCard: View {
-    let editorAppearanceStore: EditorAppearanceStore
-
+private struct AppIconPlaceholder: View {
     var body: some View {
-        let resolvedTheme = editorAppearanceStore.resolvedTheme
-
-        SettingsCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text("Live Preview")
-                        .font(.headline)
-
-                    Spacer(minLength: 12)
-
-                    Text(editorAppearanceStore.markdownSyntaxMode.displayName)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Example.md")
-                        .font(.caption)
-                        .foregroundStyle(Color(uiColor: resolvedTheme.secondaryText))
-
-                    Text("# Heading")
-                        .font(editorAppearanceStore.editorFont)
-                        .foregroundStyle(Color(uiColor: resolvedTheme.headingText))
-
-                    Text("A short line of text.")
-                        .font(editorAppearanceStore.editorFont)
-                        .foregroundStyle(Color(uiColor: resolvedTheme.primaryText))
-
-                    Text("Syntax markers follow the selected markdown mode.")
-                        .font(.footnote)
-                        .foregroundStyle(Color(uiColor: resolvedTheme.secondaryText))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color(uiColor: resolvedTheme.editorBackground))
+        Image("AppIcon")
+            .resizable()
+            .scaledToFit()
+            .background(
+                LinearGradient(
+                    colors: [.blue, .teal],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 1)
-                )
-            }
-            .padding(18)
-        }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .frame(width: 96, height: 96)
+        .shadow(color: .black.opacity(0.12), radius: 24, x: 0, y: 14)
+        .accessibilityLabel("Downward app icon")
     }
 }
 
-#Preview("Workspace Loaded") {
-    NavigationStack {
-        SettingsScreen(
-            workspaceName: PreviewSampleData.nestedWorkspace.displayName,
-            accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
-            editorAppearanceStore: EditorAppearanceStore(),
-            reconnectWorkspaceAction: {},
-            clearWorkspaceAction: {}
-        )
-    }
+#Preview("Settings Home - Workspace Loaded") {
+    SettingsScreen(
+        workspaceName: PreviewSampleData.nestedWorkspace.displayName,
+        accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+        editorAppearanceStore: EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 15,
+                markdownSyntaxMode: .visible
+            )
+        ),
+        reconnectWorkspaceAction: {},
+        clearWorkspaceAction: {}
+    )
 }
 
-#Preview("Large Type") {
-    NavigationStack {
-        SettingsScreen(
-            workspaceName: PreviewSampleData.nestedWorkspace.displayName,
-            accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
-            editorAppearanceStore: EditorAppearanceStore(
-                initialPreferences: EditorAppearancePreferences(
-                    fontChoice: .systemMonospaced,
-                    fontSize: 20,
-                    markdownSyntaxMode: .hiddenOutsideCurrentLine
-                )
-            ),
-            reconnectWorkspaceAction: {},
-            clearWorkspaceAction: {}
-        )
-    }
+#Preview("Settings Home - No Workspace") {
+    SettingsScreen(
+        workspaceName: nil,
+        accessState: .noneSelected,
+        editorAppearanceStore: EditorAppearanceStore(),
+        reconnectWorkspaceAction: {},
+        clearWorkspaceAction: {}
+    )
+}
+
+#Preview("Settings Large Type") {
+    SettingsScreen(
+        workspaceName: PreviewSampleData.nestedWorkspace.displayName,
+        accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+        editorAppearanceStore: EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 20,
+                markdownSyntaxMode: .hiddenOutsideCurrentLine
+            )
+        ),
+        reconnectWorkspaceAction: {},
+        clearWorkspaceAction: {}
+    )
     .environment(\.dynamicTypeSize, .accessibility3)
 }
 
-#Preview("No Workspace") {
-    NavigationStack {
-        SettingsScreen(
-            workspaceName: nil,
-            accessState: .noneSelected,
-            editorAppearanceStore: EditorAppearanceStore(),
-            reconnectWorkspaceAction: {},
-            clearWorkspaceAction: {}
-        )
-    }
+#Preview("Editor Settings") {
+    EditorSettingsPage(
+        editorAppearanceStore: EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 15
+            )
+        ),
+        backAction: {}
+    )
 }
 
-#Preview("iPad Sheet") {
-    NavigationStack {
-        SettingsScreen(
-            workspaceName: PreviewSampleData.nestedWorkspace.displayName,
-            accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
-            editorAppearanceStore: EditorAppearanceStore(),
-            reconnectWorkspaceAction: {},
-            clearWorkspaceAction: {},
-            dismissAction: {}
-        )
-    }
-    .frame(width: 720, height: 900)
+#Preview("Theme Settings") {
+    ThemeSettingsPage(
+        selectedTheme: .adaptive,
+        push: { _ in },
+        backAction: {}
+    )
+}
+
+#Preview("New Theme") {
+    NewThemeSettingsPage(backAction: {})
+}
+
+#Preview("Markdown Settings") {
+    MarkdownSettingsPage(
+        editorAppearanceStore: EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 15
+            )
+        ),
+        backAction: {}
+    )
+}
+
+#Preview("Tips Settings") {
+    TipsSettingsPage(backAction: {})
+}
+
+#Preview("Information Settings") {
+    InformationSettingsPage(push: { _ in }, backAction: {})
+}
+
+#Preview("About Settings") {
+    AboutSettingsPage(backAction: {})
+}
+
+#Preview("iPad Settings Sheet") {
+    SettingsScreen(
+        workspaceName: PreviewSampleData.nestedWorkspace.displayName,
+        accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+        editorAppearanceStore: EditorAppearanceStore(),
+        reconnectWorkspaceAction: {},
+        clearWorkspaceAction: {},
+        dismissAction: {}
+    )
+    .frame(width: 720, height: 920)
 }

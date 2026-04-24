@@ -112,9 +112,32 @@ private struct CompactWorkspaceShell: View {
                     WorkspaceRouteDestination(route: route, viewModel: viewModel)
                 }
         }
+        .sheet(isPresented: settingsPresentationBinding) {
+            SettingsScreen(
+                workspaceName: viewModel.workspaceName,
+                accessState: viewModel.workspaceAccessState,
+                editorAppearanceStore: viewModel.editorAppearanceStore,
+                reconnectWorkspaceAction: viewModel.presentFolderPicker,
+                clearWorkspaceAction: viewModel.clearWorkspace,
+                dismissAction: {
+                    session.dismissSettingsSurface()
+                }
+            )
+        }
         .onChange(of: session.path) { _, newPath in
             viewModel.didChange(path: newPath)
         }
+    }
+
+    private var settingsPresentationBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.session.isSettingsPresented },
+            set: { isPresented in
+                if isPresented == false {
+                    viewModel.session.dismissSettingsSurface()
+                }
+            }
+        )
     }
 }
 
@@ -134,30 +157,27 @@ private struct RegularWorkspaceShell: View {
             RegularWorkspaceDetailView(viewModel: viewModel)
         }
         .navigationSplitViewStyle(.balanced)
-        // Regular-width settings are a dedicated surface over the split view rather than a detail
-        // replacement, but they still reuse the existing `.settings` navigation state.
-        .sheet(isPresented: regularSettingsPresentationBinding) {
-            NavigationStack {
-                SettingsScreen(
-                    workspaceName: viewModel.workspaceName,
-                    accessState: viewModel.workspaceAccessState,
-                    editorAppearanceStore: viewModel.editorAppearanceStore,
-                    reconnectWorkspaceAction: viewModel.presentFolderPicker,
-                    clearWorkspaceAction: viewModel.clearWorkspace,
-                    dismissAction: {
-                        session.dismissRegularSettingsSurface()
-                    }
-                )
-            }
+        // Settings are a dedicated sheet over the split view rather than a detail replacement.
+        .sheet(isPresented: settingsPresentationBinding) {
+            SettingsScreen(
+                workspaceName: viewModel.workspaceName,
+                accessState: viewModel.workspaceAccessState,
+                editorAppearanceStore: viewModel.editorAppearanceStore,
+                reconnectWorkspaceAction: viewModel.presentFolderPicker,
+                clearWorkspaceAction: viewModel.clearWorkspace,
+                dismissAction: {
+                    session.dismissSettingsSurface()
+                }
+            )
         }
     }
 
-    private var regularSettingsPresentationBinding: Binding<Bool> {
+    private var settingsPresentationBinding: Binding<Bool> {
         Binding(
-            get: { viewModel.session.isShowingRegularSettingsSurface },
+            get: { viewModel.session.isSettingsPresented },
             set: { isPresented in
                 if isPresented == false {
-                    viewModel.session.dismissRegularSettingsSurface()
+                    viewModel.session.dismissSettingsSurface()
                 }
             }
         )

@@ -321,6 +321,26 @@ final class WorkspaceNavigationModeTests: XCTestCase {
     }
 
     @MainActor
+    func testPresentSettingsUsesSheetInsteadOfCompactNavigationPush() {
+        let (session, coordinator, _) = makeWorkspaceSystem()
+        session.path = [.trustedEditor(
+            PreviewSampleData.cleanDocument.url,
+            PreviewSampleData.cleanDocument.relativePath
+        )]
+
+        coordinator.presentSettings()
+
+        XCTAssertTrue(session.isSettingsPresented)
+        XCTAssertEqual(
+            session.path,
+            [.trustedEditor(
+                PreviewSampleData.cleanDocument.url,
+                PreviewSampleData.cleanDocument.relativePath
+            )]
+        )
+    }
+
+    @MainActor
     func testRegularWorkspaceDetailPrefersPendingRouteURLForSelectedRelativePath() {
         let (session, coordinator, _) = makeWorkspaceSystem()
         let preferredRouteURL = URL(

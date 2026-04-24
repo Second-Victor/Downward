@@ -37,6 +37,10 @@ struct EditorFontResolver: Sendable {
             return Font.system(size: size, design: .monospaced)
         case .menlo, .courier, .courierNew:
             return Font.custom(normalizedChoice.runtimeFontName ?? "", size: size)
+        case .newYork:
+            return Font.system(size: size, design: .serif)
+        case .georgia:
+            return Font.custom(normalizedChoice.runtimeFontName ?? "", size: size)
         }
     }
 
@@ -50,6 +54,15 @@ struct EditorFontResolver: Sendable {
         case .systemMonospaced:
             return UIFont.monospacedSystemFont(ofSize: size, weight: .regular)
         case .menlo, .courier, .courierNew:
+            return UIFont(name: normalizedChoice.runtimeFontName ?? "", size: size)
+                ?? UIFont.systemFont(ofSize: size)
+        case .newYork:
+            let descriptor = UIFontDescriptor
+                .preferredFontDescriptor(withTextStyle: .body)
+                .withDesign(.serif)
+                ?? UIFontDescriptor.preferredFontDescriptor(withTextStyle: .body)
+            return UIFont(descriptor: descriptor, size: size)
+        case .georgia:
             return UIFont(name: normalizedChoice.runtimeFontName ?? "", size: size)
                 ?? UIFont.systemFont(ofSize: size)
         }

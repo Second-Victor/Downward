@@ -93,9 +93,17 @@ It holds:
 
 Settings presentation still lives in the app/session navigation seam:
 
-- compact width pushes `.settings` in the navigation path,
-- regular width uses the same `.settings` state to drive a dedicated settings sheet over the split view,
+- compact width presents Settings as a sheet over the workspace/editor instead of pushing it onto the navigation stack,
+- regular width presents Settings as a dedicated sheet over the split view,
+- `AppSession.isSettingsPresented` owns the modal presentation flag,
+- `SettingsScreen` owns the nested settings page stack and visual hierarchy,
 - `SettingsScreen` remains a feature view and should not absorb coordinator or file-system logic.
+
+Settings pages should use existing stores and app actions rather than creating parallel state:
+
+- editor font, font size, and markdown syntax visibility flow through `EditorAppearanceStore`,
+- workspace reconnect/clear still delegate to root/coordinator actions,
+- Theme, New Theme, Tips, Information, and About may expose disabled or placeholder-backed controls until the backing theme, StoreKit, review, and URL infrastructure exists.
 
 It should stay declarative and lightweight.
 It is not the place for file-system rules.

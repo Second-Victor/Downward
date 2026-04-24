@@ -23,14 +23,14 @@ The strongest current foundations are:
 - a split editor bridge where the representable, coordinator, accessory view, keyboard geometry, and `UITextView` subclass now live in focused files,
 - a bounded current-line restyle path so ordinary same-line markdown edits no longer automatically fall back to whole-document rerenders,
 - an explicit markdown syntax visibility contract for future renderer work,
-- a maintained card-style settings shell with compact push navigation and a dedicated regular-width iPad sheet,
+- a maintained prototype-aligned settings sheet with a native inset-grouped home list, nested Editor/Theme/Markdown/Tips/Information/About pages, and honest placeholders for unfinished product areas,
 - a clearer app-coordinator boundary where workspace selection/refresh session application now flows through `WorkspaceSessionPolicy`, mutation preflight and browser-kind rules live in `WorkspaceMutationPolicy`, mutation execution metadata lives in `WorkspaceMutationService`, and trusted route/recent-file decisions live in `WorkspaceNavigationPolicy`,
 - leaner document-session version bookkeeping where open/reload hash raw file bytes and save/autosave reuse the exact UTF-8 payload being written,
 - an async lifecycle audit that keeps workspace refresh/mutation application generation-gated and makes delayed editor conflict-resolution tasks cancel/identity-check before applying results,
-- recent files and editor appearance persistence,
+- recent files, app appearance, and editor appearance persistence, including monospaced and proportional editor font choices,
 - a broad test suite around risky behaviors.
 
-The main risks now are **maintainability**, **broader large-file rendering work**, **renderer/theme extensibility**, and **real-device UI polish**, not basic correctness. Async lifecycle ownership is in better shape after the audit, but new unstructured tasks still need explicit ownership and stale-result guards. The main editor-specific risks are still real-device verification of initial first-line placement on iPhone/iPad and of the shared theme/accessory pipeline on non-standard backgrounds; the settings shell is now real, but theme management and JSON import/export are still future work.
+The main risks now are **maintainability**, **broader large-file rendering work**, **renderer/theme extensibility**, and **real-device UI polish**, not basic correctness. Async lifecycle ownership is in better shape after the audit, but new unstructured tasks still need explicit ownership and stale-result guards. The main editor-specific risks are still real-device verification of initial first-line placement on iPhone/iPad and of the shared theme/accessory pipeline on non-standard backgrounds; the settings hierarchy is now real, but persisted built-in theme selection, StoreKit tips, legal/rating URLs, custom theme persistence, and JSON import/export are still future work.
 
 ---
 
@@ -80,18 +80,18 @@ These are not backlog items. They are shipping expectations.
 - hidden syntax remains glyph-level layout behavior rather than font/kerning tricks,
 - new editor UX does not automatically land in either file.
 
-### 3. Turn the redesigned settings shell into fuller theme management later
+### 3. Turn the redesigned settings hierarchy into fuller theme management later
 
 **Why**
 
-The settings shell is now a real product surface, but its theme and import sections are still explicit placeholders. Future work should extend that shell instead of replacing it.
+The settings hierarchy is now a real product surface, including Theme and New Theme screens, but theme selection/import/export and custom theme persistence remain explicit placeholders. Future work should extend that hierarchy instead of replacing it.
 
 **Success**
 
-- add real theme management on top of the existing shell,
-- keep compact settings as a push and regular-width settings as the dedicated sheet,
-- preserve the existing working workspace/editor controls,
-- keep import/export honest until the JSON theme model actually ships.
+- add real persisted theme management on top of the existing hierarchy,
+- keep settings as a sheet over the current workspace/editor on both compact and regular layouts,
+- preserve the existing working workspace/editor/markdown controls,
+- keep StoreKit, legal/rating links, and import/export honest until the backing infrastructure actually ships.
 
 **Likely files**
 

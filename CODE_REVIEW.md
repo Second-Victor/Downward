@@ -53,6 +53,27 @@ This refresh was done against the latest uploaded `Downward.zip` after the repo 
 - Mutation result application still contains cross-dependency side effects: updating recents, rewriting pending presentations, relocating the active document session, clearing restorable sessions, and presenting delete alerts.
 - That remaining block is a reasonable future extraction target, but it should move into a focused mutation result applier rather than into navigation/session policies.
 
+## 2026-04-24 settings hierarchy implementation
+
+### Implemented
+
+- **Settings now has a product-facing hierarchy** matching the prototype structure: a native inset-grouped Settings home plus Editor, Theme, New Theme, Markdown, Tips, Information, and About destinations.
+- **The Settings feature owns its nested page stack.** App/session wiring now presents Settings through `AppSession.isSettingsPresented` as a sheet on both compact and regular layouts; `AppCoordinator` did not gain settings feature logic.
+- **Existing real controls remain wired through `EditorAppearanceStore`.** Editor font family, editor font size, and markdown syntax visibility still persist through the existing appearance pipeline.
+- **Editor settings now match the prototype section structure more closely.** The Editor destination uses a native grouped form with a segmented monospaced/proportional picker, prototype-style font rows, section footers, and persisted proportional font choices for SF Pro, New York, and Georgia where available.
+- **Appearance is now a real picker.** The top-level Appearance row matches the prototype menu picker and persists System/Light/Dark through `AppColorScheme`, which the app root applies with `preferredColorScheme`.
+- **Workspace actions remain reachable from Settings.** The Workspace row opens reconnect/clear actions without moving file-system logic into the view.
+- **Unsupported product areas stay honest.** Line numbers, larger heading text, persisted theme selection, match-menus preference, theme import/export, custom-theme persistence, StoreKit tips, App Store rating, and legal URLs are disabled or placeholder-backed rather than presented as complete features.
+- **Coverage now includes settings display seams.** `SettingsScreenModelTests` covers home summary font/theme/workspace values, editor/markdown store updates, and placeholder feature flags.
+
+### Remaining settings work
+
+- Persisted built-in theme selection still needs a real theme model/store update before Theme rows become interactive.
+- New Theme currently edits a local preview only; persistence/export/import remain future JSON theme work.
+- Tips need StoreKit product IDs and purchase infrastructure.
+- Rate the App, Privacy Policy, and Terms rows need configured production URLs/routes.
+- Real-device verification is still needed for the new hierarchy on iPhone and iPad with larger Dynamic Type.
+
 ### Checked off in this refresh
 
 - **P0 editor height / clipping** — fixed in current code. `MarkdownEditorTextView` now uses an effectively unbounded text container, tracks width, implements `sizeThatFits`, lowers vertical layout priorities, and has `MarkdownEditorTextViewSizingTests`.
@@ -74,7 +95,7 @@ This refresh was done against the latest uploaded `Downward.zip` after the repo 
 - Real-device verification is still needed for top chrome / first-line placement on iPhone and iPad.
 - Real-device verification is still needed for light, dark, and non-standard editor backgrounds now that the shared theme/accessory pipeline exists and the accessory host is transparent-by-default again.
 - User-facing custom theme management and JSON import/export are still future work.
-- Settings now ship as a maintained card-style shell, and regular-width iPad settings present as a dedicated sheet instead of replacing the split-view detail pane.
+- Settings now ship as a maintained sheet with a native inset-grouped home list, and regular-width iPad settings present as a dedicated sheet instead of replacing the split-view detail pane.
 - Workspace snapshot path lookup, search, and recents pruning are still relevant performance items.
 - Large files still need broader incremental rendering work and real-device verification, but the immediate same-line typing-latency regression is no longer open.
 - `AppCoordinator` is still a hotspot, but the remaining risk is mainly mutation outcome reconciliation and restore sequencing rather than repeated selection/refresh/error boilerplate.

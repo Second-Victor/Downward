@@ -50,8 +50,36 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         XCTAssertEqual(
             resolver.availableChoices,
-            [.default, .systemMonospaced, .courier]
+            [.default, .systemMonospaced, .courier, .newYork]
         )
+    }
+
+    @MainActor
+    func testEditorAppearanceStorePersistsProportionalFontChoice() throws {
+        let suiteName = "EditorAppearanceStoreTests.\(UUID().uuidString)"
+        let userDefaults = try makeIsolatedUserDefaults(suiteName: suiteName)
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let resolver = EditorFontResolver(
+            isRuntimeFontAvailable: { fontName in
+                fontName == "Georgia"
+            }
+        )
+        let store = EditorAppearanceStore(
+            userDefaults: userDefaults,
+            preferencesKey: "test.editor.appearance",
+            resolver: resolver
+        )
+
+        store.setFontChoice(.georgia)
+
+        let reloadedStore = EditorAppearanceStore(
+            userDefaults: userDefaults,
+            preferencesKey: "test.editor.appearance",
+            resolver: resolver
+        )
+
+        XCTAssertEqual(reloadedStore.selectedFontChoice, .georgia)
     }
 
     @MainActor

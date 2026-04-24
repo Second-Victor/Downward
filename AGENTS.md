@@ -175,6 +175,13 @@ Do not create parallel feature trees or alternate ownership paths without updati
 - Do not add a second competing editor implementation.
 - Keep editor-specific UI behavior out of `PlainTextDocumentSession` unless it is truly part of the file session contract.
 
+### Settings rules
+
+- Keep Settings navigation and visual hierarchy inside the Settings feature.
+- Wire real settings through existing stores such as `EditorAppearanceStore`.
+- Keep workspace actions delegated to the root/coordinator flow; do not move file-system or bookmark logic into Settings views.
+- Leave JSON theme import/export, StoreKit tips, App Store review routing, legal URLs, and custom theme persistence visibly placeholder-only until their backing infrastructure is implemented.
+
 ### Documentation comments
 
 Add concise comments to:

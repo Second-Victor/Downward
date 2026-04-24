@@ -280,17 +280,21 @@ Note: the remaining smoke file is now 738 lines and the focused suites keep rest
 
 **Current finding**
 
-The settings surface is now a custom card-style screen instead of a plain `Form`. Compact width still uses the existing push-style settings route, while regular width presents settings as a dedicated sheet over the split view so iPad no longer treats settings as just another detail replacement.
+The settings surface is now a prototype-aligned sheet with a native inset-grouped home list. Settings present over the current workspace/editor on both compact and regular layouts, so iPhone no longer pushes Settings into the workspace stack and iPad no longer treats Settings as a detail replacement.
 
 **Plan**
 
-- [x] Replace the plain `Form` with a maintained card-style settings shell.
+- [x] Replace the original plain settings surface with a maintained prototype-aligned settings sheet.
 - [x] Keep the shipping workspace, editor font, editor font size, and markdown display settings fully functional.
-- [x] Use the existing `.settings` navigation state in compact width without adding coordinator-only presentation branches.
+- [x] Present compact-width settings as a dedicated sheet while keeping the workspace/editor navigation stack underneath.
 - [x] Present regular-width settings as a dedicated sheet while keeping the editor or placeholder detail visible underneath.
 - [x] Keep future theme/import work as explicit placeholders instead of fake-complete controls.
 - [x] Add focused session-level coverage for the regular-width settings presentation fallback behavior.
 - [x] Add representative previews for loaded workspace, no workspace, large Dynamic Type, and the regular-width sheet presentation.
+- [x] Add the nested Settings hierarchy for Editor, Theme, New Theme, Markdown, Tips, Information, and About.
+- [x] Wire real supported settings through existing persistence: app appearance, monospaced/proportional editor font family, font size, and markdown syntax visibility.
+- [x] Keep unsupported controls disabled or placeholder-backed: line numbers, larger heading text, persisted theme selection, match-menus preference, theme import/export, custom-theme persistence, StoreKit tips, App Store rating, and legal URLs.
+- [x] Add focused tests for home summary values, editor/markdown store updates, and placeholder feature honesty.
 - [ ] Manually verify iPhone flow, iPad flow, reconnect, clear confirmation, editor font changes, markdown mode changes, and Dynamic Type on device.
 
 **Likely files**
@@ -299,8 +303,9 @@ The settings surface is now a custom card-style screen instead of a plain `Form`
 - `Downward/Features/Root/RootScreen.swift`
 - `Downward/App/AppSession.swift`
 - `Tests/AppSessionSettingsPresentationTests.swift`
+- `Tests/SettingsScreenModelTests.swift`
 
-Note: the shipping settings surface is now a maintained shell, but theme management and JSON import/export are still future work and stay labeled as such.
+Note: the shipping settings surface is now a maintained sheet-based hierarchy. Theme/New Theme, Tips, Information, and About exist as product surfaces, but persisted built-in themes, StoreKit purchases, App Store review routing, configured legal URLs, custom-theme persistence, and JSON import/export are still future work and stay labeled or disabled as such.
 
 ---
 

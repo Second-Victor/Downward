@@ -487,12 +487,7 @@ final class AppCoordinator {
 
     func presentSettings() {
         session.pendingEditorPresentation = nil
-        applyPresentedNavigationState(
-            WorkspaceNavigationPolicy.stateForPresentedSettings(
-                from: session.navigationState,
-                layout: session.navigationLayout
-            )
-        )
+        session.isSettingsPresented = true
     }
 
     func presentEditor(
@@ -500,6 +495,7 @@ final class AppCoordinator {
         preferredURL: URL? = nil,
         source: AppSession.EditorPresentationSource = .workspace
     ) {
+        session.isSettingsPresented = false
         guard let routeURL = editorRouteURL(for: relativePath, preferredURL: preferredURL) else {
             return
         }

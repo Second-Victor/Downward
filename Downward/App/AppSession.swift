@@ -57,6 +57,7 @@ final class AppSession {
     var navigationLayout: WorkspaceNavigationLayout = .compact
     var path: [AppRoute] = []
     var regularDetailSelection: RegularWorkspaceDetailSelection = .placeholder
+    var isSettingsPresented = false
     var hasBootstrapped = false
 
     var navigationState: WorkspaceNavigationState {
@@ -85,8 +86,8 @@ final class AppSession {
         )
     }
 
-    /// Regular-width settings present as a dedicated sheet, but the split-view detail should keep
-    /// rendering the current editor or placeholder beneath that sheet instead of blanking out.
+    /// Settings present as a dedicated sheet, but the split-view detail should keep rendering the
+    /// current editor or placeholder beneath that sheet instead of blanking out.
     var regularWorkspaceDisplayDetail: RegularWorkspaceDetail {
         guard regularDetailSelection == .settings else {
             return regularWorkspaceDetail
@@ -104,7 +105,7 @@ final class AppSession {
     }
 
     var isShowingRegularSettingsSurface: Bool {
-        navigationLayout == .regular && regularDetailSelection == .settings
+        navigationLayout == .regular && isSettingsPresented
     }
 
     var visibleDetailSelection: RegularWorkspaceDetailSelection {
@@ -161,22 +162,16 @@ final class AppSession {
         self.navigationState = navigationState
     }
 
+    func dismissSettingsSurface() {
+        guard isSettingsPresented else {
+            return
+        }
+
+        isSettingsPresented = false
+    }
+
     func dismissRegularSettingsSurface() {
-        guard isShowingRegularSettingsSurface else {
-            return
-        }
-
-        if let openDocument {
-            regularDetailSelection = .editor(openDocument.relativePath)
-            return
-        }
-
-        if let pendingEditorPresentation {
-            regularDetailSelection = .editor(pendingEditorPresentation.relativePath)
-            return
-        }
-
-        regularDetailSelection = .placeholder
+        dismissSettingsSurface()
     }
 }
 

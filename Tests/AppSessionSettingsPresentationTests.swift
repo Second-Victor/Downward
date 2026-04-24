@@ -3,11 +3,21 @@ import XCTest
 
 final class AppSessionSettingsPresentationTests: XCTestCase {
     @MainActor
+    func testSettingsSurfacePresentsAsSheetFlag() {
+        let session = AppSession()
+
+        session.isSettingsPresented = true
+
+        XCTAssertTrue(session.isSettingsPresented)
+    }
+
+    @MainActor
     func testRegularSettingsSurfaceKeepsCurrentEditorInUnderlyingDetail() {
         let session = AppSession()
         session.navigationLayout = .regular
         session.openDocument = PreviewSampleData.cleanDocument
-        session.regularDetailSelection = .settings
+        session.regularDetailSelection = .editor(PreviewSampleData.cleanDocument.relativePath)
+        session.isSettingsPresented = true
 
         XCTAssertTrue(session.isShowingRegularSettingsSurface)
         XCTAssertEqual(
@@ -17,14 +27,16 @@ final class AppSessionSettingsPresentationTests: XCTestCase {
     }
 
     @MainActor
-    func testDismissingRegularSettingsSurfaceReturnsToOpenEditor() {
+    func testDismissingSettingsSurfaceKeepsUnderlyingEditorSelection() {
         let session = AppSession()
         session.navigationLayout = .regular
         session.openDocument = PreviewSampleData.dirtyDocument
-        session.regularDetailSelection = .settings
+        session.regularDetailSelection = .editor(PreviewSampleData.dirtyDocument.relativePath)
+        session.isSettingsPresented = true
 
-        session.dismissRegularSettingsSurface()
+        session.dismissSettingsSurface()
 
+        XCTAssertFalse(session.isSettingsPresented)
         XCTAssertEqual(
             session.regularDetailSelection,
             .editor(PreviewSampleData.dirtyDocument.relativePath)
@@ -32,31 +44,15 @@ final class AppSessionSettingsPresentationTests: XCTestCase {
     }
 
     @MainActor
-    func testDismissingRegularSettingsSurfaceFallsBackToPendingEditorPresentation() {
+    func testDismissingSettingsSurfaceWithoutEditorKeepsPlaceholder() {
         let session = AppSession()
         session.navigationLayout = .regular
-        session.pendingEditorPresentation = .init(
-            routeURL: PreviewSampleData.cleanDocument.url,
-            relativePath: PreviewSampleData.cleanDocument.relativePath
-        )
-        session.regularDetailSelection = .settings
+        session.regularDetailSelection = .placeholder
+        session.isSettingsPresented = true
 
-        session.dismissRegularSettingsSurface()
+        session.dismissSettingsSurface()
 
-        XCTAssertEqual(
-            session.regularDetailSelection,
-            .editor(PreviewSampleData.cleanDocument.relativePath)
-        )
-    }
-
-    @MainActor
-    func testDismissingRegularSettingsSurfaceWithoutEditorFallsBackToPlaceholder() {
-        let session = AppSession()
-        session.navigationLayout = .regular
-        session.regularDetailSelection = .settings
-
-        session.dismissRegularSettingsSurface()
-
+        XCTAssertFalse(session.isSettingsPresented)
         XCTAssertEqual(session.regularDetailSelection, .placeholder)
     }
 }

@@ -6,11 +6,13 @@ enum EditorFontChoice: String, Codable, CaseIterable, Sendable {
     case menlo
     case courier
     case courierNew
+    case newYork
+    case georgia
 
     var displayName: String {
         switch self {
         case .default:
-            "Default"
+            "SF Pro"
         case .systemMonospaced:
             "System Monospaced"
         case .menlo:
@@ -19,12 +21,16 @@ enum EditorFontChoice: String, Codable, CaseIterable, Sendable {
             "Courier"
         case .courierNew:
             "Courier New"
+        case .newYork:
+            "New York"
+        case .georgia:
+            "Georgia"
         }
     }
 
     var runtimeFontName: String? {
         switch self {
-        case .default, .systemMonospaced:
+        case .default, .systemMonospaced, .newYork:
             nil
         case .menlo:
             "Menlo-Regular"
@@ -32,6 +38,8 @@ enum EditorFontChoice: String, Codable, CaseIterable, Sendable {
             "Courier"
         case .courierNew:
             "CourierNewPSMT"
+        case .georgia:
+            "Georgia"
         }
     }
 }
