@@ -10,6 +10,7 @@ struct PaletteColorPicker: View {
     @State private var brightness: Double
     @State private var selectedRow: Int?
     @State private var selectedColumn: Int?
+    @State private var hexText: String
 
     private static let swatches: [[Color]] = [
         [
@@ -51,13 +52,19 @@ struct PaletteColorPicker: View {
         _hue = State(initialValue: h)
         _saturation = State(initialValue: s)
         _brightness = State(initialValue: b)
+        _hexText = State(initialValue: Self.hexString(from: UIColor(selection.wrappedValue)))
     }
 
     var body: some View {
         VStack(spacing: 20) {
             HStack {
-                ColorPicker("", selection: $selection, supportsOpacity: false)
-                    .labelsHidden()
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(selection)
+                    .frame(width: 54, height: 34)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Color(uiColor: UIColor(selection).darkerShade()), lineWidth: 2)
+                    }
 
                 Spacer()
 
@@ -66,13 +73,14 @@ struct PaletteColorPicker: View {
 
                 Spacer()
 
-                Button("Close", systemImage: "xmark.circle.fill") {
-                    dismiss()
+                HexColorField(
+                    text: $hexText,
+                    isValid: Self.color(fromHexString: hexText) != nil
+                )
+                .onSubmit(applyHexText)
+                .onChange(of: hexText) {
+                    applyHexText()
                 }
-                .labelStyle(.iconOnly)
-                .font(.title2)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.secondary)
             }
 
             LazyVGrid(columns: Self.gridColumns, spacing: 12) {
@@ -94,7 +102,7 @@ struct PaletteColorPicker: View {
                 brightness: $brightness
             )
             .onChange(of: brightness) { _, newBrightness in
-                selection = Color(hue: hue, saturation: saturation, brightness: newBrightness)
+                updateSelection(Color(hue: hue, saturation: saturation, brightness: newBrightness))
             }
         }
         .padding()
@@ -105,7 +113,7 @@ struct PaletteColorPicker: View {
         syncHSB(from: color)
         selectedRow = row
         selectedColumn = column
-        selection = Color(hue: hue, saturation: saturation, brightness: brightness)
+        updateSelection(Color(hue: hue, saturation: saturation, brightness: brightness))
     }
 
     private func syncHSB(from color: Color) {
@@ -116,6 +124,93 @@ struct PaletteColorPicker: View {
         hue = h
         saturation = s
         brightness = b
+    }
+
+    private func applyHexText() {
+        guard let color = Self.color(fromHexString: hexText) else {
+            return
+        }
+
+        selectedRow = nil
+        selectedColumn = nil
+        syncHSB(from: color)
+        updateSelection(color, syncHexText: false)
+    }
+
+    private func updateSelection(_ color: Color, syncHexText: Bool = true) {
+        selection = color
+        if syncHexText {
+            hexText = Self.hexString(from: UIColor(color))
+        }
+    }
+
+    private static func color(fromHexString rawValue: String) -> Color? {
+        var cleaned = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.hasPrefix("#") {
+            cleaned.removeFirst()
+        }
+
+        guard cleaned.count == 6,
+              cleaned.allSatisfy(\.isHexDigit),
+              let value = UInt32(cleaned, radix: 16) else {
+            return nil
+        }
+
+        return Color(
+            red: Double((value >> 16) & 0xFF) / 255.0,
+            green: Double((value >> 8) & 0xFF) / 255.0,
+            blue: Double(value & 0xFF) / 255.0
+        )
+    }
+
+    private static func hexString(from color: UIColor) -> String {
+        let resolvedColor = color.resolvedColor(with: .current)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+
+        guard resolvedColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return "#000000"
+        }
+
+        return String(
+            format: "#%02X%02X%02X",
+            Int((red * 255).rounded()),
+            Int((green * 255).rounded()),
+            Int((blue * 255).rounded())
+        )
+    }
+}
+
+private struct HexColorField: View {
+    @Binding var text: String
+    let isValid: Bool
+
+    var body: some View {
+        TextField("#RRGGBB", text: $text)
+            .font(.system(.callout, design: .monospaced).weight(.semibold))
+            .textInputAutocapitalization(.characters)
+            .autocorrectionDisabled()
+            .keyboardType(.asciiCapable)
+            .multilineTextAlignment(.center)
+            .frame(width: 96)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(Color(uiColor: .secondarySystemBackground))
+            )
+            .overlay {
+                Capsule()
+                    .strokeBorder(borderColor, lineWidth: 1)
+            }
+            .accessibilityLabel("Hex colour")
+            .accessibilityHint("Enter a six digit hexadecimal colour value.")
+    }
+
+    private var borderColor: Color {
+        isValid ? Color.secondary.opacity(0.22) : Color.red.opacity(0.65)
     }
 }
 
@@ -156,8 +251,8 @@ private struct BrightnessTrack: View {
     let saturation: Double
     @Binding var brightness: Double
 
-    private let thumbSize: CGFloat = 32
-    private let trackHeight: CGFloat = 28
+    private let thumbSize: CGFloat = 44
+    private let trackHeight: CGFloat = 22
 
     var body: some View {
         GeometryReader { geometry in
