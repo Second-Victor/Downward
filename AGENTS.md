@@ -182,6 +182,7 @@ Do not create parallel feature trees or alternate ownership paths without updati
 - Keep workspace actions delegated to the root/coordinator flow; do not move file-system or bookmark logic into Settings views.
 - Leave StoreKit tips, App Store review routing, and legal URLs visibly placeholder-only until their backing infrastructure is implemented.
 - Only enable new theme import/export or persistence affordances when they have backing store/exchange infrastructure and focused tests.
+- Workspace `.json` files should open as editor documents. JSON theme imports should only happen from explicit Settings import/export actions through `ThemeImportService`/`ThemeStore`.
 
 ### Documentation comments
 

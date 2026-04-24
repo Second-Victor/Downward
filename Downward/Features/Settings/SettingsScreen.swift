@@ -645,6 +645,7 @@ private struct ThemeSettingsPage: View {
     let themeStore: ThemeStore
     let push: (SettingsPage) -> Void
     let backAction: () -> Void
+    private let themeImportService = ThemeImportService()
 
     @State private var isImportingTheme = false
 
@@ -760,28 +761,8 @@ private struct ThemeSettingsPage: View {
     private func handleImport(result: Result<URL, Error>) async {
         do {
             let url = try result.get()
-            let accessedSecurityScope = url.startAccessingSecurityScopedResource()
-            defer {
-                if accessedSecurityScope {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-
-            let fileSize = try await Task.detached(priority: .userInitiated) {
-                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-                return attributes[.size] as? Int ?? 0
-            }.value
-
-            guard fileSize <= 5 * 1024 * 1024 else {
-                themeStore.lastError = "The theme file is too large to import (maximum 5 MB)."
-                return
-            }
-
-            let data = try await Task.detached(priority: .userInitiated) {
-                try Data(contentsOf: url)
-            }.value
-            let document = try ThemeExchangeDocument(data: data)
-            _ = await themeStore.importThemes(document.themes)
+            let themes = try await themeImportService.loadThemes(from: url)
+            _ = await themeStore.importThemes(themes)
         } catch {
             guard isUserCancelled(error) == false else {
                 return
@@ -863,6 +844,7 @@ private struct ThemeEditorSettingsPage: View {
     @State private var text: Color
     @State private var tint: Color
     @State private var boldItalicMarker: Color
+    @State private var strikethrough: Color
     @State private var inlineCode: Color
     @State private var codeBackground: Color
     @State private var horizontalRule: Color
@@ -890,6 +872,7 @@ private struct ThemeEditorSettingsPage: View {
             _text = State(initialValue: Color(uiColor: editing.text.uiColor))
             _tint = State(initialValue: Color(uiColor: editing.tint.uiColor))
             _boldItalicMarker = State(initialValue: Color(uiColor: editing.boldItalicMarker.uiColor))
+            _strikethrough = State(initialValue: Color(uiColor: editing.strikethrough.uiColor))
             _inlineCode = State(initialValue: Color(uiColor: editing.inlineCode.uiColor))
             _codeBackground = State(initialValue: Color(uiColor: editing.codeBackground.uiColor))
             _horizontalRule = State(initialValue: Color(uiColor: editing.horizontalRule.uiColor))
@@ -901,6 +884,7 @@ private struct ThemeEditorSettingsPage: View {
             _text = State(initialValue: Color(uiColor: UIColor(red: 0.831, green: 0.831, blue: 0.831, alpha: 1)))
             _tint = State(initialValue: Color(uiColor: UIColor(red: 0.337, green: 0.612, blue: 0.839, alpha: 1)))
             _boldItalicMarker = State(initialValue: Color(uiColor: UIColor(red: 0.45, green: 0.45, blue: 0.50, alpha: 1)))
+            _strikethrough = State(initialValue: Color(uiColor: UIColor(red: 0.45, green: 0.45, blue: 0.50, alpha: 1)))
             _inlineCode = State(initialValue: Color(uiColor: UIColor(red: 0.808, green: 0.569, blue: 0.471, alpha: 1)))
             _codeBackground = State(initialValue: Color(uiColor: UIColor(red: 0.176, green: 0.176, blue: 0.176, alpha: 1)))
             _horizontalRule = State(initialValue: Color(uiColor: UIColor(red: 0.251, green: 0.251, blue: 0.251, alpha: 1)))
@@ -957,7 +941,7 @@ private struct ThemeEditorSettingsPage: View {
                 text: text,
                 accent: tint,
                 marker: boldItalicMarker,
-                strike: horizontalRule,
+                strike: strikethrough,
                 code: inlineCode
             )
             .padding(.horizontal, 16)
@@ -1054,6 +1038,7 @@ private struct ThemeEditorSettingsPage: View {
         case .text: text
         case .tint: tint
         case .boldItalicMarker: boldItalicMarker
+        case .strikethrough: strikethrough
         case .inlineCode: inlineCode
         case .codeBackground: codeBackground
         case .horizontalRule: horizontalRule
@@ -1068,6 +1053,7 @@ private struct ThemeEditorSettingsPage: View {
         case .text: $text
         case .tint: $tint
         case .boldItalicMarker: $boldItalicMarker
+        case .strikethrough: $strikethrough
         case .inlineCode: $inlineCode
         case .codeBackground: $codeBackground
         case .horizontalRule: $horizontalRule
@@ -1102,6 +1088,7 @@ private struct ThemeEditorSettingsPage: View {
             text: HexColor(UIColor(text)),
             tint: HexColor(UIColor(tint)),
             boldItalicMarker: HexColor(UIColor(boldItalicMarker)),
+            strikethrough: HexColor(UIColor(strikethrough)),
             inlineCode: HexColor(UIColor(inlineCode)),
             codeBackground: HexColor(UIColor(codeBackground)),
             horizontalRule: HexColor(UIColor(horizontalRule)),
@@ -1138,6 +1125,7 @@ private enum ThemeColorProperty: String, Identifiable, CaseIterable {
     case text
     case tint
     case boldItalicMarker
+    case strikethrough
     case inlineCode
     case codeBackground
     case horizontalRule
@@ -1152,6 +1140,7 @@ private enum ThemeColorProperty: String, Identifiable, CaseIterable {
         case .text: "Text"
         case .tint: "Accent"
         case .boldItalicMarker: "Bold / Italic Markers"
+        case .strikethrough: "Strikethrough Text"
         case .inlineCode: "Code"
         case .codeBackground: "Code Background"
         case .horizontalRule: "Horizontal Rule"

@@ -44,6 +44,55 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertEqual(decoded.themes, [theme])
     }
 
+    func testThemeExchangeDocumentDecodesPrototypeThemeWithStrikethroughColor() throws {
+        let data = """
+        {
+          "horizontalRule" : "#FF9414",
+          "text" : "#231D21",
+          "tint" : "#379FD2",
+          "checkboxChecked" : "#2BA34C",
+          "id" : "11019126-7DF8-475F-B132-A53F46EDAE89",
+          "inlineCode" : "#382E34",
+          "codeBackground" : "#E3DDDD",
+          "checkboxUnchecked" : "#D83F3F",
+          "strikethrough" : "#563FC1",
+          "name" : "Monokai Light",
+          "boldItalicMarker" : "#E25B75",
+          "background" : "#F2EDEC"
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try ThemeExchangeDocument(data: data)
+
+        XCTAssertEqual(decoded.themes.count, 1)
+        XCTAssertEqual(decoded.themes.first?.name, "Monokai Light")
+        XCTAssertEqual(decoded.themes.first?.strikethrough, HexColor(hex: "#563FC1"))
+    }
+
+    func testThemeExchangeDocumentDecodesLegacyThemeWithoutStrikethroughColor() throws {
+        let data = """
+        {
+          "horizontalRule" : "#404040",
+          "text" : "#D4D4D4",
+          "tint" : "#569CD6",
+          "checkboxChecked" : "#6A9955",
+          "id" : "11019126-7DF8-475F-B132-A53F46EDAE89",
+          "inlineCode" : "#CE9178",
+          "codeBackground" : "#2D2D2D",
+          "checkboxUnchecked" : "#F44747",
+          "name" : "Legacy",
+          "boldItalicMarker" : "#72727F",
+          "background" : "#1E1E1E"
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try ThemeExchangeDocument(data: data)
+
+        XCTAssertEqual(decoded.themes.count, 1)
+        XCTAssertEqual(decoded.themes.first?.name, "Legacy")
+        XCTAssertEqual(decoded.themes.first?.strikethrough.hex.count, 9)
+    }
+
     func testThemeExchangeDocumentDecodesThemeBundle() throws {
         let firstTheme = Self.makeTheme(id: UUID(), name: "First")
         let secondTheme = Self.makeTheme(id: UUID(), name: "Second")
@@ -52,6 +101,17 @@ final class ThemeStoreTests: XCTestCase {
         let decoded = try ThemeExchangeDocument(data: bundle.exportedData())
 
         XCTAssertEqual(decoded.themes, [firstTheme, secondTheme])
+    }
+
+    func testThemeImportServiceLoadsThemeJSONFromFileURL() async throws {
+        let theme = Self.makeTheme(name: "Workspace Theme")
+        let document = ThemeExchangeDocument(theme: theme)
+        let themeURL = try makeTemporaryThemeURL()
+        try document.exportedData().write(to: themeURL)
+
+        let importedThemes = try await ThemeImportService().loadThemes(from: themeURL)
+
+        XCTAssertEqual(importedThemes, [theme])
     }
 
     private func makeTemporaryThemeURL() throws -> URL {
@@ -69,6 +129,7 @@ final class ThemeStoreTests: XCTestCase {
             text: HexColor(hex: "#D4D4D4"),
             tint: HexColor(hex: "#569CD6"),
             boldItalicMarker: HexColor(hex: "#72727F"),
+            strikethrough: HexColor(hex: "#808080"),
             inlineCode: HexColor(hex: "#CE9178"),
             codeBackground: HexColor(hex: "#2D2D2D"),
             horizontalRule: HexColor(hex: "#404040"),

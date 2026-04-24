@@ -558,6 +558,7 @@ Theme switches should eventually avoid reparsing markdown.
 - [ ] Add a versioned JSON schema.
 - [ ] Support partial themes with default fallback values.
 - [x] Validate color strings before storing them.
+- [x] Support the prototype `strikethrough` colour role while preserving legacy theme imports without that key.
 - [ ] Clamp font sizes and reject unsupported font families gracefully.
 - [x] Keep imported theme data separate from the resolved runtime theme.
 - [ ] Add tests for missing fields, invalid colors, unknown roles, and future schema versions.
@@ -573,6 +574,7 @@ Theme switches should eventually avoid reparsing markdown.
 - [ ] Make reset-to-default obvious.
 - [x] Avoid applying malformed JSON directly to the live editor.
 - [x] Keep theme import/export out of document save paths.
+- [x] Keep workspace `.json` opens on the normal editor path and reserve theme import for explicit Settings actions.
 
 ---
 

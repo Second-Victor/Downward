@@ -5,6 +5,7 @@ enum SupportedFileType: String, CaseIterable, Sendable {
     case markdown = "md"
     case markdownText = "markdown"
     case plainText = "txt"
+    case json = "json"
 
     nonisolated static func isSupported(url: URL) -> Bool {
         guard url.hasDirectoryPath == false else {
@@ -17,4 +18,5 @@ enum SupportedFileType: String, CaseIterable, Sendable {
     nonisolated static func isSupportedExtension(_ fileExtension: String) -> Bool {
         Self(rawValue: fileExtension.lowercased()) != nil
     }
+
 }

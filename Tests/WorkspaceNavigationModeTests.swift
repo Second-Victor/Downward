@@ -43,6 +43,24 @@ final class WorkspaceNavigationModeTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkspaceViewModelJSONOpenUsesTrustedEditorRoute() {
+        let (session, _, viewModel) = makeWorkspaceSystem()
+        let jsonURL = PreviewSampleData.workspaceRootURL.appending(path: "Theme.json")
+
+        viewModel.openDocument(
+            relativePath: "Theme.json",
+            preferredURL: jsonURL
+        )
+
+        XCTAssertEqual(session.path, [.trustedEditor(jsonURL, "Theme.json")])
+        XCTAssertEqual(
+            session.pendingEditorPresentation,
+            .init(routeURL: jsonURL, relativePath: "Theme.json")
+        )
+        XCTAssertNil(session.workspaceAlertError)
+    }
+
+    @MainActor
     func testTreeStyleProgrammaticOpenInRegularModeUsesTrustedRelativeIdentity() {
         let (session, coordinator, viewModel) = makeWorkspaceSystem()
         let preferredRouteURL = URL(

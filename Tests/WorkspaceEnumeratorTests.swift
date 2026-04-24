@@ -9,6 +9,7 @@ final class WorkspaceEnumeratorTests: XCTestCase {
 
         try createFile(named: "Notes.md", in: rootURL)
         try createFile(named: "Ideas.markdown", in: rootURL)
+        try createFile(named: "Theme.json", in: rootURL)
         try createFile(named: "Scratch.txt", in: rootURL)
         try createFile(named: "Image.png", in: rootURL)
 
@@ -17,7 +18,7 @@ final class WorkspaceEnumeratorTests: XCTestCase {
             displayName: "Workspace"
         )
 
-        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Ideas.markdown", "Notes.md", "Scratch.txt"])
+        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Ideas.markdown", "Notes.md", "Scratch.txt", "Theme.json"])
     }
 
     func testEnumeratorSortsFoldersBeforeFilesAlphabetically() throws {

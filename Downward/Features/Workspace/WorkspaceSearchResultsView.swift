@@ -10,7 +10,7 @@ struct WorkspaceSearchResultsView: View {
                 ContentUnavailableView(
                     "No Matching Files",
                     systemImage: "magnifyingglass",
-                    description: Text("No Markdown or text files match \"\(viewModel.searchQueryDescription)\". Try a file name or a folder path.")
+                    description: Text("No Markdown, text, or JSON files match \"\(viewModel.searchQueryDescription)\". Try a file name or a folder path.")
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.top, 48)

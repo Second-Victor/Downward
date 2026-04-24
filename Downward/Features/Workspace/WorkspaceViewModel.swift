@@ -27,7 +27,7 @@ enum WorkspaceCreateItemKind: Equatable {
     var promptMessage: String {
         switch self {
         case .file:
-            "Create a new Markdown or text file."
+            "Create a new Markdown, text, or JSON file."
         case .folder:
             "Create a new folder in the workspace."
         }

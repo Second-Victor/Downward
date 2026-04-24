@@ -102,7 +102,7 @@ Settings presentation still lives in the app/session navigation seam:
 Settings pages should use existing stores and app actions rather than creating parallel state:
 
 - editor font, font size, markdown syntax visibility, selected theme identity, and match-menu preference flow through `EditorAppearanceStore`,
-- custom themes load and persist through `ThemeStore`/`ThemePersistenceService`; JSON import/export flows through `ThemeExchangeDocument`,
+- custom themes load and persist through `ThemeStore`/`ThemePersistenceService`; JSON import/export flows through `ThemeImportService` and `ThemeExchangeDocument`,
 - workspace reconnect/clear still delegate to root/coordinator actions,
 - Tips, Information, and About may expose disabled or placeholder-backed controls until the backing StoreKit, review, and URL infrastructure exists.
 
@@ -273,12 +273,15 @@ The custom JSON theme path deserializes into `CustomTheme`, then maps into the i
 - hidden syntax marker,
 - heading levels,
 - emphasis and strong text,
+- strikethrough text,
 - inline code text and background,
 - fenced code text and background,
 - blockquote text, bar, and background,
 - link text,
 - image alt text,
 - selection-adjacent or active-line syntax.
+
+Workspace `.json` files are supported text documents and should open through the same editor route as Markdown and plain text. Importing a JSON theme is an explicit Theme settings action, not a browser/search tap side effect.
 
 Theme changes are allowed to trigger whole-document restyling at first, but the architecture should leave room to retheme from cached semantic ranges later.
 

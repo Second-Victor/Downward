@@ -24,10 +24,10 @@ final class SettingsScreenModelTests: XCTestCase {
         let summary = SettingsHomeSummary(
             workspaceName: "MarkDown",
             editorAppearanceStore: EditorAppearanceStore(),
-            selectedTheme: .monokai
+            selectedTheme: .greyAdaptive
         )
 
-        XCTAssertEqual(summary.themeName, "Monokai")
+        XCTAssertEqual(summary.themeName, "Grey Adaptive")
     }
 
     @MainActor

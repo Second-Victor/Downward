@@ -23,7 +23,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
         store.setFontChoice(.menlo)
         store.setFontSize(19)
         store.setMarkdownSyntaxMode(.hiddenOutsideCurrentLine)
-        store.setSelectedThemeID(EditorTheme.monokai.id)
+        store.setSelectedThemeID(EditorTheme.greyAdaptive.id)
         store.setMatchSystemChromeToTheme(false)
 
         let reloadedStore = EditorAppearanceStore(
@@ -38,7 +38,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
                 fontChoice: .menlo,
                 fontSize: 19,
                 markdownSyntaxMode: .hiddenOutsideCurrentLine,
-                selectedThemeID: EditorTheme.monokai.id,
+                selectedThemeID: EditorTheme.greyAdaptive.id,
                 matchSystemChromeToTheme: false
             )
         )
@@ -95,6 +95,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
             text: HexColor(hex: "#D4D4D4"),
             tint: HexColor(hex: "#569CD6"),
             boldItalicMarker: HexColor(hex: "#72727F"),
+            strikethrough: HexColor(hex: "#808080"),
             inlineCode: HexColor(hex: "#CE9178"),
             codeBackground: HexColor(hex: "#2D2D2D"),
             horizontalRule: HexColor(hex: "#404040"),

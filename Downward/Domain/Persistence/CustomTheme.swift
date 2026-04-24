@@ -114,7 +114,7 @@ nonisolated struct HexColor: Codable, Equatable, Hashable, Sendable {
 }
 
 nonisolated struct CustomTheme: Codable, Identifiable, Equatable, Hashable, Sendable {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     var id: UUID
     var name: String
@@ -122,6 +122,7 @@ nonisolated struct CustomTheme: Codable, Identifiable, Equatable, Hashable, Send
     var text: HexColor
     var tint: HexColor
     var boldItalicMarker: HexColor
+    var strikethrough: HexColor
     var inlineCode: HexColor
     var codeBackground: HexColor
     var horizontalRule: HexColor
@@ -135,6 +136,7 @@ nonisolated struct CustomTheme: Codable, Identifiable, Equatable, Hashable, Send
         text: HexColor,
         tint: HexColor,
         boldItalicMarker: HexColor,
+        strikethrough: HexColor,
         inlineCode: HexColor,
         codeBackground: HexColor,
         horizontalRule: HexColor,
@@ -147,6 +149,7 @@ nonisolated struct CustomTheme: Codable, Identifiable, Equatable, Hashable, Send
         self.text = text
         self.tint = tint
         self.boldItalicMarker = boldItalicMarker
+        self.strikethrough = strikethrough
         self.inlineCode = inlineCode
         self.codeBackground = codeBackground
         self.horizontalRule = horizontalRule
@@ -162,6 +165,7 @@ nonisolated struct CustomTheme: Codable, Identifiable, Equatable, Hashable, Send
         case text
         case tint
         case boldItalicMarker
+        case strikethrough
         case inlineCode
         case codeBackground
         case horizontalRule
@@ -178,6 +182,8 @@ nonisolated struct CustomTheme: Codable, Identifiable, Equatable, Hashable, Send
         let text = try container.decode(HexColor.self, forKey: .text)
         let tint = try container.decode(HexColor.self, forKey: .tint)
         let boldItalicMarker = try container.decodeIfPresent(HexColor.self, forKey: .boldItalicMarker) ?? text
+        let strikethrough = try container.decodeIfPresent(HexColor.self, forKey: .strikethrough)
+            ?? HexColor(text.uiColor.withAlphaComponent(0.62))
         let inlineCode = try container.decode(HexColor.self, forKey: .inlineCode)
         let codeBackground = try container.decode(HexColor.self, forKey: .codeBackground)
         let horizontalRule = try container.decode(HexColor.self, forKey: .horizontalRule)
@@ -191,6 +197,7 @@ nonisolated struct CustomTheme: Codable, Identifiable, Equatable, Hashable, Send
             text: text,
             tint: tint,
             boldItalicMarker: boldItalicMarker,
+            strikethrough: strikethrough,
             inlineCode: inlineCode,
             codeBackground: codeBackground,
             horizontalRule: horizontalRule,
@@ -208,6 +215,7 @@ nonisolated struct CustomTheme: Codable, Identifiable, Equatable, Hashable, Send
         try container.encode(text, forKey: .text)
         try container.encode(tint, forKey: .tint)
         try container.encode(boldItalicMarker, forKey: .boldItalicMarker)
+        try container.encode(strikethrough, forKey: .strikethrough)
         try container.encode(inlineCode, forKey: .inlineCode)
         try container.encode(codeBackground, forKey: .codeBackground)
         try container.encode(horizontalRule, forKey: .horizontalRule)

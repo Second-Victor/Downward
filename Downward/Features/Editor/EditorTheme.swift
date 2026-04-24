@@ -7,6 +7,7 @@ struct EditorTheme: Identifiable, Equatable {
     let text: UIColor
     let tint: UIColor
     let boldItalicMarker: UIColor
+    let strikethrough: UIColor
     let inlineCode: UIColor
     let codeBackground: UIColor
     let horizontalRule: UIColor
@@ -20,6 +21,7 @@ struct EditorTheme: Identifiable, Equatable {
         text: .label,
         tint: .systemBlue,
         boldItalicMarker: .secondaryLabel,
+        strikethrough: .label.withAlphaComponent(0.62),
         inlineCode: .label,
         codeBackground: .secondarySystemFill,
         horizontalRule: .tertiaryLabel,
@@ -34,6 +36,7 @@ struct EditorTheme: Identifiable, Equatable {
         text: .label,
         tint: .systemGray,
         boldItalicMarker: .secondaryLabel,
+        strikethrough: .label.withAlphaComponent(0.62),
         inlineCode: .label,
         codeBackground: .tertiarySystemFill,
         horizontalRule: .tertiaryLabel,
@@ -41,35 +44,7 @@ struct EditorTheme: Identifiable, Equatable {
         checkboxChecked: .systemGreen
     )
 
-    static let monokai = EditorTheme(
-        id: "monokai",
-        label: "Monokai",
-        background: UIColor(red: 0.12, green: 0.13, blue: 0.11, alpha: 1),
-        text: UIColor(red: 0.82, green: 0.82, blue: 0.78, alpha: 1),
-        tint: UIColor(red: 0.40, green: 0.63, blue: 0.85, alpha: 1),
-        boldItalicMarker: UIColor(red: 0.49, green: 0.49, blue: 0.55, alpha: 1),
-        inlineCode: UIColor(red: 0.78, green: 0.54, blue: 0.43, alpha: 1),
-        codeBackground: UIColor(red: 0.17, green: 0.17, blue: 0.17, alpha: 1),
-        horizontalRule: UIColor(red: 0.36, green: 0.36, blue: 0.36, alpha: 1),
-        checkboxUnchecked: UIColor(red: 0.95, green: 0.28, blue: 0.28, alpha: 1),
-        checkboxChecked: UIColor(red: 0.42, green: 0.60, blue: 0.33, alpha: 1)
-    )
-
-    static let solarized = EditorTheme(
-        id: "solarized",
-        label: "Solarized",
-        background: UIColor(red: 0.99, green: 0.96, blue: 0.89, alpha: 1),
-        text: UIColor(red: 0.03, green: 0.21, blue: 0.26, alpha: 1),
-        tint: UIColor(red: 0.15, green: 0.55, blue: 0.82, alpha: 1),
-        boldItalicMarker: UIColor(red: 0.35, green: 0.43, blue: 0.46, alpha: 1),
-        inlineCode: UIColor(red: 0.80, green: 0.29, blue: 0.09, alpha: 1),
-        codeBackground: UIColor(red: 0.93, green: 0.90, blue: 0.82, alpha: 1),
-        horizontalRule: UIColor(red: 0.58, green: 0.63, blue: 0.63, alpha: 1),
-        checkboxUnchecked: UIColor(red: 0.86, green: 0.20, blue: 0.18, alpha: 1),
-        checkboxChecked: UIColor(red: 0.52, green: 0.60, blue: 0.00, alpha: 1)
-    )
-
-    static let builtIn = [adaptive, greyAdaptive, monokai, solarized]
+    static let builtIn = [adaptive, greyAdaptive]
 
     static func loadingCustomTheme(id: String) -> EditorTheme {
         EditorTheme(
@@ -79,6 +54,7 @@ struct EditorTheme: Identifiable, Equatable {
             text: .label,
             tint: .systemBlue,
             boldItalicMarker: .secondaryLabel,
+            strikethrough: .label.withAlphaComponent(0.62),
             inlineCode: .label,
             codeBackground: .secondarySystemFill,
             horizontalRule: .tertiaryLabel,
@@ -95,6 +71,7 @@ struct EditorTheme: Identifiable, Equatable {
             text: .label,
             tint: .systemOrange,
             boldItalicMarker: .secondaryLabel,
+            strikethrough: .label.withAlphaComponent(0.62),
             inlineCode: .label,
             codeBackground: .secondarySystemFill,
             horizontalRule: .tertiaryLabel,
@@ -110,6 +87,7 @@ struct EditorTheme: Identifiable, Equatable {
         text: UIColor,
         tint: UIColor,
         boldItalicMarker: UIColor,
+        strikethrough: UIColor,
         inlineCode: UIColor,
         codeBackground: UIColor,
         horizontalRule: UIColor,
@@ -122,6 +100,7 @@ struct EditorTheme: Identifiable, Equatable {
         self.text = text
         self.tint = tint
         self.boldItalicMarker = boldItalicMarker
+        self.strikethrough = strikethrough
         self.inlineCode = inlineCode
         self.codeBackground = codeBackground
         self.horizontalRule = horizontalRule
@@ -137,6 +116,7 @@ struct EditorTheme: Identifiable, Equatable {
             text: customTheme.text.uiColor,
             tint: customTheme.tint.uiColor,
             boldItalicMarker: customTheme.boldItalicMarker.uiColor,
+            strikethrough: customTheme.strikethrough.uiColor,
             inlineCode: customTheme.inlineCode.uiColor,
             codeBackground: customTheme.codeBackground.uiColor,
             horizontalRule: customTheme.horizontalRule.uiColor,
@@ -155,7 +135,7 @@ struct EditorTheme: Identifiable, Equatable {
             tertiaryText: text.withAlphaComponent(0.45),
             headingText: text,
             emphasisText: text,
-            strikethroughText: text.withAlphaComponent(0.62),
+            strikethroughText: strikethrough,
             syntaxMarkerText: boldItalicMarker,
             subtleSyntaxMarkerText: horizontalRule,
             linkText: tint,

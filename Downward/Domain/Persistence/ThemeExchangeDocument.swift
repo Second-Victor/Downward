@@ -77,6 +77,7 @@ private nonisolated struct ThemeExchangeTheme: Codable {
     let text: HexColor
     let tint: HexColor
     let boldItalicMarker: HexColor
+    let strikethrough: HexColor
     let inlineCode: HexColor
     let codeBackground: HexColor
     let horizontalRule: HexColor
@@ -90,6 +91,7 @@ private nonisolated struct ThemeExchangeTheme: Codable {
         case text
         case tint
         case boldItalicMarker
+        case strikethrough
         case inlineCode
         case codeBackground
         case horizontalRule
@@ -104,6 +106,7 @@ private nonisolated struct ThemeExchangeTheme: Codable {
         text = theme.text
         tint = theme.tint
         boldItalicMarker = theme.boldItalicMarker
+        strikethrough = theme.strikethrough
         inlineCode = theme.inlineCode
         codeBackground = theme.codeBackground
         horizontalRule = theme.horizontalRule
@@ -119,6 +122,8 @@ private nonisolated struct ThemeExchangeTheme: Codable {
         text = try Self.decodeExchangeHexColor(from: container, forKey: .text)
         tint = try Self.decodeExchangeHexColor(from: container, forKey: .tint)
         boldItalicMarker = try Self.decodeExchangeHexColor(from: container, forKey: .boldItalicMarker)
+        strikethrough = try Self.decodeOptionalExchangeHexColor(from: container, forKey: .strikethrough)
+            ?? HexColor(text.uiColor.withAlphaComponent(0.62))
         inlineCode = try Self.decodeExchangeHexColor(from: container, forKey: .inlineCode)
         codeBackground = try Self.decodeExchangeHexColor(from: container, forKey: .codeBackground)
         horizontalRule = try Self.decodeExchangeHexColor(from: container, forKey: .horizontalRule)
@@ -134,6 +139,7 @@ private nonisolated struct ThemeExchangeTheme: Codable {
         try container.encode(text.hex, forKey: .text)
         try container.encode(tint.hex, forKey: .tint)
         try container.encode(boldItalicMarker.hex, forKey: .boldItalicMarker)
+        try container.encode(strikethrough.hex, forKey: .strikethrough)
         try container.encode(inlineCode.hex, forKey: .inlineCode)
         try container.encode(codeBackground.hex, forKey: .codeBackground)
         try container.encode(horizontalRule.hex, forKey: .horizontalRule)
@@ -149,6 +155,7 @@ private nonisolated struct ThemeExchangeTheme: Codable {
             text: text,
             tint: tint,
             boldItalicMarker: boldItalicMarker,
+            strikethrough: strikethrough,
             inlineCode: inlineCode,
             codeBackground: codeBackground,
             horizontalRule: horizontalRule,
@@ -162,6 +169,17 @@ private nonisolated struct ThemeExchangeTheme: Codable {
         forKey key: CodingKeys
     ) throws -> HexColor {
         let rawValue = try container.decode(String.self, forKey: key)
+        return try HexColor(exchangeString: rawValue, codingPath: container.codingPath + [key])
+    }
+
+    private static func decodeOptionalExchangeHexColor(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) throws -> HexColor? {
+        guard let rawValue = try container.decodeIfPresent(String.self, forKey: key) else {
+            return nil
+        }
+
         return try HexColor(exchangeString: rawValue, codingPath: container.codingPath + [key])
     }
 }

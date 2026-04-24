@@ -24,6 +24,7 @@ The strongest current foundations are:
 - a bounded current-line restyle path so ordinary same-line markdown edits no longer automatically fall back to whole-document rerenders,
 - an explicit markdown syntax visibility contract for future renderer work,
 - a maintained prototype-aligned settings sheet with a native inset-grouped home list, nested Editor/Theme/Markdown/Tips/Information/About pages, persisted theme selection, custom-theme persistence, and honest placeholders for unfinished StoreKit/legal/rating areas,
+- workspace-visible `.json` files that open in the editor like other supported text files, while theme import remains an explicit Theme settings action,
 - a clearer app-coordinator boundary where workspace selection/refresh session application now flows through `WorkspaceSessionPolicy`, mutation preflight and browser-kind rules live in `WorkspaceMutationPolicy`, mutation execution metadata lives in `WorkspaceMutationService`, and trusted route/recent-file decisions live in `WorkspaceNavigationPolicy`,
 - leaner document-session version bookkeeping where open/reload hash raw file bytes and save/autosave reuse the exact UTF-8 payload being written,
 - an async lifecycle audit that keeps workspace refresh/mutation application generation-gated and makes delayed editor conflict-resolution tasks cancel/identity-check before applying results,
@@ -89,6 +90,7 @@ The settings hierarchy is now a real product surface, including Theme and New Th
 **Success**
 
 - harden and polish the initial persisted theme management flow,
+- keep explicit theme imports routed through `ThemeImportService`/`ThemeStore`, not through document editing,
 - keep settings as a sheet over the current workspace/editor on both compact and regular layouts,
 - preserve the existing working workspace/editor/markdown controls,
 - keep StoreKit and legal/rating links honest until the backing infrastructure actually ships,
