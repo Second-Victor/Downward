@@ -23,6 +23,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
         store.setFontChoice(.menlo)
         store.setFontSize(19)
         store.setMarkdownSyntaxMode(.hiddenOutsideCurrentLine)
+        store.setColorFormattedText(false)
         store.setSelectedThemeID(EditorTheme.greyAdaptive.id)
         store.setMatchSystemChromeToTheme(false)
 
@@ -38,6 +39,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
                 fontChoice: .menlo,
                 fontSize: 19,
                 markdownSyntaxMode: .hiddenOutsideCurrentLine,
+                colorFormattedText: false,
                 selectedThemeID: EditorTheme.greyAdaptive.id,
                 matchSystemChromeToTheme: false
             )
@@ -116,6 +118,53 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         XCTAssertEqual(store.selectedThemeLabel(using: themeStore), "Custom")
         XCTAssertSameResolvedColor(store.resolvedTheme(using: themeStore).editorBackground, customTheme.background.uiColor)
+    }
+
+    @MainActor
+    func testColorFormattedTextMapsHeadingAndEmphasisToSyntaxMarkerColor() async {
+        let customTheme = CustomTheme(
+            id: UUID(),
+            name: "Custom",
+            background: HexColor(hex: "#1E1E1E"),
+            text: HexColor(hex: "#D4D4D4"),
+            tint: HexColor(hex: "#569CD6"),
+            boldItalicMarker: HexColor(hex: "#C586C0"),
+            strikethrough: HexColor(hex: "#808080"),
+            inlineCode: HexColor(hex: "#CE9178"),
+            codeBackground: HexColor(hex: "#2D2D2D"),
+            horizontalRule: HexColor(hex: "#404040"),
+            checkboxUnchecked: HexColor(hex: "#F44747"),
+            checkboxChecked: HexColor(hex: "#6A9955")
+        )
+        let themeStore = ThemeStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "editor-color-formatted-\(UUID().uuidString).json"))
+        let didAddTheme = await themeStore.add(customTheme)
+        XCTAssertTrue(didAddTheme)
+
+        let enabledStore = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 16,
+                colorFormattedText: true,
+                selectedThemeID: customTheme.id.uuidString
+            )
+        )
+        let enabledTheme = enabledStore.resolvedTheme(using: themeStore)
+
+        XCTAssertSameResolvedColor(enabledTheme.headingText, customTheme.boldItalicMarker.uiColor)
+        XCTAssertSameResolvedColor(enabledTheme.emphasisText, customTheme.boldItalicMarker.uiColor)
+
+        let disabledStore = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 16,
+                colorFormattedText: false,
+                selectedThemeID: customTheme.id.uuidString
+            )
+        )
+        let disabledTheme = disabledStore.resolvedTheme(using: themeStore)
+
+        XCTAssertSameResolvedColor(disabledTheme.headingText, customTheme.text.uiColor)
+        XCTAssertSameResolvedColor(disabledTheme.emphasisText, customTheme.text.uiColor)
     }
 
     @MainActor

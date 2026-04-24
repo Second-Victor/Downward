@@ -82,15 +82,16 @@ final class SettingsScreenModelTests: XCTestCase {
         let store = EditorAppearanceStore(initialPreferences: .default)
 
         store.setMarkdownSyntaxMode(.hiddenOutsideCurrentLine)
+        store.setColorFormattedText(false)
 
         XCTAssertEqual(store.markdownSyntaxMode, .hiddenOutsideCurrentLine)
+        XCTAssertEqual(store.colorFormattedText, false)
     }
 
     func testPlaceholderSettingsAreNotMarkedImplemented() {
         let placeholders: [SettingsPlaceholderFeature] = [
             .lineNumbers,
             .largerHeadingText,
-            .colorFormattedTextToggle,
             .tapToToggleTasks,
             .tipsPurchases,
             .rateTheApp,

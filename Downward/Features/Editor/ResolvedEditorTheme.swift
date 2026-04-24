@@ -75,4 +75,34 @@ struct ResolvedEditorTheme: Equatable {
             && lhs.blockquoteBar.isEqual(rhs.blockquoteBar)
             && lhs.horizontalRuleText.isEqual(rhs.horizontalRuleText)
     }
+
+    func applyingColorFormattedText(_ isEnabled: Bool) -> ResolvedEditorTheme {
+        guard isEnabled else {
+            return self
+        }
+
+        return ResolvedEditorTheme(
+            editorBackground: editorBackground,
+            keyboardAccessoryUnderlayBackground: keyboardAccessoryUnderlayBackground,
+            accent: accent,
+            primaryText: primaryText,
+            secondaryText: secondaryText,
+            tertiaryText: tertiaryText,
+            headingText: syntaxMarkerText,
+            emphasisText: syntaxMarkerText,
+            strikethroughText: strikethroughText,
+            syntaxMarkerText: syntaxMarkerText,
+            subtleSyntaxMarkerText: subtleSyntaxMarkerText,
+            linkText: linkText,
+            imageAltText: imageAltText,
+            inlineCodeText: inlineCodeText,
+            inlineCodeBackground: inlineCodeBackground,
+            codeBlockText: codeBlockText,
+            codeBlockBackground: codeBlockBackground,
+            blockquoteText: blockquoteText,
+            blockquoteBackground: blockquoteBackground,
+            blockquoteBar: blockquoteBar,
+            horizontalRuleText: horizontalRuleText
+        )
+    }
 }

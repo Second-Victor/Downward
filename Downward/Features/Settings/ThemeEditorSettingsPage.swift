@@ -178,7 +178,9 @@ struct ThemeEditorSettingsPage: View {
     }
 
     private var previewResolvedTheme: ResolvedEditorTheme {
-        EditorTheme(from: makeTheme(id: editing?.id ?? UUID(), name: name)).resolvedEditorTheme
+        EditorTheme(from: makeTheme(id: editing?.id ?? UUID(), name: name))
+            .resolvedEditorTheme
+            .applyingColorFormattedText(editorAppearanceStore.colorFormattedText)
     }
 
     private var exportPresentationBinding: Binding<Bool> {

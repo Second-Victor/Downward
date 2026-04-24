@@ -4,8 +4,14 @@ struct MarkdownSettingsPage: View {
     let editorAppearanceStore: EditorAppearanceStore
     let backAction: () -> Void
 
-    @State private var colorFormattedText = true
     @State private var tapToToggleTasks = true
+
+    private var colorFormattedTextBinding: Binding<Bool> {
+        Binding(
+            get: { editorAppearanceStore.colorFormattedText },
+            set: { editorAppearanceStore.setColorFormattedText($0) }
+        )
+    }
 
     private var hideMarkdownFormattingBinding: Binding<Bool> {
         Binding(
@@ -25,13 +31,11 @@ struct MarkdownSettingsPage: View {
             SettingsCard {
                 SettingsToggleRow(
                     title: "Colour Formatted Text",
-                    isOn: $colorFormattedText,
-                    isEnabled: false,
-                    accessibilityHint: "The current renderer always applies theme styling; a separate toggle is not implemented yet."
+                    isOn: colorFormattedTextBinding
                 )
             }
             SettingsHelperText(
-                "Apply the theme's accent colour to heading, bold, and italic text, matching the syntax markers."
+                "Apply the markdown syntax marker colour to heading, bold, and italic text."
             )
 
             SettingsCard {

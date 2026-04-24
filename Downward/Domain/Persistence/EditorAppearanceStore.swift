@@ -64,6 +64,10 @@ final class EditorAppearanceStore {
         effectivePreferences.markdownSyntaxMode
     }
 
+    var colorFormattedText: Bool {
+        effectivePreferences.colorFormattedText
+    }
+
     var selectedThemeID: String {
         effectivePreferences.selectedThemeID
     }
@@ -75,11 +79,11 @@ final class EditorAppearanceStore {
     var resolvedTheme: ResolvedEditorTheme {
         // Compatibility path for tests and callers that do not own a ThemeStore.
         // Runtime editor rendering should prefer resolvedTheme(using:).
-        EditorTheme.adaptive.resolvedEditorTheme
+        EditorTheme.adaptive.resolvedEditorTheme.applyingColorFormattedText(colorFormattedText)
     }
 
     func resolvedTheme(using themeStore: ThemeStore) -> ResolvedEditorTheme {
-        themeStore.resolve(selectedThemeID).resolvedEditorTheme
+        themeStore.resolve(selectedThemeID).resolvedEditorTheme.applyingColorFormattedText(colorFormattedText)
     }
 
     func selectedThemeLabel(using themeStore: ThemeStore) -> String {
@@ -116,6 +120,15 @@ final class EditorAppearanceStore {
         }
 
         preferences.markdownSyntaxMode = mode
+        persist()
+    }
+
+    func setColorFormattedText(_ isEnabled: Bool) {
+        guard preferences.colorFormattedText != isEnabled else {
+            return
+        }
+
+        preferences.colorFormattedText = isEnabled
         persist()
     }
 
@@ -168,6 +181,7 @@ final class EditorAppearanceStore {
             fontChoice: resolver.normalizedChoice(preferences.fontChoice),
             fontSize: clampFontSize(preferences.fontSize),
             markdownSyntaxMode: preferences.markdownSyntaxMode,
+            colorFormattedText: preferences.colorFormattedText,
             selectedThemeID: preferences.selectedThemeID,
             matchSystemChromeToTheme: preferences.matchSystemChromeToTheme
         )

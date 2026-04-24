@@ -23,7 +23,6 @@ struct SettingsHomeSummary: Equatable {
 enum SettingsPlaceholderFeature: Equatable {
     case lineNumbers
     case largerHeadingText
-    case colorFormattedTextToggle
     case tapToToggleTasks
     case tipsPurchases
     case rateTheApp
