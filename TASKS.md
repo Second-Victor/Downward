@@ -62,21 +62,21 @@ Done when:
 
 ### 2. Harden theme import/export UX
 
-- [ ] Decide whether export means “current editor draft” or “last saved theme”.
-- [ ] Rename/copy the export action if current unsaved form state is intentionally exported.
-- [ ] Add a clear user-facing warning for low-contrast themes if save/export remains allowed.
+- [x] Decide whether export means “current editor draft” or “last saved theme”.
+- [x] Rename/copy the export action if current unsaved form state is intentionally exported.
+- [x] Add a clear user-facing warning for low-contrast themes if save/export remains allowed.
 - [x] Reject or clearly handle unsupported future `schemaVersion` values.
 - [x] Improve import errors for invalid JSON.
 - [x] Improve import errors for unsupported schema.
 - [x] Improve import errors for duplicate names.
 - [x] Improve import errors for oversized files.
-- [ ] Improve import errors for bundle failures.
+- [x] Improve import errors for bundle failures.
 - [ ] Verify import/export through Files, iCloud Drive, and one third-party provider.
 - [x] Add tests for duplicate names.
 - [x] Add tests for same-ID replacement.
-- [ ] Add tests for selected-theme deletion fallback.
-- [ ] Add tests for legacy JSON.
-- [ ] Add tests for file-size rejection.
+- [x] Add tests for selected-theme deletion fallback.
+- [x] Add tests for legacy JSON.
+- [x] Add tests for file-size rejection.
 
 Done when:
 
@@ -90,7 +90,7 @@ Done when:
 - [ ] Keep hidden-syntax reveal decisions testable without a live `UITextView`.
 - [ ] Preserve same-line current-line restyle as the fast path.
 - [ ] Preserve deferred full rerender for line breaks, paste, block-context changes, and selection-driven reveal changes.
-- [ ] Add large-document performance fixtures.
+- [x] Add large-document performance fixtures.
 - [ ] Avoid adding tables, footnotes, or richer code-block behavior until the renderer split is underway.
 
 Done when:

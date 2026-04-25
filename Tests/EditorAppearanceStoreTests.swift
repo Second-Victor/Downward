@@ -202,6 +202,28 @@ final class EditorAppearanceStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectedCustomThemeDeletionFallsBackToAdaptiveTheme() {
+        let selectedThemeID = UUID()
+        let unrelatedThemeID = UUID()
+        let store = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 16,
+                selectedThemeID: selectedThemeID.uuidString
+            )
+        )
+
+        store.fallBackToAdaptiveThemeIfSelectedThemeWasDeleted(unrelatedThemeID, didDelete: true)
+        XCTAssertEqual(store.selectedThemeID, selectedThemeID.uuidString)
+
+        store.fallBackToAdaptiveThemeIfSelectedThemeWasDeleted(selectedThemeID, didDelete: false)
+        XCTAssertEqual(store.selectedThemeID, selectedThemeID.uuidString)
+
+        store.fallBackToAdaptiveThemeIfSelectedThemeWasDeleted(selectedThemeID, didDelete: true)
+        XCTAssertEqual(store.selectedThemeID, EditorTheme.adaptive.id)
+    }
+
+    @MainActor
     func testEditorAppearanceStoreExposesDefaultResolvedTheme() {
         let store = EditorAppearanceStore(initialPreferences: .default)
         let theme = store.resolvedTheme

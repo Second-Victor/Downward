@@ -83,7 +83,7 @@ Done when:
 
 ### [P1] Theme import/export needs a production hardening pass
 
-**Status:** future schema rejection, direct invalid-JSON import messaging, precise oversized-file messaging, import-specific duplicate-name messaging, and same-ID replacement regression coverage are now explicit; external-file UX and broader validation still need polish.
+**Status:** future schema rejection, direct invalid-JSON import messaging, precise oversized-file messaging, oversized-file rejection coverage, import-specific duplicate-name messaging, same-ID replacement regression coverage, all-or-nothing partial-bundle failure messaging, current-draft export labeling, low-contrast save/export warning copy, and legacy JSON import coverage are now explicit; external-file UX and broader validation still need polish.
 
 Relevant files:
 
@@ -102,9 +102,9 @@ Remaining concerns:
 
 - [x] `CustomTheme` decodes `schemaVersion` but currently treats it mostly as stored metadata. Before sharing themes externally, unknown future schema versions should produce a clear user-facing outcome.
 - [x] Import now surfaces precise errors for invalid JSON, unsupported schema, duplicate names, and oversized files.
-- [ ] Import should surface precise errors for partial-bundle failures.
-- [ ] Export from `ThemeEditorSettingsPage` currently serializes the current editor form state. That may be useful, but it means the user can export unsaved or low-contrast edits. Either make this explicit in the UI copy or export only the last-saved theme.
-- [ ] Contrast warnings do not block save/export. That is acceptable if intentional, but the app should be explicit about it.
+- [x] Import now surfaces precise errors for partial-bundle failures, while keeping bundle import all-or-nothing.
+- [x] Export from `ThemeEditorSettingsPage` serializes the current editor form state and is labelled as `Export Draft`.
+- [x] Contrast warnings do not block save/export, and the warning copy now explicitly says Save and Export Draft remain available.
 - [ ] Security-scoped import should be manually tested with Files, iCloud Drive, and at least one third-party provider.
 
 Follow-up note (2026-04-25): theme exchange import/export now encodes `schemaVersion`, rejects versions newer than `CustomTheme.currentSchemaVersion`, surfaces a direct localized error instead of silently accepting unknown future schema payloads, preserves the invalid-JSON message in the Settings import alert instead of wrapping it in a generic prefix, reports oversized imports with both the actual file size and the configured limit, and uses an import-specific duplicate-name error when an imported theme conflicts with an existing different-ID theme.
@@ -135,7 +135,7 @@ Action items:
 - [ ] Move hidden-syntax visibility decisions behind a small value type or strategy that can be tested without `UITextView`.
 - [ ] Keep current-line restyle as the fast path for simple same-line edits.
 - [ ] Keep line-breaks, block-context changes, selection-driven reveal changes, and paste operations on a deferred full-rerender path until a real incremental parser exists.
-- [ ] Add large-document performance fixtures before adding tables, footnotes, task-list interactions, or richer code-block behavior.
+- [x] Add large-document performance fixtures before adding tables, footnotes, task-list interactions, or richer code-block behavior.
 
 Done when:
 
@@ -233,15 +233,15 @@ Action items:
 ## Test gaps to close next
 
 - [ ] Theme import invalid JSON.
-- [ ] Theme import file larger than the 5 MB limit.
+- [x] Theme import file larger than the 5 MB limit.
 - [x] Theme import duplicate name with different ID.
 - [x] Theme import same ID replacement.
-- [ ] Theme import bundle/array decoding and partial failure behavior.
-- [ ] Selected custom theme deletion fallback.
+- [x] Theme import bundle/array decoding and partial failure behavior.
+- [x] Selected custom theme deletion fallback.
 - [ ] Theme export current-draft versus saved-theme behavior.
 - [ ] Accessory clear-background/tint contract.
 - [ ] Accessory behavior during keyboard presentation and interactive dismissal on device.
-- [ ] Large-document renderer performance fixture.
+- [x] Large-document renderer performance fixture.
 - [ ] Snapshot index behavior after rename/move/delete/case-only rename.
 - [ ] Real Files-provider workspace observation and theme import.
 

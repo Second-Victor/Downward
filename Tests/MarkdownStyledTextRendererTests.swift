@@ -819,6 +819,42 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         XCTAssertTrue(altTextFont?.fontDescriptor.symbolicTraits.contains(.traitItalic) == true)
         XCTAssertEqual(sourceIsHidden, true)
     }
+
+    @MainActor
+    func testLargeDocumentRenderPerformance() {
+        let text = makeLargeMarkdownDocument(lineCount: 1_000)
+
+        measure(metrics: [XCTClockMetric()]) {
+            let rendered = renderer.render(
+                configuration: .init(
+                    text: text,
+                    baseFont: baseFont,
+                    syntaxMode: .hiddenOutsideCurrentLine,
+                    revealedRange: nil
+                )
+            )
+
+            XCTAssertEqual(rendered.length, (text as NSString).length)
+        }
+    }
+
+    private func makeLargeMarkdownDocument(lineCount: Int) -> String {
+        (0..<lineCount).map { index in
+            switch index % 5 {
+            case 0:
+                return "## Heading \(index)"
+            case 1:
+                return "- [ ] Task \(index) with **bold** and _italic_ text"
+            case 2:
+                return "> Quote \(index) with [link](https://example.com/\(index))"
+            case 3:
+                return "`inline code \(index)` and ~~removed text~~"
+            default:
+                return "Plain paragraph \(index) with enough words to resemble normal markdown editing."
+            }
+        }
+        .joined(separator: "\n")
+    }
 }
 
 private final class LayoutInvalidationSpy: NSLayoutManager {

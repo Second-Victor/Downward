@@ -141,6 +141,14 @@ final class EditorAppearanceStore {
         persist()
     }
 
+    func fallBackToAdaptiveThemeIfSelectedThemeWasDeleted(_ deletedThemeID: UUID, didDelete: Bool) {
+        guard didDelete, selectedThemeID == deletedThemeID.uuidString else {
+            return
+        }
+
+        setSelectedThemeID(EditorTheme.adaptive.id)
+    }
+
     func setMatchSystemChromeToTheme(_ isEnabled: Bool) {
         guard preferences.matchSystemChromeToTheme != isEnabled else {
             return

@@ -72,7 +72,7 @@ struct ThemeEditorSettingsPage: View {
             Section("Colours") {
                 if hasLowContrast {
                     Label {
-                        Text("Text and background contrast is \(textBackgroundContrastRatio, specifier: "%.1f"):1 - WCAG AA requires 4.5:1. The editor may be difficult to read.")
+                        Text("Text and background contrast is \(textBackgroundContrastRatio, specifier: "%.1f"):1 - WCAG AA requires 4.5:1. Save and Export Draft remain available, but the editor may be difficult to read.")
                             .font(.footnote)
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -122,7 +122,7 @@ struct ThemeEditorSettingsPage: View {
         .toolbar {
             if editing != nil {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Export", systemImage: "square.and.arrow.up") {
+                    Button("Export Draft", systemImage: "square.and.arrow.up") {
                         exportTheme()
                     }
                 }

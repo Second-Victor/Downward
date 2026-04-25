@@ -42,43 +42,133 @@ struct ThemeExchangeDocument: FileDocument {
     }
 
     private static func decodeThemes(from data: Data) throws -> [CustomTheme] {
+        let jsonObject: Any
         do {
-            _ = try JSONSerialization.jsonObject(with: data)
+            jsonObject = try JSONSerialization.jsonObject(with: data)
         } catch {
             throw ThemeExchangeError.invalidJSON
         }
 
         let decoder = JSONDecoder()
 
+        if jsonObject is [Any] {
+            return try decodeThemeArray(from: data, using: decoder)
+        }
+
+        guard let dictionary = jsonObject as? [String: Any] else {
+            throw ThemeExchangeError.invalidFormat
+        }
+
+        if dictionary["themes"] != nil {
+            return try decodeThemeBundle(from: data, using: decoder)
+        }
+
+        return try decodeSingleTheme(from: data, using: decoder)
+    }
+
+    private static func decodeSingleTheme(from data: Data, using decoder: JSONDecoder) throws -> [CustomTheme] {
         do {
             let theme = try decoder.decode(ThemeExchangeTheme.self, from: data)
             return [theme.makeCustomTheme()]
         } catch let error as ThemeSchemaVersionError {
             throw error
         } catch {
+            throw ThemeExchangeError.invalidFormat
         }
+    }
 
+    private static func decodeThemeArray(from data: Data, using decoder: JSONDecoder) throws -> [CustomTheme] {
         do {
             let themes = try decoder.decode([ThemeExchangeTheme].self, from: data)
-            if themes.isEmpty == false {
-                return themes.map { $0.makeCustomTheme() }
+            guard themes.isEmpty == false else {
+                throw ThemeExchangeError.invalidFormat
             }
+            return themes.map { $0.makeCustomTheme() }
         } catch let error as ThemeSchemaVersionError {
             throw error
+        } catch let error as DecodingError {
+            throw ThemeExchangeError.partialBundleFailure(details: describePartialBundleFailure(error))
         } catch {
+            throw ThemeExchangeError.invalidFormat
         }
+    }
 
+    private static func decodeThemeBundle(from data: Data, using decoder: JSONDecoder) throws -> [CustomTheme] {
         do {
             let bundle = try decoder.decode(ThemeExchangeBundle.self, from: data)
-            if bundle.themes.isEmpty == false {
-                return bundle.themes.map { $0.makeCustomTheme() }
+            guard bundle.themes.isEmpty == false else {
+                throw ThemeExchangeError.invalidFormat
             }
+            return bundle.themes.map { $0.makeCustomTheme() }
         } catch let error as ThemeSchemaVersionError {
             throw error
+        } catch let error as DecodingError {
+            throw ThemeExchangeError.partialBundleFailure(details: describePartialBundleFailure(error))
         } catch {
+            throw ThemeExchangeError.invalidFormat
+        }
+    }
+
+    private static func describePartialBundleFailure(_ error: DecodingError) -> String {
+        switch error {
+        case let .dataCorrupted(context):
+            return partialBundleFailureMessage(
+                codingPath: context.codingPath,
+                description: context.debugDescription
+            )
+        case let .keyNotFound(key, context):
+            return partialBundleFailureMessage(
+                codingPath: context.codingPath + [key],
+                description: "Missing required value."
+            )
+        case let .typeMismatch(_, context), let .valueNotFound(_, context):
+            return partialBundleFailureMessage(
+                codingPath: context.codingPath,
+                description: context.debugDescription
+            )
+        @unknown default:
+            return "One of the themes in this import file is invalid."
+        }
+    }
+
+    private static func partialBundleFailureMessage(
+        codingPath: [any CodingKey],
+        description: String
+    ) -> String {
+        let path = codingPathDescription(for: codingPath)
+        guard path.isEmpty == false else {
+            return "One of the themes in this import file is invalid. \(description)"
         }
 
-        throw ThemeExchangeError.invalidFormat
+        return "One of the themes in this import file is invalid at \(path). \(description)"
+    }
+
+    private static func codingPathDescription(for codingPath: [any CodingKey]) -> String {
+        var path = ""
+
+        for key in codingPath {
+            if let index = key.intValue {
+                path += "[\(index)]"
+                continue
+            }
+
+            let component = key.stringValue
+            guard component.isEmpty == false else {
+                continue
+            }
+
+            if path.isEmpty {
+                path = component
+            } else {
+                path += ".\(component)"
+            }
+        }
+
+        if path.hasPrefix("[") {
+            return "themes\(path)"
+        }
+
+        return path
     }
 }
 
@@ -207,6 +297,7 @@ private nonisolated struct ThemeExchangeTheme: Codable {
 private enum ThemeExchangeError: LocalizedError {
     case invalidJSON
     case invalidFormat
+    case partialBundleFailure(details: String)
 
     var errorDescription: String? {
         switch self {
@@ -214,6 +305,8 @@ private enum ThemeExchangeError: LocalizedError {
             return "The selected file is not valid JSON."
         case .invalidFormat:
             return "The selected JSON file is not a valid Downward theme export."
+        case let .partialBundleFailure(details):
+            return details
         }
     }
 }

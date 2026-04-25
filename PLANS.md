@@ -138,15 +138,15 @@ The app now has real custom theme infrastructure, but import/export is still clo
 
 ### Implementation plan
 
-- [ ] Decide whether export should serialize the current editor form or the persisted theme.
-- [ ] If exporting the form, label it as draft/current export.
+- [x] Decide whether export should serialize the current editor form or the persisted theme.
+- [x] If exporting the form, label it as draft/current export.
 - [ ] If exporting the saved theme, load the persisted theme by ID before export.
-- [ ] Decide whether low-contrast warnings should block export.
+- [x] Decide whether low-contrast warnings should block export.
 - [x] Add explicit unsupported-schema handling for future `schemaVersion` values.
 - [x] Make duplicate-name import errors user-readable.
 - [x] Make oversized-file errors user-readable.
 - [x] Make invalid JSON errors user-readable without exposing raw decoder internals.
-- [ ] Decide whether bundle import should be all-or-nothing or allow partial import.
+- [x] Decide whether bundle import should be all-or-nothing or allow partial import.
 - [ ] Keep normal `.json` document opening separate from theme import.
 
 ### Test plan
@@ -155,11 +155,11 @@ The app now has real custom theme infrastructure, but import/export is still clo
 - [ ] Import a valid array of themes.
 - [ ] Import a valid bundle document.
 - [ ] Import invalid JSON.
-- [ ] Import a file above the 5 MB limit.
+- [x] Import a file above the 5 MB limit.
 - [x] Import a theme with duplicate name and different ID.
 - [x] Import a theme with the same ID and confirm replacement behavior.
-- [ ] Import legacy JSON missing newer optional fields.
-- [ ] Delete the currently selected custom theme and confirm fallback.
+- [x] Import legacy JSON missing newer optional fields.
+- [x] Delete the currently selected custom theme and confirm fallback.
 - [ ] Export a saved theme.
 - [ ] Export unsaved editor form state if that remains the chosen behavior.
 
@@ -203,7 +203,7 @@ The app now has real custom theme infrastructure, but import/export is still clo
 
 - [ ] Keep same-line edits on the current-line restyle path.
 - [ ] Send line breaks, paste, structural edits, and selection reveal changes through deferred full rerender until a real incremental parser exists.
-- [ ] Add large-document fixtures.
+- [x] Add large-document fixtures.
 - [ ] Measure typing latency in long documents.
 - [ ] Measure paste latency in long documents.
 - [ ] Measure theme-switch restyle latency in long documents.

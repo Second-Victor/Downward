@@ -38,11 +38,11 @@ struct ThemeSettingsPage: View {
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
                             Task {
-                                let wasSelected = editorAppearanceStore.selectedThemeID == customTheme.id.uuidString
                                 let didDelete = await themeStore.delete(id: customTheme.id)
-                                if didDelete, wasSelected {
-                                    editorAppearanceStore.setSelectedThemeID(EditorTheme.adaptive.id)
-                                }
+                                editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedThemeWasDeleted(
+                                    customTheme.id,
+                                    didDelete: didDelete
+                                )
                             }
                         } label: {
                             Label("Delete", systemImage: "trash")

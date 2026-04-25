@@ -234,6 +234,145 @@ final class ThemeStoreTests: XCTestCase {
         }
     }
 
+    func testThemeImportServiceLoadsLegacyThemeWithoutNewerOptionalFields() async throws {
+        let themeURL = try makeTemporaryThemeURL()
+        let data = """
+        {
+          "horizontalRule" : "#404040",
+          "text" : "#D4D4D4",
+          "tint" : "#569CD6",
+          "checkboxChecked" : "#6A9955",
+          "id" : "11019126-7DF8-475F-B132-A53F46EDAE89",
+          "inlineCode" : "#CE9178",
+          "codeBackground" : "#2D2D2D",
+          "checkboxUnchecked" : "#F44747",
+          "name" : "Legacy",
+          "boldItalicMarker" : "#72727F",
+          "background" : "#1E1E1E"
+        }
+        """.data(using: .utf8)!
+        try data.write(to: themeURL)
+
+        let importedThemes = try await ThemeImportService().loadThemes(from: themeURL)
+
+        XCTAssertEqual(importedThemes.count, 1)
+        XCTAssertEqual(importedThemes.first?.name, "Legacy")
+        XCTAssertEqual(importedThemes.first?.strikethrough.hex.count, 9)
+    }
+
+    func testThemeImportServiceRejectsOversizedFileFromFileURL() async throws {
+        let themeURL = try makeTemporaryThemeURL()
+        let fileData = Data(repeating: 0x41, count: 2_621_440)
+        try fileData.write(to: themeURL)
+
+        do {
+            _ = try await ThemeImportService(maximumFileSize: 1_048_576).loadThemes(from: themeURL)
+            XCTFail("Expected oversized file import to fail")
+        } catch let error as ThemeImportError {
+            XCTAssertEqual(
+                error,
+                .fileTooLarge(actualFileSize: 2_621_440, maximumFileSize: 1_048_576)
+            )
+            XCTAssertEqual(
+                error.localizedDescription,
+                "The selected file is 2.5 MB, which exceeds the 1.0 MB import limit."
+            )
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testThemeExchangeDocumentRejectsInvalidThemeInsideArrayWithUserReadableError() throws {
+        let data = """
+        [
+          {
+            "schemaVersion" : 2,
+            "horizontalRule" : "#404040",
+            "text" : "#D4D4D4",
+            "tint" : "#569CD6",
+            "checkboxChecked" : "#6A9955",
+            "id" : "11019126-7DF8-475F-B132-A53F46EDAE89",
+            "inlineCode" : "#CE9178",
+            "codeBackground" : "#2D2D2D",
+            "checkboxUnchecked" : "#F44747",
+            "name" : "Valid",
+            "boldItalicMarker" : "#72727F",
+            "background" : "#1E1E1E"
+          },
+          {
+            "schemaVersion" : 2,
+            "horizontalRule" : "#404040",
+            "text" : "#D4D4D4",
+            "tint" : "#569CD6",
+            "checkboxChecked" : "#6A9955",
+            "id" : "22019126-7DF8-475F-B132-A53F46EDAE89",
+            "inlineCode" : "#CE9178",
+            "codeBackground" : "#2D2D2D",
+            "checkboxUnchecked" : "#F44747",
+            "name" : "Broken",
+            "boldItalicMarker" : "#72727F",
+            "background" : "#NOTHEX"
+          }
+        ]
+        """.data(using: .utf8)!
+
+        XCTAssertThrowsError(try ThemeExchangeDocument(data: data)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "One of the themes in this import file is invalid at themes[1].background. Hex colours may only contain hexadecimal digits."
+            )
+        }
+    }
+
+    func testThemeImportServiceRejectsInvalidThemeInsideBundleWithUserReadableError() async throws {
+        let themeURL = try makeTemporaryThemeURL()
+        let data = """
+        {
+          "themes" : [
+            {
+              "schemaVersion" : 2,
+              "horizontalRule" : "#404040",
+              "text" : "#D4D4D4",
+              "tint" : "#569CD6",
+              "checkboxChecked" : "#6A9955",
+              "id" : "11019126-7DF8-475F-B132-A53F46EDAE89",
+              "inlineCode" : "#CE9178",
+              "codeBackground" : "#2D2D2D",
+              "checkboxUnchecked" : "#F44747",
+              "name" : "Valid",
+              "boldItalicMarker" : "#72727F",
+              "background" : "#1E1E1E"
+            },
+            {
+              "schemaVersion" : 2,
+              "horizontalRule" : "#404040",
+              "text" : "#D4D4D4",
+              "tint" : "#569CD6",
+              "checkboxChecked" : "#6A9955",
+              "id" : "22019126-7DF8-475F-B132-A53F46EDAE89",
+              "inlineCode" : "#CE9178",
+              "codeBackground" : "#2D2D2D",
+              "checkboxUnchecked" : "#F44747",
+              "name" : "Broken",
+              "boldItalicMarker" : "#72727F",
+              "background" : "#NOTHEX"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+        try data.write(to: themeURL)
+
+        do {
+            _ = try await ThemeImportService().loadThemes(from: themeURL)
+            XCTFail("Expected invalid bundled theme import to fail")
+        } catch {
+            XCTAssertEqual(
+                error.localizedDescription,
+                "One of the themes in this import file is invalid at themes[1].background. Hex colours may only contain hexadecimal digits."
+            )
+        }
+    }
+
     private func makeTemporaryThemeURL() throws -> URL {
         let directoryURL = FileManager.default.temporaryDirectory
             .appending(path: "DownwardThemeStoreTests-\(UUID().uuidString)", directoryHint: .isDirectory)
