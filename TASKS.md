@@ -33,15 +33,18 @@ No new P0 code defect was found in the 2026-04-24 static review, but release val
 
 - [x] Build the app in Xcode.
 - [x] Run the focused XCTest suites for workspace restore, document manager, editor autosave, editor undo/redo, markdown rendering, settings, themes, and keyboard geometry.
-- [ ] Run the app on at least one iPhone simulator.
-- [ ] Run the app on at least one iPad simulator or device.
+- [x] Run command-line app smoke coverage on at least one iPhone simulator.
+- [x] Run command-line app smoke coverage on at least one iPad simulator or device.
 - [ ] Manually verify workspace selection, restore, reconnect, recent-file reopening, and stale workspace handling.
 - [ ] Manually verify editing, autosave, close/reopen, and rapid document switching.
 - [ ] Manually verify keyboard accessory behavior on first keyboard presentation and during interactive dismissal.
 - [ ] Manually verify Settings sheet presentation on compact and regular width.
-- [ ] Record build/test/manual QA results here before treating the release as ready.
+- [x] Record build/test/command-line smoke results in `RELEASE_QA.md`.
+- [ ] Record manual QA results in `RELEASE_QA.md` before treating the release as ready.
 
 Verification note (2026-04-25): `xcodebuild -list` identified the `Downward` scheme. `xcodebuild build -scheme Downward -destination 'generic/platform=iOS Simulator'` passed after the named simulator build destination was unavailable during build discovery. `xcodebuild test -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17'` passed on iPhone 17, iOS 26.4 Simulator with 341 passed, 2 skipped, 0 failed. The full run covered the required workspace snapshot/search/recent-file, document manager, editor autosave, editor undo/redo, markdown scanner/style/renderer/performance, settings/theme, keyboard geometry, restore, mutation, and smoke suites. An initial full test run failed in `EditorAutosaveTests.testLiveObservationReloadsCleanEditorAfterOutsideWrite()`; this batch fixed that test's observation timing and reran the focused case plus the full suite successfully.
+
+Runtime smoke note (2026-04-25): `RELEASE_QA.md` now records the dedicated runtime QA checklist and the latest command-line simulator smoke pass. `xcodebuild build` passed on iPhone 17 and iPad Pro 13-inch (M5), both on iOS 26.4 Simulator. Focused app-hosted smoke/restore/mutation tests passed on both simulators with 55 passed, 0 skipped, 0 failed per destination. This was not manual visual, real-device, Files-provider, or keyboard-interaction QA.
 
 ## P1 active work
 
@@ -93,6 +96,8 @@ Inline split note (2026-04-25): scanner output now includes delimited inline sty
 
 Performance budget note (2026-04-25): large-document markdown rendering now has automated work-scope regression coverage. Initial open/theme restyle may render the whole document, ordinary same-line typing must stay on a current-line render budget of 512 characters or less in the large fixture, and structural line-break edits must defer the full-document rerender.
 
+Latency measurement note (2026-04-25): local XCTest clock metrics now cover the 2,000-line, 58,800 UTF-16 character markdown fixture on iPhone 17 iOS 26.4 Simulator from a MacBook Pro with Apple M4 Pro, macOS 26.4.1. Same-line typing/current-line restyle averaged 1.81 ms over 5 samples, paste/full render of a 64,094-character pasted document averaged 198.87 ms, and theme-switch restyle averaged 196.11 ms. These measurements are regression guidance only, not a release guarantee across devices.
+
 - [x] Split the first markdown recognition/scanning slice from UIKit styling.
 - [x] Keep theme role mapping out of parsing code for the extracted scanner slice.
 - [x] Keep hidden-syntax reveal decisions testable without a live `UITextView`.
@@ -101,6 +106,9 @@ Performance budget note (2026-04-25): large-document markdown rendering now has 
 - [x] Preserve same-line current-line restyle as the fast path.
 - [x] Preserve deferred full rerender for line breaks, paste, block-context changes, and selection-driven reveal changes.
 - [x] Add large-document performance fixtures.
+- [x] Measure typing latency in long documents.
+- [x] Measure paste latency in long documents.
+- [x] Measure theme-switch restyle latency in long documents.
 - [x] Avoid adding tables, footnotes, or richer code-block behavior until the renderer split is underway.
 
 Done when:
@@ -108,6 +116,7 @@ Done when:
 - [x] Renderer tests can exercise syntax recognition without attributed-string styling.
 - [x] Renderer styling/application logic has focused helper coverage.
 - [x] Large-file typing has an explicit performance budget.
+- [x] Long-document renderer latency has local measured baselines for typing, paste/full render, and theme restyle.
 
 ### 4. Add workspace snapshot lookup indexes
 
@@ -155,11 +164,11 @@ Done when:
 
 Done when:
 
-- [ ] Real Files-provider results are recorded in this checklist.
+- [ ] Real Files-provider results are recorded in `RELEASE_QA.md`.
 
 ## P2 cleanup and polish
 
-- [ ] Add a dedicated release checklist file if this task list becomes too crowded.
+- [x] Add a dedicated release checklist file if this task list becomes too crowded.
 - [ ] Replace placeholder-backed Settings actions when StoreKit, review routing, and legal URL infrastructure are ready.
 - [ ] Add line-number support only after renderer/layout performance is protected.
 - [ ] Add larger heading text only after accessibility, dynamic type, and markdown layout behavior are tested.

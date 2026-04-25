@@ -16,6 +16,8 @@ Verification status:
 
 Verification note (2026-04-25): `xcodebuild -list` found the `Downward` scheme. A simulator-specific build for `name=iPhone 17` could not resolve a concrete device during build discovery, so the build gate was run with `xcodebuild build -scheme Downward -destination 'generic/platform=iOS Simulator'` and passed. The full XCTest suite then passed with `xcodebuild test -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17'` on iPhone 17, iOS 26.4 Simulator: 341 passed, 2 skipped, 0 failed. An initial suite run exposed a timeout in `EditorAutosaveTests.testLiveObservationReloadsCleanEditorAfterOutsideWrite()`; this batch fixed the test to use the existing deterministic fallback-observation seam and reran the focused test plus the full suite successfully. Manual simulator/device QA remains open.
 
+Runtime smoke note (2026-04-25): `RELEASE_QA.md` now records the runtime QA matrix and latest QA run. `xcodebuild build` passed on iPhone 17 and iPad Pro 13-inch (M5), both on iOS 26.4 Simulator, and focused app-hosted smoke/restore/mutation tests passed on both destinations with 55 passed, 0 skipped, 0 failed per destination. This is command-line smoke evidence only; manual visual, real-device, Files-provider, keyboard, and Settings hierarchy QA remain open.
+
 ### Snapshot metrics
 
 | Area | Current snapshot |
@@ -119,7 +121,7 @@ Done when:
 
 ### [P1] Markdown renderer remains the main scalability and maintainability risk
 
-**Status:** improved; recognition, visibility, the first styling/application slice, and a conservative large-document work-scope budget are now covered. Real latency measurement is still open.
+**Status:** improved; recognition, visibility, the first styling/application slice, conservative large-document work-scope budget, and local latency measurements are now covered.
 
 Relevant files:
 
@@ -156,11 +158,14 @@ Inline split note (2026-04-25): delimited inline emphasis/strong/strikethrough r
 
 Performance budget note (2026-04-25): large-document renderer coverage now uses an explicit work-scope budget rather than a brittle wall-clock threshold. Full document open/theme restyle may render the whole buffer; ordinary same-line typing in the large fixture must stay bounded to the edited line, with an automated 512-character current-line render ceiling; line-break/structural edits must schedule the deferred full-document pass.
 
+Latency measurement note (2026-04-25): `MarkdownRendererPerformanceTests` now includes XCTest clock-metric measurements for the 2,000-line, 58,800 UTF-16 character markdown fixture. Run on a MacBook Pro with Apple M4 Pro, macOS 26.4.1, targeting iPhone 17 iOS 26.4 Simulator with `xcodebuild test -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4' -only-testing:DownwardTests/MarkdownRendererPerformanceTests -only-testing:DownwardTests/MarkdownStyledTextRendererTests -only-testing:DownwardTests/MarkdownSyntaxScannerTests -only-testing:DownwardTests/MarkdownSyntaxStyleApplicatorTests`: same-line typing/current-line restyle averaged 1.81 ms over 5 samples, paste/full render of a 64,094-character pasted document averaged 198.87 ms, and theme-switch restyle averaged 196.11 ms. These are local regression guidance, not release guarantees.
+
 Done when:
 
 - [x] The renderer has a recognizer/scanner layer that can be tested without UIKit.
 - [x] Styling/theme application is a separate layer.
 - [x] Large-file typing has an explicit performance budget and regression coverage.
+- [x] Long-document typing, paste/full-render, and theme-switch latency have local measured baselines.
 
 ### [P1] Workspace snapshot reverse lookup is indexed
 
@@ -201,7 +206,7 @@ Done when:
 
 ### [P1] Runtime QA is still required for the most sensitive UI and Files-provider paths
 
-**Status:** not completed in this environment.
+**Status:** dedicated checklist created and command-line simulator smoke completed; manual runtime QA is still not completed.
 
 Runtime-only checklist:
 
@@ -219,7 +224,7 @@ Runtime-only checklist:
 
 Done when:
 
-- [ ] Manual QA results are recorded in `TASKS.md` or the release checklist.
+- [ ] Manual QA results are recorded in `RELEASE_QA.md`.
 
 ### [P2] `AppCoordinator` is improved but still large
 

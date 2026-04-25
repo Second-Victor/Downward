@@ -16,6 +16,8 @@ Baseline: 2026-04-24 static review of the uploaded `Downward.zip` project.
 
 Verification note (2026-04-25): `xcodebuild -list` found the `Downward` scheme. `xcodebuild build -scheme Downward -destination 'generic/platform=iOS Simulator'` passed. `xcodebuild test -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17'` passed on iPhone 17, iOS 26.4 Simulator with 341 passed, 2 skipped, 0 failed. The first full XCTest attempt failed in `EditorAutosaveTests.testLiveObservationReloadsCleanEditorAfterOutsideWrite()`; this batch fixed the test to use the deterministic fallback-observation path, then the focused case and full suite passed.
 
+Runtime smoke note (2026-04-25): `RELEASE_QA.md` now owns the dedicated runtime QA matrix and latest QA run log. Command-line simulator smoke passed on iPhone 17 and iPad Pro 13-inch (M5), both on iOS 26.4 Simulator: build passed on both destinations, and focused app-hosted smoke/restore/mutation tests passed with 55 passed, 0 skipped, 0 failed per destination. Manual visual, real-device, Files-provider, keyboard, and Settings hierarchy QA remain open.
+
 The codebase has moved out of emergency hardening. The current foundations are good enough to continue product work only if validation remains disciplined. The main risks are now renderer scale, runtime keyboard/accessory behavior, theme exchange polish, large-workspace lookup cost, and preventing coordinator/view-model files from regrowing.
 
 ## Status legend
@@ -80,6 +82,8 @@ No new static-review P0 was found. The P0 work is therefore validation, not a kn
 - [x] Run focused markdown renderer tests.
 - [x] Run focused settings/theme tests.
 - [x] Run focused keyboard geometry/editor sizing tests.
+- [x] Run focused app-hosted smoke/restore/mutation tests on an iPhone simulator.
+- [x] Run focused app-hosted smoke/restore/mutation tests on an iPad simulator.
 - [x] Record failures in `TASKS.md` and add new review findings if needed.
 
 ### Manual app gate
@@ -219,10 +223,12 @@ Layout boundary evidence note (2026-04-25): `MarkdownSyntaxScanner` imports only
 - [x] Send line breaks, paste, structural edits, and selection reveal changes through deferred full rerender until a real incremental parser exists.
 - [x] Add large-document fixtures.
 - [x] Add explicit large-document work-scope budget coverage for full render, current-line typing, deferred structural edits, and theme restyle.
-- [ ] Measure typing latency in long documents.
-- [ ] Measure paste latency in long documents.
-- [ ] Measure theme-switch restyle latency in long documents.
+- [x] Measure typing latency in long documents.
+- [x] Measure paste latency in long documents.
+- [x] Measure theme-switch restyle latency in long documents.
 - [x] Do not add table/footnote/task-list interaction features until the split starts.
+
+Measurement note (2026-04-25): `MarkdownRendererPerformanceTests` now records XCTest clock metrics for the 2,000-line, 58,800 UTF-16 character large markdown fixture. On a MacBook Pro with Apple M4 Pro and macOS 26.4.1, targeting iPhone 17 iOS 26.4 Simulator, focused renderer tests measured same-line typing/current-line restyle at 1.81 ms average over 5 samples, paste/full render of a 64,094-character pasted document at 198.87 ms average, and theme-switch restyle at 196.11 ms average. These numbers are local regression guidance; device/runtime release confidence still requires manual QA.
 
 ### Likely files
 
@@ -286,6 +292,8 @@ Folder mutation coverage note (2026-04-25): `WorkspaceSnapshotPathResolverTests`
 - `Tests/RecentFilesStoreTests.swift`
 
 ## P1 plan — runtime QA matrix
+
+The detailed runtime checklist and latest command-line smoke results now live in `RELEASE_QA.md`. The items below remain as the compact planning view and must not be treated as complete until the matching manual checks are actually performed.
 
 ### Editor layout and keyboard
 
@@ -358,4 +366,4 @@ These stay behind the current validation and architecture work.
 - [x] Convert this file to checkable engineering plans.
 - [ ] Update `ARCHITECTURE.md` whenever ownership boundaries change.
 - [ ] Update `AGENTS.md` only when contributor instructions or project rules change.
-- [ ] Keep runtime QA results in `TASKS.md` or a dedicated release checklist.
+- [x] Keep runtime QA results in `TASKS.md` or a dedicated release checklist.

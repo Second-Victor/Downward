@@ -15,6 +15,7 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
     }
 
     private let baseFont = UIFont.preferredFont(forTextStyle: .body)
+    private let renderer = MarkdownStyledTextRenderer()
 
     func testLargeDocumentInitialRenderUsesFullDocumentBudget() {
         let text = makeLargeMarkdownDocument(lineCount: Budget.largeDocumentLineCount)
@@ -154,6 +155,119 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
         )
     }
 
+    func testMeasureLargeDocumentSameLineTypingLatency() {
+        let text = makeLargeMarkdownDocument(lineCount: Budget.largeDocumentLineCount)
+        let textBox = MutablePerformanceBox(text)
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = PerformanceTextView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let nsText = text as NSString
+        let lineRange = nsText.range(of: "Plain paragraph 1999")
+        var insertionLocation = NSMaxRange(lineRange)
+        var currentText = text
+        var iteration = 0
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: text, syntaxMode: .hiddenOutsideCurrentLine),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+        textView.selectedRange = NSRange(location: insertionLocation, length: 0)
+        coordinator.textViewDidChangeSelection(textView)
+
+        measure(metrics: [XCTClockMetric()], options: latencyMeasureOptions) {
+            let insertion = " typed\(iteration)"
+            XCTAssertTrue(
+                coordinator.textView(
+                    textView,
+                    shouldChangeTextIn: NSRange(location: insertionLocation, length: 0),
+                    replacementText: insertion
+                )
+            )
+            currentText = (currentText as NSString).replacingCharacters(
+                in: NSRange(location: insertionLocation, length: 0),
+                with: insertion
+            )
+            insertionLocation += (insertion as NSString).length
+            textView.text = currentText
+            textView.selectedRange = NSRange(location: insertionLocation, length: 0)
+
+            coordinator.textViewDidChange(textView)
+
+            guard case .currentLine? = coordinator.lastRenderWork else {
+                return XCTFail("Expected same-line typing to stay on the current-line restyle path")
+            }
+            XCTAssertFalse(coordinator.hasPendingFullDocumentRerender)
+            XCTAssertFalse(coordinator.hasPendingDeferredRerender)
+            iteration += 1
+        }
+    }
+
+    func testMeasureLargeDocumentPasteFullRenderLatency() {
+        let text = makeLargeMarkdownDocument(lineCount: Budget.largeDocumentLineCount)
+        let pastedText = text + "\n" + makeRepresentativeMarkdownPaste()
+        let expectedLength = (pastedText as NSString).length
+
+        measure(metrics: [XCTClockMetric()], options: latencyMeasureOptions) {
+            let rendered = renderer.render(
+                configuration: .init(
+                    text: pastedText,
+                    baseFont: baseFont,
+                    resolvedTheme: .default,
+                    syntaxMode: .hiddenOutsideCurrentLine,
+                    revealedRange: nil
+                )
+            )
+
+            XCTAssertEqual(rendered.length, expectedLength)
+        }
+    }
+
+    func testMeasureLargeDocumentThemeSwitchRestyleLatency() {
+        let text = makeLargeMarkdownDocument(lineCount: Budget.largeDocumentLineCount)
+        let textBox = MutablePerformanceBox(text)
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = PerformanceTextView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        var useCustomTheme = true
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: text, resolvedTheme: .default),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        measure(metrics: [XCTClockMetric()], options: latencyMeasureOptions) {
+            let nextTheme = useCustomTheme ? customTheme : ResolvedEditorTheme.default
+            coordinator.apply(
+                configuration: makeConfiguration(text: text, resolvedTheme: nextTheme),
+                undoCommandToken: 0,
+                redoCommandToken: 0,
+                dismissKeyboardCommandToken: 0,
+                to: textView,
+                force: false
+            )
+
+            XCTAssertEqual(
+                coordinator.lastRenderWork,
+                .fullDocument(characterCount: (text as NSString).length)
+            )
+            XCTAssertFalse(coordinator.hasPendingFullDocumentRerender)
+            XCTAssertFalse(coordinator.hasPendingDeferredRerender)
+            useCustomTheme.toggle()
+        }
+    }
+
+    private var latencyMeasureOptions: XCTMeasureOptions {
+        let options = XCTMeasureOptions()
+        options.iterationCount = 5
+        return options
+    }
+
     private func makeCoordinator(
         text: MutablePerformanceBox<String>
     ) -> MarkdownEditorTextView.Coordinator {
@@ -206,6 +320,26 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
                 return "---"
             default:
                 return "Plain paragraph \(index) with enough words to resemble normal markdown editing."
+            }
+        }
+        .joined(separator: "\n")
+    }
+
+    private func makeRepresentativeMarkdownPaste() -> String {
+        (0..<120).map { index in
+            switch index % 6 {
+            case 0:
+                return "### Pasted Heading \(index)"
+            case 1:
+                return "- pasted bullet \(index) with **strong** and _emphasis_"
+            case 2:
+                return "> pasted quote \(index)"
+            case 3:
+                return "`pasted inline code \(index)` and [source](https://example.com/paste/\(index))"
+            case 4:
+                return "![Pasted alt \(index)](/pasted/\(index).png)"
+            default:
+                return "Pasted paragraph \(index) with enough words to resemble a real clipboard chunk."
             }
         }
         .joined(separator: "\n")
