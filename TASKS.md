@@ -80,7 +80,7 @@ Done when:
 
 Done when:
 
-- [ ] Import/export failures are specific and user understandable.
+- [x] Import/export failures are specific and user understandable.
 - [ ] Theme exchange behavior is covered by tests and manual Files-provider QA.
 
 ### 3. Continue renderer scalability work

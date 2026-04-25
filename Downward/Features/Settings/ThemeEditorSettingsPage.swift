@@ -272,11 +272,22 @@ struct ThemeEditorSettingsPage: View {
 
     private func exportTheme() {
         let theme = makeTheme(id: editing?.id ?? UUID())
-        exportDocument = ThemeExchangeDocument(theme: theme)
-        exportFilename = sanitizedExportFilename(for: theme.name)
+        exportDocument = ThemeEditorDraftExport.document(for: theme)
+        exportFilename = ThemeEditorDraftExport.filename(for: theme.name)
     }
 
-    private func sanitizedExportFilename(for themeName: String) -> String {
+    private func isUserCancelled(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSCocoaErrorDomain && nsError.code == CocoaError.userCancelled.rawValue
+    }
+}
+
+enum ThemeEditorDraftExport {
+    static func document(for theme: CustomTheme) -> ThemeExchangeDocument {
+        ThemeExchangeDocument(theme: theme)
+    }
+
+    static func filename(for themeName: String) -> String {
         let trimmed = themeName.trimmingCharacters(in: .whitespacesAndNewlines)
         let invalidCharacters = CharacterSet(charactersIn: "/\\?%*|\"<>:")
         let cleaned = trimmed
@@ -285,11 +296,6 @@ struct ThemeEditorSettingsPage: View {
             .replacing(" ", with: "-")
         let filename = cleaned.isEmpty ? "Theme" : cleaned
         return "\(filename).json"
-    }
-
-    private func isUserCancelled(_ error: Error) -> Bool {
-        let nsError = error as NSError
-        return nsError.domain == NSCocoaErrorDomain && nsError.code == CocoaError.userCancelled.rawValue
     }
 }
 

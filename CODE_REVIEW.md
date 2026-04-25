@@ -109,11 +109,13 @@ Remaining concerns:
 
 Follow-up note (2026-04-25): theme exchange import/export now encodes `schemaVersion`, rejects versions newer than `CustomTheme.currentSchemaVersion`, surfaces a direct localized error instead of silently accepting unknown future schema payloads, preserves the invalid-JSON message in the Settings import alert instead of wrapping it in a generic prefix, reports oversized imports with both the actual file size and the configured limit, and uses an import-specific duplicate-name error when an imported theme conflicts with an existing different-ID theme.
 
+Follow-up note (2026-04-25): focused theme exchange coverage now verifies file-backed single-theme, array, and bundle imports; invalid JSON; oversized imports; duplicate-name rejection; same-ID replacement; partial bundle failures; legacy JSON; selected-theme deletion fallback; and current-draft export behavior through `ThemeEditorDraftExport`. Verified with `xcodebuild test` on the available iPhone 17 simulator.
+
 Done when:
 
-- [ ] Theme import/export failures are specific enough for a non-developer user to understand.
-- [ ] Export behavior is intentionally labelled: either “Export Current Draft” or “Export Saved Theme”.
-- [ ] Tests cover invalid JSON, too-large files, duplicate imported names, same-ID replacement, bundle import, selected-theme deletion fallback, and legacy JSON without newer optional fields.
+- [x] Theme import/export failures are specific enough for a non-developer user to understand.
+- [x] Export behavior is intentionally labelled: either “Export Current Draft” or “Export Saved Theme”.
+- [x] Tests cover invalid JSON, too-large files, duplicate imported names, same-ID replacement, bundle import, selected-theme deletion fallback, and legacy JSON without newer optional fields.
 
 ### [P1] Markdown renderer remains the main scalability and maintainability risk
 
@@ -232,13 +234,13 @@ Action items:
 
 ## Test gaps to close next
 
-- [ ] Theme import invalid JSON.
+- [x] Theme import invalid JSON.
 - [x] Theme import file larger than the 5 MB limit.
 - [x] Theme import duplicate name with different ID.
 - [x] Theme import same ID replacement.
 - [x] Theme import bundle/array decoding and partial failure behavior.
 - [x] Selected custom theme deletion fallback.
-- [ ] Theme export current-draft versus saved-theme behavior.
+- [x] Theme export current-draft versus saved-theme behavior.
 - [ ] Accessory clear-background/tint contract.
 - [ ] Accessory behavior during keyboard presentation and interactive dismissal on device.
 - [x] Large-document renderer performance fixture.

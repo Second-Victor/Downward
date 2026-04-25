@@ -140,28 +140,30 @@ The app now has real custom theme infrastructure, but import/export is still clo
 
 - [x] Decide whether export should serialize the current editor form or the persisted theme.
 - [x] If exporting the form, label it as draft/current export.
-- [ ] If exporting the saved theme, load the persisted theme by ID before export.
+- [x] Reclassify saved-theme export as not selected; the current contract exports the draft form state.
 - [x] Decide whether low-contrast warnings should block export.
 - [x] Add explicit unsupported-schema handling for future `schemaVersion` values.
 - [x] Make duplicate-name import errors user-readable.
 - [x] Make oversized-file errors user-readable.
 - [x] Make invalid JSON errors user-readable without exposing raw decoder internals.
 - [x] Decide whether bundle import should be all-or-nothing or allow partial import.
-- [ ] Keep normal `.json` document opening separate from theme import.
+- [x] Keep normal `.json` document opening separate from theme import.
 
 ### Test plan
 
-- [ ] Import a valid single-theme JSON file.
-- [ ] Import a valid array of themes.
-- [ ] Import a valid bundle document.
-- [ ] Import invalid JSON.
+- [x] Import a valid single-theme JSON file.
+- [x] Import a valid array of themes.
+- [x] Import a valid bundle document.
+- [x] Import invalid JSON.
 - [x] Import a file above the 5 MB limit.
 - [x] Import a theme with duplicate name and different ID.
 - [x] Import a theme with the same ID and confirm replacement behavior.
 - [x] Import legacy JSON missing newer optional fields.
 - [x] Delete the currently selected custom theme and confirm fallback.
-- [ ] Export a saved theme.
-- [ ] Export unsaved editor form state if that remains the chosen behavior.
+- [x] Reclassify saved-theme export as not selected while export remains draft-based.
+- [x] Export unsaved editor form state if that remains the chosen behavior.
+
+Evidence note: `Tests/ThemeStoreTests.swift` covers file-backed single-theme, array, bundle, invalid JSON, oversized, duplicate-name, same-ID replacement, partial bundle, and legacy imports. `Tests/ThemeEditorSettingsPageTests.swift` covers current-draft export document creation and filename sanitization. `WorkspaceEnumeratorTests` and `WorkspaceNavigationModeTests` keep ordinary `.json` workspace files on the editor/open path rather than the theme import path.
 
 ### Manual QA plan
 

@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		9DF995892F9CC58C001B2948 /* Downward.icon in Resources */ = {isa = PBXBuildFile; fileRef = 9DF995882F9CC58C001B2948 /* Downward.icon */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		9D55D63D2F8CD189004273E9 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -19,6 +23,7 @@
 /* Begin PBXFileReference section */
 		9D55D6292F8CD188004273E9 /* Downward.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Downward.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D55D6372F8CD189004273E9 /* DownwardTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DownwardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		9DF995882F9CC58C001B2948 /* Downward.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = Downward.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -58,6 +63,7 @@
 				9D55D62B2F8CD188004273E9 /* Downward */,
 				9D55D6382F8CD189004273E9 /* Tests */,
 				9D55D62A2F8CD188004273E9 /* Products */,
+				9DF995882F9CC58C001B2948 /* Downward.icon */,
 			);
 			sourceTree = "<group>";
 		};
@@ -162,6 +168,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9DF995892F9CC58C001B2948 /* Downward.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -326,7 +333,7 @@
 		9D55D6352F8CD189004273E9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Downward;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -365,7 +372,7 @@
 		9D55D6362F8CD189004273E9 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Downward;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

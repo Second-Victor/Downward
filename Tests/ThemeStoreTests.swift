@@ -42,7 +42,8 @@ final class ThemeStoreTests: XCTestCase {
         let existingTheme = Self.makeTheme(id: UUID(), name: "Duplicate")
         let importedTheme = Self.makeTheme(id: UUID(), name: "duplicate")
 
-        XCTAssertTrue(await store.add(existingTheme))
+        let didAddExistingTheme = await store.add(existingTheme)
+        XCTAssertTrue(didAddExistingTheme)
 
         let didImport = await store.importThemes([importedTheme])
 
@@ -62,7 +63,8 @@ final class ThemeStoreTests: XCTestCase {
         let originalTheme = Self.makeTheme(id: themeID, name: "Original")
         let importedReplacement = Self.makeTheme(id: themeID, name: "Replacement")
 
-        XCTAssertTrue(await store.add(originalTheme))
+        let didAddOriginalTheme = await store.add(originalTheme)
+        XCTAssertTrue(didAddOriginalTheme)
 
         let didImport = await store.importThemes([importedReplacement])
 
@@ -183,6 +185,67 @@ final class ThemeStoreTests: XCTestCase {
         let importedThemes = try await ThemeImportService().loadThemes(from: themeURL)
 
         XCTAssertEqual(importedThemes, [theme])
+    }
+
+    func testThemeImportServiceLoadsThemeArrayFromFileURL() async throws {
+        let firstTheme = Self.makeTheme(id: UUID(), name: "Array One")
+        let secondTheme = Self.makeTheme(id: UUID(), name: "Array Two")
+        let document = ThemeExchangeDocument(themes: [firstTheme, secondTheme])
+        let themeURL = try makeTemporaryThemeURL()
+        try document.exportedData().write(to: themeURL)
+
+        let importedThemes = try await ThemeImportService().loadThemes(from: themeURL)
+
+        XCTAssertEqual(importedThemes, [firstTheme, secondTheme])
+    }
+
+    func testThemeImportServiceLoadsThemeBundleFromFileURL() async throws {
+        let firstThemeID = UUID()
+        let secondThemeID = UUID()
+        let firstTheme = Self.makeTheme(id: firstThemeID, name: "Bundle One")
+        let secondTheme = Self.makeTheme(id: secondThemeID, name: "Bundle Two")
+        let themeURL = try makeTemporaryThemeURL()
+        let data = """
+        {
+          "themes" : [
+            {
+              "schemaVersion" : 2,
+              "horizontalRule" : "#404040",
+              "text" : "#D4D4D4",
+              "tint" : "#569CD6",
+              "checkboxChecked" : "#6A9955",
+              "id" : "\(firstThemeID.uuidString)",
+              "inlineCode" : "#CE9178",
+              "codeBackground" : "#2D2D2D",
+              "checkboxUnchecked" : "#F44747",
+              "strikethrough" : "#808080",
+              "name" : "Bundle One",
+              "boldItalicMarker" : "#72727F",
+              "background" : "#1E1E1E"
+            },
+            {
+              "schemaVersion" : 2,
+              "horizontalRule" : "#404040",
+              "text" : "#D4D4D4",
+              "tint" : "#569CD6",
+              "checkboxChecked" : "#6A9955",
+              "id" : "\(secondThemeID.uuidString)",
+              "inlineCode" : "#CE9178",
+              "codeBackground" : "#2D2D2D",
+              "checkboxUnchecked" : "#F44747",
+              "strikethrough" : "#808080",
+              "name" : "Bundle Two",
+              "boldItalicMarker" : "#72727F",
+              "background" : "#1E1E1E"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+        try data.write(to: themeURL)
+
+        let importedThemes = try await ThemeImportService().loadThemes(from: themeURL)
+
+        XCTAssertEqual(importedThemes, [firstTheme, secondTheme])
     }
 
     func testThemeImportServiceRejectsUnsupportedFutureSchemaVersionFromFileURL() async throws {
