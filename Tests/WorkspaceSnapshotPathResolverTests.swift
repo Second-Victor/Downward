@@ -209,6 +209,177 @@ final class WorkspaceSnapshotPathResolverTests: XCTestCase {
         XCTAssertFalse(deletedSnapshot.containsFile(relativePath: "Archive/Draft Renamed.md"))
     }
 
+    func testReplacementSnapshotsRebuildIndexesForFolderRename() {
+        let rootURL = URL(filePath: "/tmp/Workspace")
+        let oldFileURL = rootURL.appending(path: "OldFolder/Note.md")
+        let newFileURL = rootURL.appending(path: "NewFolder/Note.md")
+        let originalSnapshot = makeSnapshot(
+            rootURL: rootURL,
+            rootNodes: [
+                folder(
+                    url: rootURL.appending(path: "OldFolder"),
+                    children: [
+                        file(url: oldFileURL),
+                    ]
+                ),
+            ]
+        )
+        let renamedSnapshot = makeSnapshot(
+            rootURL: rootURL,
+            rootNodes: [
+                folder(
+                    url: rootURL.appending(path: "NewFolder"),
+                    children: [
+                        file(url: newFileURL),
+                    ]
+                ),
+            ]
+        )
+
+        XCTAssertEqual(originalSnapshot.fileURL(forRelativePath: "OldFolder/Note.md"), oldFileURL)
+        XCTAssertEqual(originalSnapshot.relativePath(for: oldFileURL), "OldFolder/Note.md")
+        XCTAssertNil(renamedSnapshot.fileURL(forRelativePath: "OldFolder/Note.md"))
+        XCTAssertFalse(renamedSnapshot.containsFile(relativePath: "OldFolder/Note.md"))
+        XCTAssertNil(renamedSnapshot.relativePath(for: oldFileURL))
+        XCTAssertEqual(renamedSnapshot.fileURL(forRelativePath: "NewFolder/Note.md"), newFileURL)
+        XCTAssertEqual(renamedSnapshot.relativePath(for: newFileURL), "NewFolder/Note.md")
+    }
+
+    func testReplacementSnapshotsRebuildIndexesForFolderMoveWithDuplicateNames() {
+        let rootURL = URL(filePath: "/tmp/Workspace")
+        let originalURL = rootURL.appending(path: "Projects/App/README.md")
+        let movedURL = rootURL.appending(path: "Archive/App/README.md")
+        let duplicateURL = rootURL.appending(path: "Projects/API/README.md")
+        let originalSnapshot = makeSnapshot(
+            rootURL: rootURL,
+            rootNodes: [
+                folder(
+                    url: rootURL.appending(path: "Projects"),
+                    children: [
+                        folder(
+                            url: rootURL.appending(path: "Projects/App"),
+                            children: [
+                                file(url: originalURL),
+                            ]
+                        ),
+                        folder(
+                            url: rootURL.appending(path: "Projects/API"),
+                            children: [
+                                file(url: duplicateURL),
+                            ]
+                        ),
+                    ]
+                ),
+                folder(url: rootURL.appending(path: "Archive"), children: []),
+            ]
+        )
+        let movedSnapshot = makeSnapshot(
+            rootURL: rootURL,
+            rootNodes: [
+                folder(
+                    url: rootURL.appending(path: "Projects"),
+                    children: [
+                        folder(
+                            url: rootURL.appending(path: "Projects/API"),
+                            children: [
+                                file(url: duplicateURL),
+                            ]
+                        ),
+                    ]
+                ),
+                folder(
+                    url: rootURL.appending(path: "Archive"),
+                    children: [
+                        folder(
+                            url: rootURL.appending(path: "Archive/App"),
+                            children: [
+                                file(url: movedURL),
+                            ]
+                        ),
+                    ]
+                ),
+            ]
+        )
+
+        XCTAssertEqual(originalSnapshot.fileURL(forRelativePath: "Projects/App/README.md"), originalURL)
+        XCTAssertNil(movedSnapshot.fileURL(forRelativePath: "Projects/App/README.md"))
+        XCTAssertFalse(movedSnapshot.containsFile(relativePath: "Projects/App/README.md"))
+        XCTAssertNil(movedSnapshot.relativePath(for: originalURL))
+        XCTAssertEqual(movedSnapshot.fileURL(forRelativePath: "Archive/App/README.md"), movedURL)
+        XCTAssertEqual(movedSnapshot.relativePath(for: movedURL), "Archive/App/README.md")
+        XCTAssertEqual(movedSnapshot.fileURL(forRelativePath: "Projects/API/README.md"), duplicateURL)
+        XCTAssertEqual(movedSnapshot.relativePath(for: duplicateURL), "Projects/API/README.md")
+    }
+
+    func testReplacementSnapshotsRebuildIndexesAfterAncestorFolderDelete() {
+        let rootURL = URL(filePath: "/tmp/Workspace")
+        let openFileURL = rootURL.appending(path: "Notes/Daily/Today.md")
+        let originalSnapshot = makeSnapshot(
+            rootURL: rootURL,
+            rootNodes: [
+                folder(
+                    url: rootURL.appending(path: "Notes"),
+                    children: [
+                        folder(
+                            url: rootURL.appending(path: "Notes/Daily"),
+                            children: [
+                                file(url: openFileURL),
+                            ]
+                        ),
+                    ]
+                ),
+            ]
+        )
+        let deletedAncestorSnapshot = makeSnapshot(
+            rootURL: rootURL,
+            rootNodes: [
+                folder(
+                    url: rootURL.appending(path: "Archive"),
+                    children: [
+                        file(url: rootURL.appending(path: "Archive/Today.md")),
+                    ]
+                ),
+            ]
+        )
+
+        XCTAssertEqual(originalSnapshot.fileURL(forRelativePath: "Notes/Daily/Today.md"), openFileURL)
+        XCTAssertEqual(originalSnapshot.relativePath(for: openFileURL), "Notes/Daily/Today.md")
+        XCTAssertNil(deletedAncestorSnapshot.fileURL(forRelativePath: "Notes/Daily/Today.md"))
+        XCTAssertFalse(deletedAncestorSnapshot.containsFile(relativePath: "Notes/Daily/Today.md"))
+        XCTAssertNil(deletedAncestorSnapshot.relativePath(for: openFileURL))
+    }
+
+    func testLargeSyntheticTreeLookupsRemainPathSpecificAndTraversalOrdered() {
+        let rootURL = URL(filePath: "/tmp/Workspace")
+        let rootNodes = (0..<24).map { folderIndex in
+            folder(
+                url: rootURL.appending(path: "Folder-\(folderIndex)"),
+                children: (0..<12).map { childIndex in
+                    folder(
+                        url: rootURL.appending(path: "Folder-\(folderIndex)/Child-\(childIndex)"),
+                        children: (0..<5).map { fileIndex in
+                            file(
+                                url: rootURL.appending(
+                                    path: "Folder-\(folderIndex)/Child-\(childIndex)/Note-\(fileIndex).md"
+                                )
+                            )
+                        }
+                    )
+                }
+            )
+        }
+        let snapshot = makeSnapshot(rootURL: rootURL, rootNodes: rootNodes)
+        let targetRelativePath = "Folder-23/Child-11/Note-4.md"
+        let targetURL = rootURL.appending(path: targetRelativePath)
+
+        XCTAssertEqual(snapshot.fileEntries().count, 1_440)
+        XCTAssertEqual(snapshot.fileEntries().first?.relativePath, "Folder-0/Child-0/Note-0.md")
+        XCTAssertEqual(snapshot.fileEntries().last?.relativePath, targetRelativePath)
+        XCTAssertEqual(snapshot.fileURL(forRelativePath: targetRelativePath), targetURL)
+        XCTAssertEqual(snapshot.relativePath(for: targetURL), targetRelativePath)
+        XCTAssertNil(snapshot.fileURL(forRelativePath: "Folder-23/Child-11/Missing.md"))
+    }
+
     func testCaseOnlyRenameUsesExactCaseSensitiveRelativePaths() {
         let rootURL = URL(filePath: "/tmp/Workspace")
         let lowercaseURL = rootURL.appending(path: "readme.md")

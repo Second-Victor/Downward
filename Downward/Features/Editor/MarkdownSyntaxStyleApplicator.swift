@@ -188,6 +188,56 @@ struct MarkdownSyntaxStyleApplicator {
         }
     }
 
+    func applyDelimitedInlineSpan(
+        _ span: MarkdownDelimitedInlineSpan,
+        in attributed: NSMutableAttributedString
+    ) {
+        switch span.style {
+        case .boldItalic:
+            applyInlineContent(
+                range: span.contentRange,
+                in: attributed,
+                transform: { font in
+                    transformedFont(font, adding: [.traitBold, .traitItalic])
+                        ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
+                },
+                additionalAttributes: [.foregroundColor: resolvedTheme.emphasisText]
+            )
+        case .bold:
+            applyInlineContent(
+                range: span.contentRange,
+                in: attributed,
+                transform: { font in
+                    transformedFont(font, adding: .traitBold)
+                        ?? UIFont.boldSystemFont(ofSize: font.pointSize)
+                },
+                additionalAttributes: [.foregroundColor: resolvedTheme.emphasisText]
+            )
+        case .italic:
+            applyInlineContent(
+                range: span.contentRange,
+                in: attributed,
+                transform: { font in
+                    transformedFont(font, adding: .traitItalic)
+                        ?? UIFont.italicSystemFont(ofSize: font.pointSize)
+                },
+                additionalAttributes: [.foregroundColor: resolvedTheme.emphasisText]
+            )
+        case .strikethrough:
+            applyInlineContent(
+                range: span.contentRange,
+                in: attributed,
+                transform: { font in font },
+                additionalAttributes: [
+                    .foregroundColor: resolvedTheme.strikethroughText,
+                    .strikethroughStyle: NSUnderlineStyle.single.rawValue
+                ]
+            )
+        }
+
+        applySyntaxMarkerRanges(span.markerRanges, in: attributed)
+    }
+
     func applySyntaxMarkerRanges(
         _ ranges: [NSRange],
         color: UIColor? = nil,

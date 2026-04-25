@@ -152,6 +152,8 @@ Follow-up note (2026-04-25): `MarkdownSyntaxStyleApplicator` now owns concrete a
 
 Batch reconciliation note (2026-04-25): the source already contained the scanner, visibility policy, style applicator, and renderer wiring claimed by the docs. This pass kept that scope intact, clarified that the renderer still coordinates remaining recognition and TextKit handoff, and added scanner-only coverage for code-block protection, merged protected ranges, and inline matching exclusions.
 
+Inline split note (2026-04-25): delimited inline emphasis/strong/strikethrough recognition now returns scanner value types instead of being styled directly from renderer-local regex callbacks. `MarkdownSyntaxStyleApplicator` owns the corresponding inline font/color/strikethrough application, and focused scanner/applicator tests cover those extracted spans.
+
 Performance budget note (2026-04-25): large-document renderer coverage now uses an explicit work-scope budget rather than a brittle wall-clock threshold. Full document open/theme restyle may render the whole buffer; ordinary same-line typing in the large fixture must stay bounded to the edited line, with an automated 512-character current-line render ceiling; line-break/structural edits must schedule the deferred full-document pass.
 
 Done when:
@@ -182,12 +184,15 @@ Follow-up note (2026-04-25): focused resolver coverage now includes duplicate fi
 
 Batch reconciliation note (2026-04-25): source inspection confirmed `WorkspaceSearchEngine` already carries relative paths from `snapshot.forEachFile` and `RecentFilesStore.pruneInvalidItems(using:)` uses `snapshot.relativeFilePaths()` instead of flattening URLs and re-resolving each one. This pass kept recursive fallbacks private, made the snapshot index storage private, and added focused file-only and ordered-enumeration coverage.
 
+Folder mutation coverage note (2026-04-25): focused resolver coverage now includes folder rename, folder move with duplicate descendant filenames elsewhere, ancestor-folder delete, and a deterministic 1,440-file synthetic tree lookup/order regression. Mutation-flow coverage now verifies moving a folder that contains the open document updates editor route, open-document identity, restore state, and recents, while deleting the open document's ancestor folder closes the editor, clears restore state, prunes recents, and leaves the refreshed snapshot without the stale relative path.
+
 Action items:
 
 - [x] Introduce a snapshot index keyed by relative path and normalized URL identity.
 - [x] Build the index once per snapshot refresh.
 - [x] Keep recursive traversal as a fallback or validation path while the index is introduced.
 - [x] Add tests for rename, move, delete, case-only rename, duplicate filenames in different folders, and stale recent-file paths.
+- [x] Add tests for folder rename, folder move, delete-ancestor-folder safe state, and large synthetic tree lookup/order behavior.
 
 Done when:
 

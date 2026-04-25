@@ -62,31 +62,9 @@ struct MarkdownStyledTextRenderer {
         let codeSpanRanges = codeSpanMatches.map(\.fullRange)
         let imageRanges = syntaxScan.imageRanges
         let emphasisProtectedRanges = codeBlockRanges + codeSpanRanges + imageRanges
-        let boldItalicRanges = scanner.inlineRanges(
-            matching: [
-                #"(?<!\*)\*\*\*(?=\S)(.+?)(?<=\S)\*\*\*(?!\*)"#,
-                #"(?<!_)___(?=\S)(.+?)(?<=\S)___(?!_)"#
-            ],
+        let inlineStyleSpans = scanner.inlineStyleSpans(
             in: text,
             protectedRanges: emphasisProtectedRanges
-        )
-        let nestedBoldItalicRanges = scanner.inlineRanges(
-            matching: [
-                #"(?<!_)__(\*)(?=\S)(.+?)(?<=\S)\1__(?!_)"#,
-                #"(?<!\*)\*\*(_)(?=\S)(.+?)(?<=\S)\1\*\*(?!\*)"#,
-                #"(?<!_)\_(\*\*)(?=\S)(.+?)(?<=\S)\1_(?!_)"#,
-                #"(?<!\*)\*(__)(?=\S)(.+?)(?<=\S)\1\*(?!\*)"#
-            ],
-            in: text,
-            protectedRanges: emphasisProtectedRanges + boldItalicRanges
-        )
-        let boldRanges = scanner.inlineRanges(
-            matching: [
-                #"(?<!\*)\*\*(?=\S)(.+?)(?<=\S)\*\*(?!\*)"#,
-                #"(?<!_)__(?=\S)(.+?)(?<=\S)__(?!_)"#
-            ],
-            in: text,
-            protectedRanges: emphasisProtectedRanges + boldItalicRanges + nestedBoldItalicRanges
         )
 
         styleIndentedCodeBlocks(
@@ -136,133 +114,10 @@ struct MarkdownStyledTextRenderer {
             in: attributed,
             styleApplicator: styleApplicator
         )
-        styleDelimitedInlinePattern(
-            pattern: #"(?<!\*)\*\*\*(?=\S)(.+?)(?<=\S)\*\*\*(?!\*)"#,
+        styleDelimitedInlineSpans(
+            inlineStyleSpans,
             in: attributed,
-            text: nsText,
-            styleApplicator: styleApplicator,
-            protectedRanges: emphasisProtectedRanges,
-            contentTransform: { font in
-                styleApplicator.transformedFont(font, adding: [.traitBold, .traitItalic])
-                    ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
-            },
-            additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
-        )
-        styleDelimitedInlinePattern(
-            pattern: #"(?<!_)___(?=\S)(.+?)(?<=\S)___(?!_)"#,
-            in: attributed,
-            text: nsText,
-            styleApplicator: styleApplicator,
-            protectedRanges: emphasisProtectedRanges,
-            contentTransform: { font in
-                styleApplicator.transformedFont(font, adding: [.traitBold, .traitItalic])
-                    ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
-            },
-            additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
-        )
-        styleNestedDelimitedInlinePattern(
-            pattern: #"(?<!_)__(\*)(?=\S)(.+?)(?<=\S)\1__(?!_)"#,
-            in: attributed,
-            text: nsText,
-            styleApplicator: styleApplicator,
-            protectedRanges: emphasisProtectedRanges,
-            contentTransform: { font in
-                styleApplicator.transformedFont(font, adding: [.traitBold, .traitItalic])
-                    ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
-            },
-            additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
-        )
-        styleNestedDelimitedInlinePattern(
-            pattern: #"(?<!\*)\*\*(_)(?=\S)(.+?)(?<=\S)\1\*\*(?!\*)"#,
-            in: attributed,
-            text: nsText,
-            styleApplicator: styleApplicator,
-            protectedRanges: emphasisProtectedRanges,
-            contentTransform: { font in
-                styleApplicator.transformedFont(font, adding: [.traitBold, .traitItalic])
-                    ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
-            },
-            additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
-        )
-        styleNestedDelimitedInlinePattern(
-            pattern: #"(?<!_)\_(\*\*)(?=\S)(.+?)(?<=\S)\1_(?!_)"#,
-            in: attributed,
-            text: nsText,
-            styleApplicator: styleApplicator,
-            protectedRanges: emphasisProtectedRanges,
-            contentTransform: { font in
-                styleApplicator.transformedFont(font, adding: [.traitBold, .traitItalic])
-                    ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
-            },
-            additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
-        )
-        styleNestedDelimitedInlinePattern(
-            pattern: #"(?<!\*)\*(__)(?=\S)(.+?)(?<=\S)\1\*(?!\*)"#,
-            in: attributed,
-            text: nsText,
-            styleApplicator: styleApplicator,
-            protectedRanges: emphasisProtectedRanges,
-            contentTransform: { font in
-                styleApplicator.transformedFont(font, adding: [.traitBold, .traitItalic])
-                    ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
-            },
-            additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
-        )
-        styleDelimitedInlinePattern(
-            pattern: #"(?<!\*)\*\*(?=\S)(.+?)(?<=\S)\*\*(?!\*)"#,
-            in: attributed,
-            text: nsText,
-            styleApplicator: styleApplicator,
-            protectedRanges: emphasisProtectedRanges + boldItalicRanges + nestedBoldItalicRanges,
-            contentTransform: { font in
-                styleApplicator.transformedFont(font, adding: .traitBold) ?? UIFont.boldSystemFont(ofSize: font.pointSize)
-            },
-            additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
-        )
-        styleDelimitedInlinePattern(
-            pattern: #"(?<!_)__(?=\S)(.+?)(?<=\S)__(?!_)"#,
-            in: attributed,
-            text: nsText,
-            styleApplicator: styleApplicator,
-            protectedRanges: emphasisProtectedRanges + boldItalicRanges + nestedBoldItalicRanges,
-            contentTransform: { font in
-                styleApplicator.transformedFont(font, adding: .traitBold) ?? UIFont.boldSystemFont(ofSize: font.pointSize)
-            },
-            additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
-        )
-        styleDelimitedInlinePattern(
-            pattern: #"(?<!\*)\*(?=\S)(.+?)(?<=\S)\*(?!\*)"#,
-            in: attributed,
-            text: nsText,
-            styleApplicator: styleApplicator,
-            protectedRanges: emphasisProtectedRanges + boldItalicRanges + nestedBoldItalicRanges + boldRanges,
-            contentTransform: { font in
-                styleApplicator.transformedFont(font, adding: .traitItalic) ?? UIFont.italicSystemFont(ofSize: font.pointSize)
-            },
-            additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
-        )
-        styleDelimitedInlinePattern(
-            pattern: #"(?<!_)_(?=\S)(.+?)(?<=\S)_(?!_)"#,
-            in: attributed,
-            text: nsText,
-            styleApplicator: styleApplicator,
-            protectedRanges: emphasisProtectedRanges + boldItalicRanges + nestedBoldItalicRanges + boldRanges,
-            contentTransform: { font in
-                styleApplicator.transformedFont(font, adding: .traitItalic) ?? UIFont.italicSystemFont(ofSize: font.pointSize)
-            },
-            additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
-        )
-        styleDelimitedInlinePattern(
-            pattern: #"~~(?=\S)(.+?)(?<=\S)~~"#,
-            in: attributed,
-            text: nsText,
-            styleApplicator: styleApplicator,
-            protectedRanges: emphasisProtectedRanges,
-            contentTransform: { font in font },
-            additionalContentAttributes: [
-                .foregroundColor: configuration.resolvedTheme.strikethroughText,
-                .strikethroughStyle: NSUnderlineStyle.single.rawValue
-            ]
+            styleApplicator: styleApplicator
         )
         styleImages(
             in: attributed,
@@ -563,105 +418,13 @@ struct MarkdownStyledTextRenderer {
         }
     }
 
-    private func styleDelimitedInlinePattern(
-        pattern: String,
+    private func styleDelimitedInlineSpans(
+        _ spans: [MarkdownDelimitedInlineSpan],
         in attributed: NSMutableAttributedString,
-        text: NSString,
-        styleApplicator: MarkdownSyntaxStyleApplicator,
-        protectedRanges: [NSRange],
-        contentTransform: (UIFont) -> UIFont,
-        additionalContentAttributes: [NSAttributedString.Key: Any] = [:]
+        styleApplicator: MarkdownSyntaxStyleApplicator
     ) {
-        let regex = regex(for: pattern)
-        let fullRange = NSRange(location: 0, length: text.length)
-        regex.enumerateMatches(in: text as String, options: [], range: fullRange) { match, _, _ in
-            guard
-                let match,
-                match.numberOfRanges == 2
-            else {
-                return
-            }
-
-            let fullMatch = match.range(at: 0)
-            guard
-                protectedRanges.contains(where: { NSIntersectionRange($0, fullMatch).length > 0 }) == false,
-                scanner.isEscaped(location: fullMatch.location, in: text) == false
-            else {
-                return
-            }
-
-            let contentRange = match.range(at: 1)
-            let leadingMarkerLength = contentRange.location - fullMatch.location
-            let trailingMarkerLength = NSMaxRange(fullMatch) - NSMaxRange(contentRange)
-            let leadingMarkerRange = NSRange(location: fullMatch.location, length: leadingMarkerLength)
-            let trailingMarkerRange = NSRange(
-                location: NSMaxRange(contentRange),
-                length: trailingMarkerLength
-            )
-
-            styleApplicator.applyInlineContent(
-                range: contentRange,
-                in: attributed,
-                transform: contentTransform,
-                additionalAttributes: additionalContentAttributes
-            )
-            styleApplicator.applySyntaxMarkerRanges(
-                [leadingMarkerRange, trailingMarkerRange],
-                in: attributed
-            )
-        }
-    }
-
-    private func styleNestedDelimitedInlinePattern(
-        pattern: String,
-        in attributed: NSMutableAttributedString,
-        text: NSString,
-        styleApplicator: MarkdownSyntaxStyleApplicator,
-        protectedRanges: [NSRange],
-        contentTransform: (UIFont) -> UIFont,
-        additionalContentAttributes: [NSAttributedString.Key: Any] = [:]
-    ) {
-        let regex = regex(for: pattern)
-        let fullRange = NSRange(location: 0, length: text.length)
-        regex.enumerateMatches(in: text as String, options: [], range: fullRange) { match, _, _ in
-            guard
-                let match,
-                match.numberOfRanges == 3
-            else {
-                return
-            }
-
-            let fullMatch = match.range(at: 0)
-            guard
-                protectedRanges.contains(where: { NSIntersectionRange($0, fullMatch).length > 0 }) == false,
-                scanner.isEscaped(location: fullMatch.location, in: text) == false
-            else {
-                return
-            }
-
-            let innerMarkerRange = match.range(at: 1)
-            let contentRange = match.range(at: 2)
-            let innerMarkerLength = innerMarkerRange.length
-            let leadingOuterLength = innerMarkerRange.location - fullMatch.location
-            let trailingOuterLength = NSMaxRange(fullMatch) - NSMaxRange(contentRange) - innerMarkerLength
-
-            let leadingOuterRange = NSRange(location: fullMatch.location, length: leadingOuterLength)
-            let leadingInnerRange = NSRange(location: innerMarkerRange.location, length: innerMarkerLength)
-            let trailingInnerRange = NSRange(location: NSMaxRange(contentRange), length: innerMarkerLength)
-            let trailingOuterRange = NSRange(
-                location: NSMaxRange(trailingInnerRange),
-                length: trailingOuterLength
-            )
-
-            styleApplicator.applyInlineContent(
-                range: contentRange,
-                in: attributed,
-                transform: contentTransform,
-                additionalAttributes: additionalContentAttributes
-            )
-
-            let markerRanges = [leadingOuterRange, leadingInnerRange, trailingInnerRange, trailingOuterRange]
-            styleApplicator.applySyntaxMarkerRanges(markerRanges, in: attributed)
+        for span in spans {
+            styleApplicator.applyDelimitedInlineSpan(span, in: attributed)
         }
     }
 

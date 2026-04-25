@@ -15,6 +15,20 @@ nonisolated struct MarkdownCodeSpan: Equatable, Sendable {
     let delimiterLength: Int
 }
 
+nonisolated enum MarkdownInlineStyleKind: Equatable, Sendable {
+    case boldItalic
+    case bold
+    case italic
+    case strikethrough
+}
+
+nonisolated struct MarkdownDelimitedInlineSpan: Equatable, Sendable {
+    let style: MarkdownInlineStyleKind
+    let fullRange: NSRange
+    let contentRange: NSRange
+    let markerRanges: [NSRange]
+}
+
 nonisolated struct MarkdownFencedCodeBlock: Equatable, Sendable {
     let fullRange: NSRange
     let contentRange: NSRange
@@ -257,6 +271,61 @@ nonisolated struct MarkdownSyntaxScanner {
         }
     }
 
+    func inlineStyleSpans(
+        in text: String,
+        protectedRanges: [NSRange]
+    ) -> [MarkdownDelimitedInlineSpan] {
+        let boldItalicSpans = delimitedInlineSpans(
+            matching: [
+                #"(?<!\*)\*\*\*(?=\S)(.+?)(?<=\S)\*\*\*(?!\*)"#,
+                #"(?<!_)___(?=\S)(.+?)(?<=\S)___(?!_)"#
+            ],
+            style: .boldItalic,
+            in: text,
+            protectedRanges: protectedRanges
+        )
+        let nestedBoldItalicSpans = nestedDelimitedInlineSpans(
+            matching: [
+                #"(?<!_)__(\*)(?=\S)(.+?)(?<=\S)\1__(?!_)"#,
+                #"(?<!\*)\*\*(_)(?=\S)(.+?)(?<=\S)\1\*\*(?!\*)"#,
+                #"(?<!_)\_(\*\*)(?=\S)(.+?)(?<=\S)\1_(?!_)"#,
+                #"(?<!\*)\*(__)(?=\S)(.+?)(?<=\S)\1\*(?!\*)"#
+            ],
+            style: .boldItalic,
+            in: text,
+            protectedRanges: protectedRanges + boldItalicSpans.map(\.fullRange)
+        )
+        let boldSpans = delimitedInlineSpans(
+            matching: [
+                #"(?<!\*)\*\*(?=\S)(.+?)(?<=\S)\*\*(?!\*)"#,
+                #"(?<!_)__(?=\S)(.+?)(?<=\S)__(?!_)"#
+            ],
+            style: .bold,
+            in: text,
+            protectedRanges: protectedRanges + boldItalicSpans.map(\.fullRange) + nestedBoldItalicSpans.map(\.fullRange)
+        )
+        let italicSpans = delimitedInlineSpans(
+            matching: [
+                #"(?<!\*)\*(?=\S)(.+?)(?<=\S)\*(?!\*)"#,
+                #"(?<!_)_(?=\S)(.+?)(?<=\S)_(?!_)"#
+            ],
+            style: .italic,
+            in: text,
+            protectedRanges: protectedRanges
+                + boldItalicSpans.map(\.fullRange)
+                + nestedBoldItalicSpans.map(\.fullRange)
+                + boldSpans.map(\.fullRange)
+        )
+        let strikethroughSpans = delimitedInlineSpans(
+            matching: [#"~~(?=\S)(.+?)(?<=\S)~~"#],
+            style: .strikethrough,
+            in: text,
+            protectedRanges: protectedRanges
+        )
+
+        return boldItalicSpans + nestedBoldItalicSpans + boldSpans + italicSpans + strikethroughSpans
+    }
+
     func mergedRanges(_ ranges: [NSRange]) -> [NSRange] {
         guard ranges.isEmpty == false else {
             return []
@@ -391,6 +460,97 @@ nonisolated struct MarkdownSyntaxScanner {
         }
 
         return false
+    }
+
+    private func delimitedInlineSpans(
+        matching patterns: [String],
+        style: MarkdownInlineStyleKind,
+        in text: String,
+        protectedRanges: [NSRange]
+    ) -> [MarkdownDelimitedInlineSpan] {
+        let nsText = text as NSString
+        let range = NSRange(location: 0, length: nsText.length)
+        return patterns.flatMap { pattern in
+            regex(for: pattern).matches(in: text, options: [], range: range).compactMap { match in
+                guard match.numberOfRanges == 2 else {
+                    return nil
+                }
+
+                let fullRange = match.range(at: 0)
+                guard
+                    protectedRanges.contains(where: { NSIntersectionRange($0, fullRange).length > 0 }) == false,
+                    isEscaped(location: fullRange.location, in: nsText) == false
+                else {
+                    return nil
+                }
+
+                let contentRange = match.range(at: 1)
+                let leadingMarkerLength = contentRange.location - fullRange.location
+                let trailingMarkerLength = NSMaxRange(fullRange) - NSMaxRange(contentRange)
+                let markerRanges = [
+                    NSRange(location: fullRange.location, length: leadingMarkerLength),
+                    NSRange(location: NSMaxRange(contentRange), length: trailingMarkerLength)
+                ]
+
+                return MarkdownDelimitedInlineSpan(
+                    style: style,
+                    fullRange: fullRange,
+                    contentRange: contentRange,
+                    markerRanges: markerRanges
+                )
+            }
+        }
+    }
+
+    private func nestedDelimitedInlineSpans(
+        matching patterns: [String],
+        style: MarkdownInlineStyleKind,
+        in text: String,
+        protectedRanges: [NSRange]
+    ) -> [MarkdownDelimitedInlineSpan] {
+        let nsText = text as NSString
+        let range = NSRange(location: 0, length: nsText.length)
+        return patterns.flatMap { pattern in
+            regex(for: pattern).matches(in: text, options: [], range: range).compactMap { match in
+                guard match.numberOfRanges == 3 else {
+                    return nil
+                }
+
+                let fullRange = match.range(at: 0)
+                guard
+                    protectedRanges.contains(where: { NSIntersectionRange($0, fullRange).length > 0 }) == false,
+                    isEscaped(location: fullRange.location, in: nsText) == false
+                else {
+                    return nil
+                }
+
+                let innerMarkerRange = match.range(at: 1)
+                let contentRange = match.range(at: 2)
+                let innerMarkerLength = innerMarkerRange.length
+                let leadingOuterLength = innerMarkerRange.location - fullRange.location
+                let trailingOuterLength = NSMaxRange(fullRange) - NSMaxRange(contentRange) - innerMarkerLength
+
+                let leadingOuterRange = NSRange(location: fullRange.location, length: leadingOuterLength)
+                let leadingInnerRange = NSRange(location: innerMarkerRange.location, length: innerMarkerLength)
+                let trailingInnerRange = NSRange(location: NSMaxRange(contentRange), length: innerMarkerLength)
+                let trailingOuterRange = NSRange(
+                    location: NSMaxRange(trailingInnerRange),
+                    length: trailingOuterLength
+                )
+
+                return MarkdownDelimitedInlineSpan(
+                    style: style,
+                    fullRange: fullRange,
+                    contentRange: contentRange,
+                    markerRanges: [
+                        leadingOuterRange,
+                        leadingInnerRange,
+                        trailingInnerRange,
+                        trailingOuterRange
+                    ]
+                )
+            }
+        }
     }
 
     private func regex(

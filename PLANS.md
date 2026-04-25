@@ -209,6 +209,8 @@ Evidence note (2026-04-25): `MarkdownSyntaxStyleApplicator` now owns the first e
 
 Batch reconciliation note (2026-04-25): the implementation matched the completed scanner/style-slice checklist before this pass. This batch did not attempt a broader renderer rewrite; it clarified the current ownership boundary and added scanner-only tests for code-block protection, merged protected ranges, and inline matching exclusions.
 
+Inline split evidence note (2026-04-25): delimited inline emphasis/strong/bold-italic/strikethrough recognition is now scanner-owned and represented by `MarkdownDelimitedInlineSpan` values. `MarkdownSyntaxStyleApplicator` applies those spans, keeping the renderer from splitting delimiter marker ranges and choosing inline font/color attributes directly.
+
 Layout boundary evidence note (2026-04-25): `MarkdownSyntaxScanner` imports only Foundation and does not draw. `MarkdownSyntaxStyleApplicator` only writes semantic attributes such as `.markdownCodeBackgroundKind`, while `MarkdownCodeBackgroundLayoutManager` owns the UIKit/TextKit drawing for inline code backgrounds, block code backgrounds, blockquote blocks, hidden glyph suppression, and horizontal rules.
 
 ### Performance plan
@@ -257,18 +259,20 @@ Layout boundary evidence note (2026-04-25): `MarkdownSyntaxScanner` imports only
 
 - [x] Duplicate filenames in different folders.
 - [x] Rename file.
-- [ ] Rename folder.
+- [x] Rename folder.
 - [x] Move file.
-- [ ] Move folder.
+- [x] Move folder.
 - [x] Delete open file.
-- [ ] Delete ancestor folder of open file.
+- [x] Delete ancestor folder of open file.
 - [x] Case-only rename.
 - [x] Stale recent file after external change.
-- [ ] Large synthetic tree lookup benchmark if practical.
+- [x] Large synthetic tree lookup benchmark if practical.
 
 Evidence note: `Tests/WorkspaceSnapshotPathResolverTests.swift` covers duplicate filenames, nested paths, URL-to-relative lookup, missing/stale paths, replacement snapshots after rename/move/delete, exact-case case-only rename behavior, and file enumeration order. `WorkspaceNavigationModeTests`, `WorkspaceCoordinatorPolicyTests`, and `RecentFilesStoreTests` passed against the indexed snapshot helpers on the available iPhone 17 simulator.
 
 Batch reconciliation note (2026-04-25): this pass made the index storage private, preserved the public lookup API, kept recursive fallback helpers private, and added resolver tests for `forEachFile` traversal order plus file-only `fileURL(forRelativePath:)` behavior. No search or recents code changes were needed because those paths already use `snapshot.forEachFile` and `snapshot.relativeFilePaths()`.
+
+Folder mutation coverage note (2026-04-25): `WorkspaceSnapshotPathResolverTests` now verifies folder rename, folder move with duplicate README filenames elsewhere, ancestor-folder delete, and a deterministic 1,440-file synthetic tree lookup/order regression. `MarkdownWorkspaceAppMutationFlowTests` verifies moving a folder containing the open document rewrites open-document route, restore state, and recents, and deleting the open document's ancestor folder closes the editor, clears restore state, prunes recents, and drops the stale indexed relative path.
 
 ### Likely files
 

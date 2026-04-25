@@ -658,6 +658,72 @@ final class MarkdownWorkspaceAppMutationFlowTests: MarkdownWorkspaceAppTestCase 
     }
 
     @MainActor
+    func testMoveFolderContainingOpenDocumentUpdatesEditorStateAndRecents() async throws {
+        let movedFolderURL = PreviewSampleData.archiveURL.appending(path: "Journal")
+        let movedYearURL = movedFolderURL.appending(path: "2026")
+        let movedDocumentURL = movedYearURL.appending(path: "2026-04-13.md")
+        let movedRelativePath = "Archive/Journal/2026/2026-04-13.md"
+        let movedSnapshot = makeWorkspaceSnapshotMovingJournalFolder(to: movedFolderURL)
+        let sessionStore = StubSessionStore(
+            initialSession: RestorableDocumentSession(relativePath: PreviewSampleData.dirtyDocument.relativePath)
+        )
+        let recentFilesStore = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: PreviewSampleData.dirtyDocument.relativePath,
+                    displayName: PreviewSampleData.dirtyDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+            ]
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        session.openDocument = PreviewSampleData.dirtyDocument
+        session.path = [.editor(PreviewSampleData.dirtyDocument.url)]
+
+        let documentManager = MutationTrackingDocumentManager()
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: movedSnapshot,
+                renameOutcome: .renamedFolder(
+                    oldURL: PreviewSampleData.journalURL,
+                    newURL: movedFolderURL,
+                    displayName: "Journal",
+                    relativePath: "Archive/Journal"
+                )
+            ),
+            documentManager: documentManager,
+            sessionStore: sessionStore,
+            recentFilesStore: recentFilesStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.moveItem(
+            at: PreviewSampleData.journalURL,
+            toFolder: PreviewSampleData.archiveURL
+        )
+        let restoredSession = try await sessionStore.loadRestorableDocumentSession()
+        let relocatedInputs = await documentManager.relocatedInputs
+
+        XCTAssertEqual(session.workspaceSnapshot, movedSnapshot)
+        XCTAssertEqual(session.openDocument?.url, movedDocumentURL)
+        XCTAssertEqual(session.openDocument?.relativePath, movedRelativePath)
+        XCTAssertEqual(session.path, [.editor(movedDocumentURL)])
+        XCTAssertEqual(session.visibleEditorRelativePath, movedRelativePath)
+        XCTAssertEqual(restoredSession?.relativePath, movedRelativePath)
+        XCTAssertEqual(relocatedInputs.map(\.toURL), [movedDocumentURL])
+        XCTAssertEqual(relocatedInputs.map(\.toRelativePath), [movedRelativePath])
+        XCTAssertEqual(recentFilesStore.items.map(\.relativePath), [movedRelativePath])
+        XCTAssertNil(movedSnapshot.fileURL(forRelativePath: PreviewSampleData.dirtyDocument.relativePath))
+        XCTAssertEqual(movedSnapshot.fileURL(forRelativePath: movedRelativePath), movedDocumentURL)
+    }
+
+    @MainActor
     func testDeleteActiveOpenDocumentClosesEditorAndShowsExplicitMessage() async {
         let session = AppSession()
         session.launchState = .workspaceReady
@@ -687,6 +753,61 @@ final class MarkdownWorkspaceAppMutationFlowTests: MarkdownWorkspaceAppTestCase 
         XCTAssertNil(session.openDocument)
         XCTAssertEqual(session.path, [])
         XCTAssertEqual(session.workspaceAlertError?.title, "Document Deleted")
+    }
+
+    @MainActor
+    func testDeleteAncestorFolderOfOpenDocumentClosesEditorClearsRestoreStateAndRecents() async throws {
+        let sessionStore = StubSessionStore(
+            initialSession: RestorableDocumentSession(relativePath: PreviewSampleData.dirtyDocument.relativePath)
+        )
+        let recentFilesStore = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: PreviewSampleData.dirtyDocument.relativePath,
+                    displayName: PreviewSampleData.dirtyDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+            ]
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+
+        var openDocument = PreviewSampleData.dirtyDocument
+        openDocument.isDirty = false
+        openDocument.saveState = .saved(PreviewSampleData.previewDate)
+        session.openDocument = openDocument
+        session.path = [.editor(openDocument.url)]
+
+        let deletedSnapshot = makeWorkspaceSnapshotRemovingFile(url: PreviewSampleData.year2026URL)
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: deletedSnapshot,
+                deleteOutcome: .deletedFolder(
+                    url: PreviewSampleData.year2026URL,
+                    displayName: "2026"
+                )
+            ),
+            documentManager: MutationTrackingDocumentManager(),
+            sessionStore: sessionStore,
+            recentFilesStore: recentFilesStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.deleteFile(at: PreviewSampleData.year2026URL)
+        let restoredSession = try await sessionStore.loadRestorableDocumentSession()
+
+        XCTAssertEqual(session.workspaceSnapshot, deletedSnapshot)
+        XCTAssertNil(session.openDocument)
+        XCTAssertEqual(session.path, [])
+        XCTAssertEqual(session.workspaceAlertError?.title, "Document Deleted")
+        XCTAssertNil(restoredSession)
+        XCTAssertTrue(recentFilesStore.items.isEmpty)
+        XCTAssertFalse(deletedSnapshot.containsFile(relativePath: PreviewSampleData.dirtyDocument.relativePath))
     }
 
     @MainActor
@@ -812,5 +933,78 @@ final class MarkdownWorkspaceAppMutationFlowTests: MarkdownWorkspaceAppTestCase 
         XCTAssertEqual(session.openDocument?.relativePath, renamedRelativePath)
         XCTAssertNotEqual(session.openDocument?.text, revalidatedOldDocument.text)
         XCTAssertEqual(session.path, [.editor(renamedURL)])
+    }
+
+    @MainActor
+    private func makeWorkspaceSnapshotMovingJournalFolder(to folderURL: URL) -> WorkspaceSnapshot {
+        let movedYearURL = folderURL.appending(path: "2026")
+
+        return WorkspaceSnapshot(
+            rootURL: PreviewSampleData.workspaceRootURL,
+            displayName: PreviewSampleData.nestedWorkspace.displayName,
+            rootNodes: [
+                .folder(
+                    .init(
+                        url: PreviewSampleData.referencesURL,
+                        displayName: "References",
+                        children: [
+                            .file(
+                                .init(
+                                    url: PreviewSampleData.readmeDocumentURL,
+                                    displayName: "README.md",
+                                    subtitle: "Project overview"
+                                )
+                            ),
+                        ]
+                    )
+                ),
+                .folder(
+                    .init(
+                        url: PreviewSampleData.archiveURL,
+                        displayName: "Archive",
+                        children: [
+                            .folder(
+                                .init(
+                                    url: folderURL,
+                                    displayName: "Journal",
+                                    children: [
+                                        .folder(
+                                            .init(
+                                                url: movedYearURL,
+                                                displayName: "2026",
+                                                children: [
+                                                    .file(
+                                                        .init(
+                                                            url: movedYearURL.appending(path: "2026-04-13.md"),
+                                                            displayName: "2026-04-13.md",
+                                                            subtitle: "Daily note"
+                                                        )
+                                                    ),
+                                                    .file(
+                                                        .init(
+                                                            url: movedYearURL.appending(path: "Ideas.markdown"),
+                                                            displayName: "Ideas.markdown",
+                                                            subtitle: "Scratchpad"
+                                                        )
+                                                    ),
+                                                ]
+                                            )
+                                        ),
+                                    ]
+                                )
+                            ),
+                        ]
+                    )
+                ),
+                .file(
+                    .init(
+                        url: PreviewSampleData.inboxDocumentURL,
+                        displayName: "Inbox.md",
+                        subtitle: "Root document"
+                    )
+                ),
+            ],
+            lastUpdated: PreviewSampleData.previewDate
+        )
     }
 }

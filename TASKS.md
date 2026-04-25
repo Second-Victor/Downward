@@ -89,6 +89,8 @@ Done when:
 
 Batch reconciliation note (2026-04-25): the code already has `MarkdownSyntaxScanner`, `MarkdownSyntaxVisibilityPolicy`, and `MarkdownSyntaxStyleApplicator`, and `MarkdownStyledTextRenderer` uses the scanner. This pass added scanner-only coverage for code-block protection, merged protected ranges, and inline matching exclusions without changing rendered output.
 
+Inline split note (2026-04-25): scanner output now includes delimited inline style spans for emphasis, strong, bold-italic, nested marker combinations, and strikethrough. The renderer consumes those values and delegates the font/color/marker styling choice to `MarkdownSyntaxStyleApplicator`.
+
 Performance budget note (2026-04-25): large-document markdown rendering now has automated work-scope regression coverage. Initial open/theme restyle may render the whole document, ordinary same-line typing must stay on a current-line render budget of 512 characters or less in the large fixture, and structural line-break edits must defer the full-document rerender.
 
 - [x] Split the first markdown recognition/scanning slice from UIKit styling.
@@ -111,12 +113,17 @@ Done when:
 
 Batch reconciliation note (2026-04-25): `WorkspaceSnapshot` owns cached URL/path indexes, lookup APIs use them before private recursive fallbacks, `WorkspaceSearchEngine` carries relative paths through `snapshot.forEachFile`, and `RecentFilesStore.pruneInvalidItems(using:)` uses `snapshot.relativeFilePaths()`.
 
+Folder mutation coverage note (2026-04-25): focused resolver tests now cover replacement snapshots after folder rename, folder move, ancestor-folder delete, and a deterministic 1,440-file synthetic tree lookup/order regression. Mutation-flow coverage now verifies moving a folder that contains the open document rewrites editor route, open-document identity, restore state, and recents, and deleting an ancestor folder of the open document closes the editor, clears restore state, prunes recents, and leaves the refreshed snapshot without the stale relative path.
+
 - [x] Build per-snapshot indexes for relative-path and normalized URL lookup.
 - [x] Use indexes in navigation, recents, mutation reconciliation, and restore paths.
 - [x] Keep recursive traversal as a correctness fallback while the index lands.
 - [x] Add tests for duplicate names in different folders.
 - [x] Add tests for rename, move, delete, and case-only rename.
+- [x] Add tests for folder rename and folder move.
+- [x] Add tests for deleting an ancestor folder of the open document.
 - [x] Add tests for stale recent-file paths after a workspace refresh.
+- [x] Add a deterministic large synthetic tree lookup regression.
 
 Done when:
 

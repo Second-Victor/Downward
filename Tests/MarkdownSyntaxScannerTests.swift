@@ -130,6 +130,44 @@ final class MarkdownSyntaxScannerTests: XCTestCase {
         XCTAssertEqual(linkRanges.map { nsText.substring(with: $0) }, ["[Link](https://example.com)"])
     }
 
+    func testInlineStyleSpansClassifyDelimitedEmphasisAndStrikeRanges() {
+        let text = "This is ***both***, **bold**, _italic_, and ~~gone~~."
+        let scan = scanner.scan(text)
+        let spans = scanner.inlineStyleSpans(
+            in: text,
+            protectedRanges: scan.codeBlockRanges + scan.inlineCodeSpans.map(\.fullRange) + scan.imageRanges
+        )
+        let nsText = text as NSString
+
+        XCTAssertEqual(spans.map(\.style), [.boldItalic, .bold, .italic, .strikethrough])
+        XCTAssertEqual(spans.map { nsText.substring(with: $0.contentRange) }, ["both", "bold", "italic", "gone"])
+        XCTAssertEqual(spans[0].markerRanges.map { nsText.substring(with: $0) }, ["***", "***"])
+        XCTAssertEqual(spans[3].markerRanges.map { nsText.substring(with: $0) }, ["~~", "~~"])
+    }
+
+    func testNestedInlineStyleSpansProtectInnerMarkerCombinations() {
+        let text = "This is __*both*__, **_also_**, and **bold**."
+        let spans = scanner.inlineStyleSpans(in: text, protectedRanges: [])
+        let nsText = text as NSString
+
+        XCTAssertEqual(spans.map(\.style), [.boldItalic, .boldItalic, .bold])
+        XCTAssertEqual(spans.map { nsText.substring(with: $0.contentRange) }, ["both", "also", "bold"])
+        XCTAssertEqual(spans[0].markerRanges.map { nsText.substring(with: $0) }, ["__", "*", "*", "__"])
+        XCTAssertEqual(spans[1].markerRanges.map { nsText.substring(with: $0) }, ["**", "_", "_", "**"])
+    }
+
+    func testInlineStyleSpansSkipProtectedCodeAndImages() {
+        let text = "`**literal**` ![**alt**](/image.png) **styled**"
+        let scan = scanner.scan(text)
+        let spans = scanner.inlineStyleSpans(
+            in: text,
+            protectedRanges: scan.codeBlockRanges + scan.inlineCodeSpans.map(\.fullRange) + scan.imageRanges
+        )
+        let nsText = text as NSString
+
+        XCTAssertEqual(spans.map { nsText.substring(with: $0.fullRange) }, ["**styled**"])
+    }
+
     func testImageRangesSkipProtectedCodeRanges() {
         let text = "`![literal](/code.png)` and ![Alt](/real.png)"
         let scan = scanner.scan(text)

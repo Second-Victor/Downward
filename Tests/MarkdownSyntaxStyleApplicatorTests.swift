@@ -161,6 +161,50 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
         XCTAssertNil(attributed.attribute(.markdownHiddenSyntax, at: plainRange.location, effectiveRange: nil))
     }
 
+    func testDelimitedInlineSpanApplicationOwnsInlineStyleChoices() {
+        let text = "***both*** ~~gone~~"
+        let attributed = NSMutableAttributedString(
+            string: text,
+            attributes: hiddenApplicator.baseAttributes
+        )
+        let nsText = text as NSString
+
+        hiddenApplicator.applyDelimitedInlineSpan(
+            MarkdownDelimitedInlineSpan(
+                style: .boldItalic,
+                fullRange: nsText.range(of: "***both***"),
+                contentRange: nsText.range(of: "both"),
+                markerRanges: [
+                    nsText.range(of: "***"),
+                    NSRange(location: NSMaxRange(nsText.range(of: "both")), length: 3)
+                ]
+            ),
+            in: attributed
+        )
+        hiddenApplicator.applyDelimitedInlineSpan(
+            MarkdownDelimitedInlineSpan(
+                style: .strikethrough,
+                fullRange: nsText.range(of: "~~gone~~"),
+                contentRange: nsText.range(of: "gone"),
+                markerRanges: [
+                    nsText.range(of: "~~"),
+                    NSRange(location: NSMaxRange(nsText.range(of: "gone")), length: 2)
+                ]
+            ),
+            in: attributed
+        )
+
+        let boldItalicFont = attributed.attribute(.font, at: nsText.range(of: "both").location, effectiveRange: nil) as? UIFont
+        let strikeRange = nsText.range(of: "gone")
+
+        XCTAssertTrue(boldItalicFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
+        XCTAssertTrue(boldItalicFont?.fontDescriptor.symbolicTraits.contains(.traitItalic) == true)
+        XCTAssertEqual(attributed.attribute(.foregroundColor, at: nsText.range(of: "both").location, effectiveRange: nil) as? UIColor, theme.emphasisText)
+        XCTAssertEqual(attributed.attribute(.foregroundColor, at: strikeRange.location, effectiveRange: nil) as? UIColor, theme.strikethroughText)
+        XCTAssertEqual(attributed.attribute(.strikethroughStyle, at: strikeRange.location, effectiveRange: nil) as? Int, NSUnderlineStyle.single.rawValue)
+        XCTAssertEqual(attributed.attribute(.markdownHiddenSyntax, at: nsText.range(of: "***").location, effectiveRange: nil) as? Bool, true)
+    }
+
     private var visibleApplicator: MarkdownSyntaxStyleApplicator {
         MarkdownSyntaxStyleApplicator(
             baseFont: baseFont,
