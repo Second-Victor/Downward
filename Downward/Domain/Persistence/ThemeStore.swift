@@ -89,7 +89,7 @@ final class ThemeStore {
                     $0.id != importedTheme.id &&
                     $0.name.localizedCaseInsensitiveCompare(importedTheme.name) == .orderedSame
                 }) {
-                    lastError = "A theme named \"\(importedTheme.name)\" already exists."
+                    lastError = "Could not import \"\(importedTheme.name)\" because a different theme with that name already exists."
                     return false
                 }
 

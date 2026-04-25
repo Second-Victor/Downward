@@ -35,6 +35,42 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertEqual(store.lastError, "A theme named \"duplicate\" already exists.")
     }
 
+    @MainActor
+    func testThemeStoreImportRejectsDuplicateThemeNamesWithUserReadableError() async throws {
+        let fileURL = try makeTemporaryThemeURL()
+        let store = ThemeStore(fileURL: fileURL)
+        let existingTheme = Self.makeTheme(id: UUID(), name: "Duplicate")
+        let importedTheme = Self.makeTheme(id: UUID(), name: "duplicate")
+
+        XCTAssertTrue(await store.add(existingTheme))
+
+        let didImport = await store.importThemes([importedTheme])
+
+        XCTAssertFalse(didImport)
+        XCTAssertEqual(store.themes, [existingTheme])
+        XCTAssertEqual(
+            store.lastError,
+            "Could not import \"duplicate\" because a different theme with that name already exists."
+        )
+    }
+
+    @MainActor
+    func testThemeStoreImportReplacesExistingThemeWithMatchingID() async throws {
+        let fileURL = try makeTemporaryThemeURL()
+        let store = ThemeStore(fileURL: fileURL)
+        let themeID = UUID()
+        let originalTheme = Self.makeTheme(id: themeID, name: "Original")
+        let importedReplacement = Self.makeTheme(id: themeID, name: "Replacement")
+
+        XCTAssertTrue(await store.add(originalTheme))
+
+        let didImport = await store.importThemes([importedReplacement])
+
+        XCTAssertTrue(didImport)
+        XCTAssertEqual(store.themes, [importedReplacement])
+        XCTAssertNil(store.lastError)
+    }
+
     func testThemeExchangeDocumentRoundTripsSingleTheme() throws {
         let theme = Self.makeTheme(name: "Portable")
         let document = ThemeExchangeDocument(theme: theme)

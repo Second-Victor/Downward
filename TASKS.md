@@ -66,9 +66,17 @@ Done when:
 - [ ] Rename/copy the export action if current unsaved form state is intentionally exported.
 - [ ] Add a clear user-facing warning for low-contrast themes if save/export remains allowed.
 - [x] Reject or clearly handle unsupported future `schemaVersion` values.
-- [ ] Improve import errors for invalid JSON, unsupported schema, duplicate names, oversized files, and bundle failures.
+- [x] Improve import errors for invalid JSON.
+- [x] Improve import errors for unsupported schema.
+- [x] Improve import errors for duplicate names.
+- [x] Improve import errors for oversized files.
+- [ ] Improve import errors for bundle failures.
 - [ ] Verify import/export through Files, iCloud Drive, and one third-party provider.
-- [ ] Add tests for duplicate names, same-ID replacement, selected-theme deletion fallback, legacy JSON, and file-size rejection.
+- [x] Add tests for duplicate names.
+- [x] Add tests for same-ID replacement.
+- [ ] Add tests for selected-theme deletion fallback.
+- [ ] Add tests for legacy JSON.
+- [ ] Add tests for file-size rejection.
 
 Done when:
 

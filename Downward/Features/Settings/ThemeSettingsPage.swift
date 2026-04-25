@@ -128,7 +128,7 @@ struct ThemeSettingsPage: View {
             guard isUserCancelled(error) == false else {
                 return
             }
-            themeStore.lastError = "Could not import the theme JSON: \(error.localizedDescription)"
+            themeStore.lastError = ThemeImportErrorFormatter.message(for: error)
         }
     }
 

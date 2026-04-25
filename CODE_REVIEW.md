@@ -83,7 +83,7 @@ Done when:
 
 ### [P1] Theme import/export needs a production hardening pass
 
-**Status:** future schema rejection is now explicit; external-file UX and broader validation still need polish.
+**Status:** future schema rejection, direct invalid-JSON import messaging, precise oversized-file messaging, import-specific duplicate-name messaging, and same-ID replacement regression coverage are now explicit; external-file UX and broader validation still need polish.
 
 Relevant files:
 
@@ -101,12 +101,13 @@ The theme foundation is useful: custom themes persist, JSON exchange accepts sin
 Remaining concerns:
 
 - [x] `CustomTheme` decodes `schemaVersion` but currently treats it mostly as stored metadata. Before sharing themes externally, unknown future schema versions should produce a clear user-facing outcome.
-- [ ] Import should surface precise errors for invalid JSON, unsupported schema, duplicate names, oversized files, and partial-bundle failures.
+- [x] Import now surfaces precise errors for invalid JSON, unsupported schema, duplicate names, and oversized files.
+- [ ] Import should surface precise errors for partial-bundle failures.
 - [ ] Export from `ThemeEditorSettingsPage` currently serializes the current editor form state. That may be useful, but it means the user can export unsaved or low-contrast edits. Either make this explicit in the UI copy or export only the last-saved theme.
 - [ ] Contrast warnings do not block save/export. That is acceptable if intentional, but the app should be explicit about it.
 - [ ] Security-scoped import should be manually tested with Files, iCloud Drive, and at least one third-party provider.
 
-Follow-up note (2026-04-24): theme exchange import/export now encodes `schemaVersion`, rejects versions newer than `CustomTheme.currentSchemaVersion`, and surfaces a direct localized error instead of silently accepting unknown future schema payloads.
+Follow-up note (2026-04-25): theme exchange import/export now encodes `schemaVersion`, rejects versions newer than `CustomTheme.currentSchemaVersion`, surfaces a direct localized error instead of silently accepting unknown future schema payloads, preserves the invalid-JSON message in the Settings import alert instead of wrapping it in a generic prefix, reports oversized imports with both the actual file size and the configured limit, and uses an import-specific duplicate-name error when an imported theme conflicts with an existing different-ID theme.
 
 Done when:
 
@@ -233,8 +234,8 @@ Action items:
 
 - [ ] Theme import invalid JSON.
 - [ ] Theme import file larger than the 5 MB limit.
-- [ ] Theme import duplicate name with different ID.
-- [ ] Theme import same ID replacement.
+- [x] Theme import duplicate name with different ID.
+- [x] Theme import same ID replacement.
 - [ ] Theme import bundle/array decoding and partial failure behavior.
 - [ ] Selected custom theme deletion fallback.
 - [ ] Theme export current-draft versus saved-theme behavior.

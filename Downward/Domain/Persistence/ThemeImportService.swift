@@ -20,7 +20,10 @@ struct ThemeImportService: Sendable {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             let fileSize = attributes[.size] as? Int ?? 0
             guard fileSize <= maximumFileSize else {
-                throw ThemeImportError.fileTooLarge(maximumFileSize: maximumFileSize)
+                throw ThemeImportError.fileTooLarge(
+                    actualFileSize: fileSize,
+                    maximumFileSize: maximumFileSize
+                )
             }
 
             let data = try Data(contentsOf: url)
@@ -30,13 +33,19 @@ struct ThemeImportService: Sendable {
 }
 
 enum ThemeImportError: LocalizedError, Equatable {
-    case fileTooLarge(maximumFileSize: Int)
+    case fileTooLarge(actualFileSize: Int, maximumFileSize: Int)
 
     var errorDescription: String? {
         switch self {
-        case let .fileTooLarge(maximumFileSize):
-            let megabytes = maximumFileSize / (1024 * 1024)
-            return "The theme file is too large to import (maximum \(megabytes) MB)."
+        case let .fileTooLarge(actualFileSize, maximumFileSize):
+            let actualSize = Self.formattedMegabytes(for: actualFileSize)
+            let maximumSize = Self.formattedMegabytes(for: maximumFileSize)
+            return "The selected file is \(actualSize), which exceeds the \(maximumSize) import limit."
         }
+    }
+
+    private static func formattedMegabytes(for byteCount: Int) -> String {
+        let megabytes = Double(byteCount) / Double(1024 * 1024)
+        return String(format: "%.1f MB", megabytes)
     }
 }

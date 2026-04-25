@@ -143,9 +143,9 @@ The app now has real custom theme infrastructure, but import/export is still clo
 - [ ] If exporting the saved theme, load the persisted theme by ID before export.
 - [ ] Decide whether low-contrast warnings should block export.
 - [x] Add explicit unsupported-schema handling for future `schemaVersion` values.
-- [ ] Make duplicate-name import errors user-readable.
-- [ ] Make oversized-file errors user-readable.
-- [ ] Make invalid JSON errors user-readable without exposing raw decoder internals.
+- [x] Make duplicate-name import errors user-readable.
+- [x] Make oversized-file errors user-readable.
+- [x] Make invalid JSON errors user-readable without exposing raw decoder internals.
 - [ ] Decide whether bundle import should be all-or-nothing or allow partial import.
 - [ ] Keep normal `.json` document opening separate from theme import.
 
@@ -156,8 +156,8 @@ The app now has real custom theme infrastructure, but import/export is still clo
 - [ ] Import a valid bundle document.
 - [ ] Import invalid JSON.
 - [ ] Import a file above the 5 MB limit.
-- [ ] Import a theme with duplicate name and different ID.
-- [ ] Import a theme with the same ID and confirm replacement behavior.
+- [x] Import a theme with duplicate name and different ID.
+- [x] Import a theme with the same ID and confirm replacement behavior.
 - [ ] Import legacy JSON missing newer optional fields.
 - [ ] Delete the currently selected custom theme and confirm fallback.
 - [ ] Export a saved theme.
