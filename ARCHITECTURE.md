@@ -75,6 +75,8 @@ Rules:
 - final file access must still validate against the chosen workspace root,
 - raw URL-only opens are fallback paths, not the preferred browser model.
 
+`WorkspaceSnapshot` owns immutable per-snapshot lookup indexes for workspace-relative file paths and normalized node URL paths. Snapshot refresh/replacement naturally rebuilds those indexes because each refresh creates a new snapshot. `WorkspaceSnapshotPathResolver` uses the indexes for common navigation, restore, mutation, and recent-file lookup flows while retaining private recursive traversal fallbacks for correctness.
+
 ---
 
 ## App layer
@@ -222,6 +224,7 @@ The current editor stack is:
 - `EditorChromeAwareTextView`
 - `MarkdownSyntaxScanner`
 - `MarkdownSyntaxVisibilityPolicy`
+- `MarkdownSyntaxStyleApplicator`
 - `MarkdownStyledTextRenderer`
 - `MarkdownCodeBackgroundLayoutManager`
 
@@ -253,6 +256,7 @@ Markdown rendering should be treated as four separate concerns, even while the c
    - maps semantic ranges to attributed-string attributes,
    - should consume a theme object rather than hard-coding every color directly in parsing code,
    - should remain deterministic and testable without a live text view.
+   - `MarkdownSyntaxStyleApplicator` owns the first extracted attributed-string styling slice for fonts, colors, paragraph styles, code markers, and syntax-hidden attributes.
 
 3. **Theme application**
    - owns the mapping from app settings or imported JSON theme data to concrete fonts, colors, backgrounds, underline styles, and syntax visibility roles,

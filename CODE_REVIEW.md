@@ -119,40 +119,45 @@ Done when:
 
 ### [P1] Markdown renderer remains the main scalability and maintainability risk
 
-**Status:** improved but still a large, high-churn hotspot.
+**Status:** improved; recognition, visibility, and the first styling/application slice are now split, but large-file performance budgeting is still open.
 
 Relevant files:
 
 - `Downward/Features/Editor/MarkdownSyntaxScanner.swift`
 - `Downward/Features/Editor/MarkdownSyntaxVisibilityPolicy.swift`
+- `Downward/Features/Editor/MarkdownSyntaxStyleApplicator.swift`
 - `Downward/Features/Editor/MarkdownStyledTextRenderer.swift`
 - `Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift`
 - `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
 - `Tests/MarkdownSyntaxScannerTests.swift`
+- `Tests/MarkdownSyntaxStyleApplicatorTests.swift`
 - `Tests/MarkdownStyledTextRendererTests.swift`
 - `Tests/MarkdownCurrentLineRestyleTests.swift`
 
-`MarkdownStyledTextRenderer.swift` is still the largest app source file at 1,612 lines. Current-line restyling is a meaningful win for ordinary typing, but the renderer still combines recognition, style mapping, hidden-syntax decisions, theme role resolution, and TextKit-facing attributed-string mutation.
+`MarkdownStyledTextRenderer.swift` is still a large app source file. Current-line restyling is a meaningful win for ordinary typing, and styling/application has started moving into `MarkdownSyntaxStyleApplicator`, but the renderer still owns plenty of regex-driven inline and block coordination.
 
 Action items:
 
 - [x] Split the first syntax recognition slice from UIKit styling before adding more markdown constructs.
 - [x] Move hidden-syntax visibility decisions behind a small value type or strategy that can be tested without `UITextView`.
+- [x] Extract the first styling/application slice from the renderer.
 - [ ] Keep current-line restyle as the fast path for simple same-line edits.
 - [ ] Keep line-breaks, block-context changes, selection-driven reveal changes, and paste operations on a deferred full-rerender path until a real incremental parser exists.
 - [x] Add large-document performance fixtures before adding tables, footnotes, task-list interactions, or richer code-block behavior.
 
 Follow-up note (2026-04-25): `MarkdownSyntaxScanner` now provides a UIKit-free first recognition layer for line ranges, indented code blocks, fenced code blocks, merged protected code block ranges, inline code spans, and image ranges. `MarkdownStyledTextRenderer` consumes those scanner results while retaining attributed-string styling and theme-role mapping. `MarkdownSyntaxVisibilityPolicy` now contains the pure syntax-hidden decision. Focused scanner and renderer tests passed on the available iPhone 17 simulator.
 
+Follow-up note (2026-04-25): `MarkdownSyntaxStyleApplicator` now owns concrete attributed-string application for base attributes, headings, blockquotes, lists, inline/fenced/indented code, emphasis markers, links, images, horizontal rules, and hidden syntax markers. Focused applicator coverage was added while the renderer remains responsible for markdown recognition/range coordination.
+
 Done when:
 
 - [x] The renderer has a recognizer/scanner layer that can be tested without UIKit.
-- [ ] Styling/theme application is a separate layer.
+- [x] Styling/theme application is a separate layer.
 - [ ] Large-file typing has an explicit performance budget and regression coverage.
 
-### [P1] Workspace snapshot reverse lookup is still recursively searched
+### [P1] Workspace snapshot reverse lookup is indexed
 
-**Status:** correct-looking, but likely to become a hot path in large workspaces.
+**Status:** per-snapshot lookup indexes now cover common path and URL resolution; recursive traversal remains as a correctness fallback.
 
 Relevant files:
 
@@ -162,19 +167,21 @@ Relevant files:
 - `Tests/WorkspaceSnapshotPathResolverTests.swift`
 - `Tests/WorkspaceViewModelMutationTests.swift`
 
-`WorkspaceSnapshotPathResolver.relativePath(for:)` and `fileURL(forRelativePath:)` still recursively walk the snapshot tree. This keeps the code simple and correct, but repeated lookups during navigation, recent-file restoration, rename/move/delete reconciliation, and search/mutation flows will become expensive in larger workspaces.
+`WorkspaceSnapshot` now builds an immutable lookup index when each snapshot is created. `WorkspaceSnapshotPathResolver.relativePath(for:)`, `fileURL(forRelativePath:)`, `containsFile(relativePath:)`, `fileEntries()`, and `relativeFilePaths()` use that index for the common path while keeping the existing recursive tree walkers as private fallbacks for lookup correctness.
+
+Follow-up note (2026-04-25): focused resolver coverage now includes duplicate filenames in different folders, nested path lookup, URL-to-relative lookup, stale missing paths, replacement snapshots after rename/move/delete, exact-case case-only rename behavior, and traversal-order preservation. Broader workspace navigation, coordinator policy, and recent-file store tests passed on the available iPhone 17 simulator.
 
 Action items:
 
-- [ ] Introduce a snapshot index keyed by relative path and stable file ID/URL identity where possible.
-- [ ] Build the index once per snapshot refresh.
-- [ ] Keep recursive traversal as a fallback or validation path while the index is introduced.
-- [ ] Add tests for rename, move, delete, case-only rename, duplicate filenames in different folders, and stale recent-file paths.
+- [x] Introduce a snapshot index keyed by relative path and stable file ID/URL identity where possible.
+- [x] Build the index once per snapshot refresh.
+- [x] Keep recursive traversal as a fallback or validation path while the index is introduced.
+- [x] Add tests for rename, move, delete, case-only rename, duplicate filenames in different folders, and stale recent-file paths.
 
 Done when:
 
-- [ ] Navigation and recent-file reconciliation can resolve path/file identity without repeatedly walking the whole tree.
-- [ ] Workspace mutation tests prove index invalidation/rebuild behavior.
+- [x] Navigation and recent-file reconciliation can resolve path/file identity without repeatedly walking the whole tree.
+- [x] Workspace mutation tests prove index invalidation/rebuild behavior.
 
 ### [P1] Runtime QA is still required for the most sensitive UI and Files-provider paths
 
@@ -249,7 +256,7 @@ Action items:
 - [ ] Accessory clear-background/tint contract.
 - [ ] Accessory behavior during keyboard presentation and interactive dismissal on device.
 - [x] Large-document renderer performance fixture.
-- [ ] Snapshot index behavior after rename/move/delete/case-only rename.
+- [x] Snapshot index behavior after rename/move/delete/case-only rename.
 - [ ] Real Files-provider workspace observation and theme import.
 
 ## Documentation changes made by this review

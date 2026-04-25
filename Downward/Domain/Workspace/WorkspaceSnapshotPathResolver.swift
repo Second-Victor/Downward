@@ -6,43 +6,39 @@ import Foundation
 /// trust boundary. Coordinator/session/navigation code can use snapshot-backed identity for URLs
 /// that are already present in `WorkspaceSnapshot` without re-validating against live disk state.
 extension WorkspaceSnapshot {
-    struct FileEntry: Equatable, Sendable {
-        nonisolated let url: URL
-        nonisolated let displayName: String
-        nonisolated let modifiedAt: Date?
-        nonisolated let relativePath: String
-    }
-
     nonisolated func relativePath(for url: URL) -> String? {
-        relativePath(
-            forNormalizedURL: WorkspaceIdentity.normalizedPath(for: url),
+        let normalizedPath = WorkspaceIdentity.normalizedPath(for: url)
+        return lookupIndex.relativePath(forNormalizedNodePath: normalizedPath) ?? relativePath(
+            forNormalizedURL: normalizedPath,
             in: rootNodes,
             parentPath: nil
         )
     }
 
     nonisolated func fileEntries() -> [FileEntry] {
-        var entries: [FileEntry] = []
-        forEachFile { entry in
-            entries.append(entry)
-        }
-        return entries
+        lookupIndex.fileEntriesInTraversalOrder
     }
 
     nonisolated func relativeFilePaths() -> [String] {
-        var relativePaths: [String] = []
-        forEachFile { entry in
-            relativePaths.append(entry.relativePath)
-        }
-        return relativePaths
+        lookupIndex.fileEntriesInTraversalOrder.map(\.relativePath)
     }
 
     nonisolated func fileURL(forRelativePath relativePath: String) -> URL? {
-        nodeURL(forRelativePath: relativePath, matchingFolder: false, in: rootNodes, parentPath: nil)
+        lookupIndex.fileURL(forRelativePath: relativePath) ?? nodeURL(
+            forRelativePath: relativePath,
+            matchingFolder: false,
+            in: rootNodes,
+            parentPath: nil
+        )
     }
 
     nonisolated func containsFile(relativePath: String) -> Bool {
-        fileURL(forRelativePath: relativePath) != nil
+        lookupIndex.containsFile(relativePath: relativePath) || nodeURL(
+            forRelativePath: relativePath,
+            matchingFolder: false,
+            in: rootNodes,
+            parentPath: nil
+        ) != nil
     }
 
     /// Hot-path callers that already traverse the snapshot tree should carry relative paths
@@ -50,11 +46,9 @@ extension WorkspaceSnapshot {
     nonisolated func forEachFile(
         _ visit: (FileEntry) -> Void
     ) {
-        forEachFile(
-            in: rootNodes,
-            parentPath: nil,
-            visit: visit
-        )
+        for entry in lookupIndex.fileEntriesInTraversalOrder {
+            visit(entry)
+        }
     }
 
     nonisolated private func relativePath(

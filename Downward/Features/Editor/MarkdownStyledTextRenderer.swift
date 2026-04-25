@@ -36,9 +36,15 @@ struct MarkdownStyledTextRenderer {
     func render(configuration: Configuration) -> NSAttributedString {
         let text = configuration.text
         let nsText = text as NSString
+        let styleApplicator = MarkdownSyntaxStyleApplicator(
+            baseFont: configuration.baseFont,
+            resolvedTheme: configuration.resolvedTheme,
+            syntaxMode: configuration.syntaxMode,
+            revealedRange: configuration.revealedRange
+        )
         let attributed = NSMutableAttributedString(
             string: text,
-            attributes: baseAttributes(font: configuration.baseFont, resolvedTheme: configuration.resolvedTheme)
+            attributes: styleApplicator.baseAttributes
         )
 
         let syntaxScan = scanner.scan(text)
@@ -87,32 +93,22 @@ struct MarkdownStyledTextRenderer {
             in: attributed,
             text: nsText,
             ranges: indentedCodeBlockRanges,
-            baseFont: configuration.baseFont,
-            resolvedTheme: configuration.resolvedTheme
+            styleApplicator: styleApplicator
         )
         styleFencedCodeBlocks(
             matches: fencedCodeBlockMatches,
             in: attributed,
-            baseFont: configuration.baseFont,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange
+            styleApplicator: styleApplicator
         )
         styleSetextHeadings(
             matches: setextMatches,
             in: attributed,
-            baseFont: configuration.baseFont,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange
+            styleApplicator: styleApplicator
         )
         styleHeadings(
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
+            styleApplicator: styleApplicator,
             protectedRanges: codeBlockRanges
         )
         styleHorizontalRules(
@@ -120,47 +116,34 @@ struct MarkdownStyledTextRenderer {
             text: nsText,
             lineRanges: lineRanges,
             protectedRanges: codeBlockRanges + setextUnderlineRanges,
-            baseFont: configuration.baseFont,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange
+            styleApplicator: styleApplicator
         )
         styleBlockquotes(
             in: attributed,
             text: nsText,
             lineRanges: lineRanges,
-            baseFont: configuration.baseFont,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
+            styleApplicator: styleApplicator,
             protectedRanges: codeBlockRanges
         )
         styleLists(
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
-            resolvedTheme: configuration.resolvedTheme,
+            styleApplicator: styleApplicator,
             protectedRanges: codeBlockRanges
         )
         styleInlineCode(
             matches: codeSpanMatches,
             in: attributed,
-            baseFont: configuration.baseFont,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange
+            styleApplicator: styleApplicator
         )
         styleDelimitedInlinePattern(
             pattern: #"(?<!\*)\*\*\*(?=\S)(.+?)(?<=\S)\*\*\*(?!\*)"#,
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
+            styleApplicator: styleApplicator,
             protectedRanges: emphasisProtectedRanges,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
             contentTransform: { font in
-                transformedFont(font, adding: [.traitBold, .traitItalic])
+                styleApplicator.transformedFont(font, adding: [.traitBold, .traitItalic])
                     ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
             },
             additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
@@ -169,13 +152,10 @@ struct MarkdownStyledTextRenderer {
             pattern: #"(?<!_)___(?=\S)(.+?)(?<=\S)___(?!_)"#,
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
+            styleApplicator: styleApplicator,
             protectedRanges: emphasisProtectedRanges,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
             contentTransform: { font in
-                transformedFont(font, adding: [.traitBold, .traitItalic])
+                styleApplicator.transformedFont(font, adding: [.traitBold, .traitItalic])
                     ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
             },
             additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
@@ -184,13 +164,10 @@ struct MarkdownStyledTextRenderer {
             pattern: #"(?<!_)__(\*)(?=\S)(.+?)(?<=\S)\1__(?!_)"#,
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
+            styleApplicator: styleApplicator,
             protectedRanges: emphasisProtectedRanges,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
             contentTransform: { font in
-                transformedFont(font, adding: [.traitBold, .traitItalic])
+                styleApplicator.transformedFont(font, adding: [.traitBold, .traitItalic])
                     ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
             },
             additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
@@ -199,13 +176,10 @@ struct MarkdownStyledTextRenderer {
             pattern: #"(?<!\*)\*\*(_)(?=\S)(.+?)(?<=\S)\1\*\*(?!\*)"#,
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
+            styleApplicator: styleApplicator,
             protectedRanges: emphasisProtectedRanges,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
             contentTransform: { font in
-                transformedFont(font, adding: [.traitBold, .traitItalic])
+                styleApplicator.transformedFont(font, adding: [.traitBold, .traitItalic])
                     ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
             },
             additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
@@ -214,13 +188,10 @@ struct MarkdownStyledTextRenderer {
             pattern: #"(?<!_)\_(\*\*)(?=\S)(.+?)(?<=\S)\1_(?!_)"#,
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
+            styleApplicator: styleApplicator,
             protectedRanges: emphasisProtectedRanges,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
             contentTransform: { font in
-                transformedFont(font, adding: [.traitBold, .traitItalic])
+                styleApplicator.transformedFont(font, adding: [.traitBold, .traitItalic])
                     ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
             },
             additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
@@ -229,13 +200,10 @@ struct MarkdownStyledTextRenderer {
             pattern: #"(?<!\*)\*(__)(?=\S)(.+?)(?<=\S)\1\*(?!\*)"#,
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
+            styleApplicator: styleApplicator,
             protectedRanges: emphasisProtectedRanges,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
             contentTransform: { font in
-                transformedFont(font, adding: [.traitBold, .traitItalic])
+                styleApplicator.transformedFont(font, adding: [.traitBold, .traitItalic])
                     ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
             },
             additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
@@ -244,13 +212,10 @@ struct MarkdownStyledTextRenderer {
             pattern: #"(?<!\*)\*\*(?=\S)(.+?)(?<=\S)\*\*(?!\*)"#,
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
+            styleApplicator: styleApplicator,
             protectedRanges: emphasisProtectedRanges + boldItalicRanges + nestedBoldItalicRanges,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
             contentTransform: { font in
-                transformedFont(font, adding: .traitBold) ?? UIFont.boldSystemFont(ofSize: font.pointSize)
+                styleApplicator.transformedFont(font, adding: .traitBold) ?? UIFont.boldSystemFont(ofSize: font.pointSize)
             },
             additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
         )
@@ -258,13 +223,10 @@ struct MarkdownStyledTextRenderer {
             pattern: #"(?<!_)__(?=\S)(.+?)(?<=\S)__(?!_)"#,
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
+            styleApplicator: styleApplicator,
             protectedRanges: emphasisProtectedRanges + boldItalicRanges + nestedBoldItalicRanges,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
             contentTransform: { font in
-                transformedFont(font, adding: .traitBold) ?? UIFont.boldSystemFont(ofSize: font.pointSize)
+                styleApplicator.transformedFont(font, adding: .traitBold) ?? UIFont.boldSystemFont(ofSize: font.pointSize)
             },
             additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
         )
@@ -272,13 +234,10 @@ struct MarkdownStyledTextRenderer {
             pattern: #"(?<!\*)\*(?=\S)(.+?)(?<=\S)\*(?!\*)"#,
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
+            styleApplicator: styleApplicator,
             protectedRanges: emphasisProtectedRanges + boldItalicRanges + nestedBoldItalicRanges + boldRanges,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
             contentTransform: { font in
-                transformedFont(font, adding: .traitItalic) ?? UIFont.italicSystemFont(ofSize: font.pointSize)
+                styleApplicator.transformedFont(font, adding: .traitItalic) ?? UIFont.italicSystemFont(ofSize: font.pointSize)
             },
             additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
         )
@@ -286,13 +245,10 @@ struct MarkdownStyledTextRenderer {
             pattern: #"(?<!_)_(?=\S)(.+?)(?<=\S)_(?!_)"#,
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
+            styleApplicator: styleApplicator,
             protectedRanges: emphasisProtectedRanges + boldItalicRanges + nestedBoldItalicRanges + boldRanges,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
             contentTransform: { font in
-                transformedFont(font, adding: .traitItalic) ?? UIFont.italicSystemFont(ofSize: font.pointSize)
+                styleApplicator.transformedFont(font, adding: .traitItalic) ?? UIFont.italicSystemFont(ofSize: font.pointSize)
             },
             additionalContentAttributes: [.foregroundColor: configuration.resolvedTheme.emphasisText]
         )
@@ -300,11 +256,8 @@ struct MarkdownStyledTextRenderer {
             pattern: #"~~(?=\S)(.+?)(?<=\S)~~"#,
             in: attributed,
             text: nsText,
-            baseFont: configuration.baseFont,
+            styleApplicator: styleApplicator,
             protectedRanges: emphasisProtectedRanges,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange,
             contentTransform: { font in font },
             additionalContentAttributes: [
                 .foregroundColor: configuration.resolvedTheme.strikethroughText,
@@ -315,18 +268,13 @@ struct MarkdownStyledTextRenderer {
             in: attributed,
             text: nsText,
             protectedRanges: codeBlockRanges + codeSpanRanges,
-            baseFont: configuration.baseFont,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange
+            styleApplicator: styleApplicator
         )
         styleLinks(
             in: attributed,
             text: nsText,
             protectedRanges: codeBlockRanges + codeSpanRanges + imageRanges,
-            resolvedTheme: configuration.resolvedTheme,
-            syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange
+            styleApplicator: styleApplicator
         )
 
         return attributed
@@ -429,10 +377,7 @@ struct MarkdownStyledTextRenderer {
     private func styleHeadings(
         in attributed: NSMutableAttributedString,
         text: NSString,
-        baseFont: UIFont,
-        resolvedTheme: ResolvedEditorTheme,
-        syntaxMode: MarkdownSyntaxMode,
-        revealedRange: NSRange?,
+        styleApplicator: MarkdownSyntaxStyleApplicator,
         protectedRanges: [NSRange]
     ) {
         let regex = regex(for: #"^(#{1,6})([ \t]+)(.+)$"#, options: [.anchorsMatchLines])
@@ -456,37 +401,12 @@ struct MarkdownStyledTextRenderer {
             let markerRange = match.range(at: 1)
             let spacerRange = match.range(at: 2)
             let contentRange = match.range(at: 3)
-            let level = markerRange.length
-            let scale = max(1.0, 1.5 - CGFloat(level - 1) * 0.08)
-            let headingFont = transformedFont(baseFont, adding: .traitBold, size: baseFont.pointSize * scale)
-                ?? UIFont.boldSystemFont(ofSize: baseFont.pointSize * scale)
-
-            attributed.addAttributes(
-                [
-                    .font: headingFont,
-                    .foregroundColor: resolvedTheme.headingText
-                ],
-                range: contentRange
-            )
-            attributed.addAttribute(
-                .foregroundColor,
-                value: resolvedTheme.syntaxMarkerText,
-                range: markerRange
-            )
-
-            applySyntaxVisibility(
-                markerRange,
-                rule: .followsMode,
-                in: attributed,
-                syntaxMode: syntaxMode,
-                revealedRange: revealedRange
-            )
-            applySyntaxVisibility(
-                spacerRange,
-                rule: .followsMode,
-                in: attributed,
-                syntaxMode: syntaxMode,
-                revealedRange: revealedRange
+            styleApplicator.applyATXHeading(
+                contentRange: contentRange,
+                markerRange: markerRange,
+                spacerRange: spacerRange,
+                level: markerRange.length,
+                in: attributed
             )
         }
     }
@@ -494,34 +414,14 @@ struct MarkdownStyledTextRenderer {
     private func styleSetextHeadings(
         matches: [SetextHeadingMatch],
         in attributed: NSMutableAttributedString,
-        baseFont: UIFont,
-        resolvedTheme: ResolvedEditorTheme,
-        syntaxMode: MarkdownSyntaxMode,
-        revealedRange: NSRange?
+        styleApplicator: MarkdownSyntaxStyleApplicator
     ) {
         for match in matches {
-            let scale: CGFloat = match.level == 1 ? 1.5 : 1.42
-            let headingFont = transformedFont(baseFont, adding: .traitBold, size: baseFont.pointSize * scale)
-                ?? UIFont.boldSystemFont(ofSize: baseFont.pointSize * scale)
-
-            attributed.addAttributes(
-                [
-                    .font: headingFont,
-                    .foregroundColor: resolvedTheme.headingText
-                ],
-                range: match.contentRange
-            )
-            attributed.addAttribute(
-                .foregroundColor,
-                value: resolvedTheme.syntaxMarkerText,
-                range: match.underlineRange
-            )
-            applySyntaxVisibility(
-                match.underlineRange,
-                rule: .followsMode,
-                in: attributed,
-                syntaxMode: syntaxMode,
-                revealedRange: revealedRange
+            styleApplicator.applySetextHeading(
+                contentRange: match.contentRange,
+                underlineRange: match.underlineRange,
+                level: match.level,
+                in: attributed
             )
         }
     }
@@ -530,10 +430,7 @@ struct MarkdownStyledTextRenderer {
         in attributed: NSMutableAttributedString,
         text: NSString,
         lineRanges: [NSRange],
-        baseFont: UIFont,
-        resolvedTheme: ResolvedEditorTheme,
-        syntaxMode: MarkdownSyntaxMode,
-        revealedRange: NSRange?,
+        styleApplicator: MarkdownSyntaxStyleApplicator,
         protectedRanges: [NSRange]
     ) {
         let regex = regex(for: #"^([ \t]{0,3})((?:>[ \t]?)+)(.*)$"#)
@@ -577,24 +474,14 @@ struct MarkdownStyledTextRenderer {
                 continue
             }
 
-            attributed.addAttribute(.markdownBlockquoteDepth, value: depth, range: lineRange)
-            attributed.addAttribute(.markdownBlockquoteGroupID, value: groupID, range: lineRange)
-            attributed.addAttribute(.foregroundColor, value: resolvedTheme.blockquoteText, range: lineRange)
-            attributed.addAttribute(.foregroundColor, value: resolvedTheme.subtleSyntaxMarkerText, range: markerRange)
-
-            let paragraphStyle = NSMutableParagraphStyle()
-            let leadingWidth = text.substring(with: leadingWhitespaceRange).measuredWidth(using: baseFont)
-            let headIndent = leadingWidth + CGFloat(depth) * 12 + 6
-            paragraphStyle.firstLineHeadIndent = headIndent
-            paragraphStyle.headIndent = headIndent
-            attributed.addAttribute(.paragraphStyle, value: paragraphStyle, range: lineRange)
-
-            applySyntaxVisibility(
-                markerRange,
-                rule: .followsMode,
-                in: attributed,
-                syntaxMode: syntaxMode,
-                revealedRange: revealedRange
+            styleApplicator.applyBlockquote(
+                lineRange: lineRange,
+                leadingWhitespaceRange: leadingWhitespaceRange,
+                markerRange: markerRange,
+                depth: depth,
+                groupID: groupID,
+                text: text,
+                in: attributed
             )
         }
     }
@@ -602,8 +489,7 @@ struct MarkdownStyledTextRenderer {
     private func styleLists(
         in attributed: NSMutableAttributedString,
         text: NSString,
-        baseFont: UIFont,
-        resolvedTheme: ResolvedEditorTheme,
+        styleApplicator: MarkdownSyntaxStyleApplicator,
         protectedRanges: [NSRange]
     ) {
         let patterns = [
@@ -630,18 +516,14 @@ struct MarkdownStyledTextRenderer {
                 let leadingWhitespaceRange = match.range(at: 1)
                 let markerRange = match.range(at: 2)
                 let spacerRange = match.range(at: 3)
-                attributed.addAttribute(.foregroundColor, value: resolvedTheme.syntaxMarkerText, range: markerRange)
-
-                let prefixRange = NSRange(
-                    location: leadingWhitespaceRange.location,
-                    length: NSMaxRange(spacerRange) - leadingWhitespaceRange.location
+                styleApplicator.applyList(
+                    fullMatch: fullMatch,
+                    leadingWhitespaceRange: leadingWhitespaceRange,
+                    spacerRange: spacerRange,
+                    markerRange: markerRange,
+                    text: text,
+                    in: attributed
                 )
-                let paragraphStyle = NSMutableParagraphStyle()
-                let prefixWidth = text.substring(with: prefixRange).measuredWidth(using: baseFont)
-                let leadingWidth = text.substring(with: leadingWhitespaceRange).measuredWidth(using: baseFont)
-                paragraphStyle.firstLineHeadIndent = leadingWidth
-                paragraphStyle.headIndent = prefixWidth
-                attributed.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullMatch)
             }
         }
     }
@@ -650,106 +532,34 @@ struct MarkdownStyledTextRenderer {
         in attributed: NSMutableAttributedString,
         text: NSString,
         ranges: [NSRange],
-        baseFont: UIFont,
-        resolvedTheme: ResolvedEditorTheme
+        styleApplicator: MarkdownSyntaxStyleApplicator
     ) {
         guard ranges.isEmpty == false else {
             return
         }
 
-        let codeFont = UIFont.monospacedSystemFont(ofSize: baseFont.pointSize * 0.95, weight: .regular)
         for range in ranges {
-            attributed.addAttributes(
-                [
-                    .font: codeFont,
-                    .foregroundColor: resolvedTheme.codeBlockText,
-                    .markdownCodeBackgroundKind: MarkdownCodeBackgroundKind.block.rawValue
-                ],
-                range: range
-            )
+            styleApplicator.applyIndentedCodeBlock(range: range, in: attributed)
         }
     }
 
     private func styleFencedCodeBlocks(
         matches: [MarkdownFencedCodeBlock],
         in attributed: NSMutableAttributedString,
-        baseFont: UIFont,
-        resolvedTheme: ResolvedEditorTheme,
-        syntaxMode: MarkdownSyntaxMode,
-        revealedRange: NSRange?
+        styleApplicator: MarkdownSyntaxStyleApplicator
     ) {
-        let codeFont = UIFont.monospacedSystemFont(ofSize: baseFont.pointSize * 0.95, weight: .regular)
         for match in matches {
-            if match.contentRange.length > 0 {
-                attributed.addAttributes(
-                    [
-                        .font: codeFont,
-                        .foregroundColor: resolvedTheme.codeBlockText,
-                        .markdownCodeBackgroundKind: MarkdownCodeBackgroundKind.block.rawValue
-                    ],
-                    range: match.contentRange
-                )
-            }
-
-            applySyntaxVisibility(
-                match.openingFenceRange,
-                rule: .followsMode,
-                in: attributed,
-                syntaxMode: syntaxMode,
-                revealedRange: revealedRange
-            )
-
-            if let closingFenceRange = match.closingFenceRange {
-                applySyntaxVisibility(
-                    closingFenceRange,
-                    rule: .followsMode,
-                    in: attributed,
-                    syntaxMode: syntaxMode,
-                    revealedRange: revealedRange
-                )
-            }
+            styleApplicator.applyFencedCodeBlock(match, in: attributed)
         }
     }
 
     private func styleInlineCode(
         matches: [MarkdownCodeSpan],
         in attributed: NSMutableAttributedString,
-        baseFont: UIFont,
-        resolvedTheme: ResolvedEditorTheme,
-        syntaxMode: MarkdownSyntaxMode,
-        revealedRange: NSRange?
+        styleApplicator: MarkdownSyntaxStyleApplicator
     ) {
-        let codeFont = UIFont.monospacedSystemFont(ofSize: baseFont.pointSize * 0.95, weight: .regular)
-
         for match in matches {
-            let openMarkerRange = NSRange(location: match.fullRange.location, length: match.delimiterLength)
-            let closeMarkerRange = NSRange(
-                location: NSMaxRange(match.fullRange) - match.delimiterLength,
-                length: match.delimiterLength
-            )
-
-            attributed.addAttributes(
-                [
-                    .font: codeFont,
-                    .foregroundColor: resolvedTheme.inlineCodeText,
-                    .markdownCodeBackgroundKind: MarkdownCodeBackgroundKind.inline.rawValue
-                ],
-                range: match.contentRange
-            )
-            applySyntaxVisibility(
-                openMarkerRange,
-                rule: .followsMode,
-                in: attributed,
-                syntaxMode: syntaxMode,
-                revealedRange: revealedRange
-            )
-            applySyntaxVisibility(
-                closeMarkerRange,
-                rule: .followsMode,
-                in: attributed,
-                syntaxMode: syntaxMode,
-                revealedRange: revealedRange
-            )
+            styleApplicator.applyInlineCode(match, in: attributed)
         }
     }
 
@@ -757,11 +567,8 @@ struct MarkdownStyledTextRenderer {
         pattern: String,
         in attributed: NSMutableAttributedString,
         text: NSString,
-        baseFont: UIFont,
+        styleApplicator: MarkdownSyntaxStyleApplicator,
         protectedRanges: [NSRange],
-        resolvedTheme: ResolvedEditorTheme,
-        syntaxMode: MarkdownSyntaxMode,
-        revealedRange: NSRange?,
         contentTransform: (UIFont) -> UIFont,
         additionalContentAttributes: [NSAttributedString.Key: Any] = [:]
     ) {
@@ -792,26 +599,15 @@ struct MarkdownStyledTextRenderer {
                 length: trailingMarkerLength
             )
 
-            applyFontTransform(in: attributed, range: contentRange, transform: contentTransform, baseFont: baseFont)
-            for (key, value) in additionalContentAttributes {
-                attributed.addAttribute(key, value: value, range: contentRange)
-            }
-
-            attributed.addAttribute(.foregroundColor, value: resolvedTheme.syntaxMarkerText, range: leadingMarkerRange)
-            attributed.addAttribute(.foregroundColor, value: resolvedTheme.syntaxMarkerText, range: trailingMarkerRange)
-            applySyntaxVisibility(
-                leadingMarkerRange,
-                rule: .followsMode,
+            styleApplicator.applyInlineContent(
+                range: contentRange,
                 in: attributed,
-                syntaxMode: syntaxMode,
-                revealedRange: revealedRange
+                transform: contentTransform,
+                additionalAttributes: additionalContentAttributes
             )
-            applySyntaxVisibility(
-                trailingMarkerRange,
-                rule: .followsMode,
-                in: attributed,
-                syntaxMode: syntaxMode,
-                revealedRange: revealedRange
+            styleApplicator.applySyntaxMarkerRanges(
+                [leadingMarkerRange, trailingMarkerRange],
+                in: attributed
             )
         }
     }
@@ -820,11 +616,8 @@ struct MarkdownStyledTextRenderer {
         pattern: String,
         in attributed: NSMutableAttributedString,
         text: NSString,
-        baseFont: UIFont,
+        styleApplicator: MarkdownSyntaxStyleApplicator,
         protectedRanges: [NSRange],
-        resolvedTheme: ResolvedEditorTheme,
-        syntaxMode: MarkdownSyntaxMode,
-        revealedRange: NSRange?,
         contentTransform: (UIFont) -> UIFont,
         additionalContentAttributes: [NSAttributedString.Key: Any] = [:]
     ) {
@@ -860,22 +653,15 @@ struct MarkdownStyledTextRenderer {
                 length: trailingOuterLength
             )
 
-            applyFontTransform(in: attributed, range: contentRange, transform: contentTransform, baseFont: baseFont)
-            for (key, value) in additionalContentAttributes {
-                attributed.addAttribute(key, value: value, range: contentRange)
-            }
+            styleApplicator.applyInlineContent(
+                range: contentRange,
+                in: attributed,
+                transform: contentTransform,
+                additionalAttributes: additionalContentAttributes
+            )
 
             let markerRanges = [leadingOuterRange, leadingInnerRange, trailingInnerRange, trailingOuterRange]
-            for markerRange in markerRanges where markerRange.length > 0 {
-                attributed.addAttribute(.foregroundColor, value: resolvedTheme.syntaxMarkerText, range: markerRange)
-                applySyntaxVisibility(
-                    markerRange,
-                    rule: .followsMode,
-                    in: attributed,
-                    syntaxMode: syntaxMode,
-                    revealedRange: revealedRange
-                )
-            }
+            styleApplicator.applySyntaxMarkerRanges(markerRanges, in: attributed)
         }
     }
 
@@ -884,10 +670,7 @@ struct MarkdownStyledTextRenderer {
         text: NSString,
         lineRanges: [NSRange],
         protectedRanges: [NSRange],
-        baseFont: UIFont,
-        resolvedTheme: ResolvedEditorTheme,
-        syntaxMode: MarkdownSyntaxMode,
-        revealedRange: NSRange?
+        styleApplicator: MarkdownSyntaxStyleApplicator
     ) {
         for lineRange in lineRanges {
             let contentRange = scanner.trimmedLineRange(from: lineRange, in: text)
@@ -903,21 +686,7 @@ struct MarkdownStyledTextRenderer {
                 continue
             }
 
-            attributed.addAttributes(
-                [
-                    .foregroundColor: resolvedTheme.horizontalRuleText,
-                    .font: UIFont.monospacedSystemFont(ofSize: baseFont.pointSize * 0.9, weight: .regular),
-                    .markdownHorizontalRule: true
-                ],
-                range: contentRange
-            )
-            applySyntaxVisibility(
-                contentRange,
-                rule: .followsMode,
-                in: attributed,
-                syntaxMode: syntaxMode,
-                revealedRange: revealedRange
-            )
+            styleApplicator.applyHorizontalRule(range: contentRange, in: attributed)
         }
     }
 
@@ -925,9 +694,7 @@ struct MarkdownStyledTextRenderer {
         in attributed: NSMutableAttributedString,
         text: NSString,
         protectedRanges: [NSRange],
-        resolvedTheme: ResolvedEditorTheme,
-        syntaxMode: MarkdownSyntaxMode,
-        revealedRange: NSRange?
+        styleApplicator: MarkdownSyntaxStyleApplicator
     ) {
         let regex = regex(for: #"\[([^\]]+)\]\(([^)]+)\)"#)
         let fullRange = NSRange(location: 0, length: text.length)
@@ -950,30 +717,17 @@ struct MarkdownStyledTextRenderer {
 
             let titleRange = match.range(at: 1)
             let urlRange = match.range(at: 2)
-            attributed.addAttributes(
-                [
-                    .foregroundColor: resolvedTheme.linkText,
-                    .underlineStyle: NSUnderlineStyle.single.rawValue
-                ],
-                range: titleRange
-            )
-
             let hiddenRanges = [
                 NSRange(location: fullMatch.location, length: 1),
                 NSRange(location: NSMaxRange(titleRange), length: 2),
                 urlRange,
                 NSRange(location: NSMaxRange(fullMatch) - 1, length: 1)
             ]
-            for hiddenRange in hiddenRanges {
-                attributed.addAttribute(.foregroundColor, value: resolvedTheme.syntaxMarkerText, range: hiddenRange)
-                applySyntaxVisibility(
-                    hiddenRange,
-                    rule: .followsMode,
-                    in: attributed,
-                    syntaxMode: syntaxMode,
-                    revealedRange: revealedRange
-                )
-            }
+            styleApplicator.applyLink(
+                titleRange: titleRange,
+                hiddenRanges: hiddenRanges,
+                in: attributed
+            )
         }
     }
 
@@ -981,10 +735,7 @@ struct MarkdownStyledTextRenderer {
         in attributed: NSMutableAttributedString,
         text: NSString,
         protectedRanges: [NSRange],
-        baseFont: UIFont,
-        resolvedTheme: ResolvedEditorTheme,
-        syntaxMode: MarkdownSyntaxMode,
-        revealedRange: NSRange?
+        styleApplicator: MarkdownSyntaxStyleApplicator
     ) {
         let regex = regex(for: #"!\[([^\]]*)\]\(([^)]+)\)"#)
         let fullRange = NSRange(location: 0, length: text.length)
@@ -1006,31 +757,17 @@ struct MarkdownStyledTextRenderer {
 
             let altTextRange = match.range(at: 1)
             let sourceRange = match.range(at: 2)
-            let imageFont = transformedFont(baseFont, adding: .traitItalic) ?? UIFont.italicSystemFont(ofSize: baseFont.pointSize)
-            attributed.addAttributes(
-                [
-                    .font: imageFont,
-                    .foregroundColor: resolvedTheme.imageAltText
-                ],
-                range: altTextRange
-            )
-
             let hiddenRanges = [
                 NSRange(location: fullMatch.location, length: 2),
                 NSRange(location: NSMaxRange(altTextRange), length: 2),
                 sourceRange,
                 NSRange(location: NSMaxRange(fullMatch) - 1, length: 1)
             ]
-            for hiddenRange in hiddenRanges {
-                attributed.addAttribute(.foregroundColor, value: resolvedTheme.subtleSyntaxMarkerText, range: hiddenRange)
-                applySyntaxVisibility(
-                    hiddenRange,
-                    rule: .followsMode,
-                    in: attributed,
-                    syntaxMode: syntaxMode,
-                    revealedRange: revealedRange
-                )
-            }
+            styleApplicator.applyImage(
+                altTextRange: altTextRange,
+                hiddenRanges: hiddenRanges,
+                in: attributed
+            )
         }
     }
 
@@ -1131,63 +868,6 @@ struct MarkdownStyledTextRenderer {
             && scanner.isEscaped(location: location - 1, in: text) == false
     }
 
-    private func baseAttributes(font: UIFont, resolvedTheme: ResolvedEditorTheme) -> [NSAttributedString.Key: Any] {
-        [
-            .font: font,
-            .foregroundColor: resolvedTheme.primaryText
-        ]
-    }
-
-    private func applyFontTransform(
-        in attributed: NSMutableAttributedString,
-        range: NSRange,
-        transform: (UIFont) -> UIFont,
-        baseFont: UIFont
-    ) {
-        attributed.enumerateAttribute(.font, in: range) { value, subrange, _ in
-            let currentFont = (value as? UIFont) ?? baseFont
-            attributed.addAttribute(.font, value: transform(currentFont), range: subrange)
-        }
-    }
-
-    // Keep one visibility decision point so new markdown features do not guess
-    // between mode-controlled syntax and syntax that should always stay hidden.
-    private func applySyntaxVisibility(
-        _ range: NSRange,
-        rule: MarkdownSyntaxVisibilityRule,
-        in attributed: NSMutableAttributedString,
-        syntaxMode: MarkdownSyntaxMode,
-        revealedRange: NSRange?
-    ) {
-        guard range.length > 0 else {
-            return
-        }
-
-        attributed.addAttribute(.markdownSyntaxToken, value: rule.rawValue, range: range)
-
-        let visibilityPolicy = MarkdownSyntaxVisibilityPolicy(
-            syntaxMode: syntaxMode,
-            revealedRange: revealedRange
-        )
-        if visibilityPolicy.shouldHideSyntax(in: range, rule: rule) {
-            applyHiddenSyntaxAttributes(range, in: attributed)
-        } else {
-            attributed.removeAttribute(.markdownHiddenSyntax, range: range)
-        }
-    }
-
-    private func applyHiddenSyntaxAttributes(
-        _ range: NSRange,
-        in attributed: NSMutableAttributedString
-    ) {
-        guard range.length > 0 else {
-            return
-        }
-
-        attributed.addAttribute(.markdownHiddenSyntax, value: true, range: range)
-        attributed.removeAttribute(.kern, range: range)
-    }
-
     private func regex(
         for pattern: String,
         options: NSRegularExpression.Options = []
@@ -1207,27 +887,6 @@ struct MarkdownStyledTextRenderer {
     }
 }
 
-private func transformedFont(
-    _ font: UIFont,
-    addingSingle trait: UIFontDescriptor.SymbolicTraits,
-    size: CGFloat? = nil
-) -> UIFont? {
-    transformedFont(font, adding: trait, size: size)
-}
-
-private func transformedFont(
-    _ font: UIFont,
-    adding traits: UIFontDescriptor.SymbolicTraits,
-    size: CGFloat? = nil
-) -> UIFont? {
-    let descriptor = font.fontDescriptor.withSymbolicTraits(font.fontDescriptor.symbolicTraits.union(traits))
-    guard let descriptor else {
-        return nil
-    }
-
-    return UIFont(descriptor: descriptor, size: size ?? font.pointSize)
-}
-
 private func shift(_ range: NSRange, by offset: Int) -> NSRange {
     NSRange(location: range.location + offset, length: range.length)
 }
@@ -1235,9 +894,5 @@ private func shift(_ range: NSRange, by offset: Int) -> NSRange {
 private extension String {
     func removingMarkdownWhitespace() -> String {
         filter { $0.isWhitespace == false }
-    }
-
-    func measuredWidth(using font: UIFont) -> CGFloat {
-        (self as NSString).size(withAttributes: [.font: font]).width
     }
 }

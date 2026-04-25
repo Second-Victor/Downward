@@ -195,13 +195,15 @@ Evidence note: `Tests/ThemeStoreTests.swift` covers file-backed single-theme, ar
 ### Architecture plan
 
 - [x] Create a syntax recognition/scanning layer that returns markdown spans and block metadata without UIKit dependencies.
-- [ ] Create a styling layer that maps recognized spans to fonts, colors, paragraph styles, and hidden-syntax attributes.
+- [x] Create a styling layer that maps recognized spans to fonts, colors, paragraph styles, and hidden-syntax attributes.
 - [x] Create a hidden-syntax visibility policy that can be tested without a live text view.
 - [ ] Keep code-block/background layout drawing separate from syntax recognition.
 - [x] Keep theme role mapping separate from markdown parsing.
 - [x] Keep renderer tests focused on both recognition and styled output during the transition.
 
-Evidence note (2026-04-25): `MarkdownSyntaxScanner` is the first extracted scanner boundary. It returns line ranges, indented code block ranges, fenced code block metadata, merged protected code block ranges, inline code spans, and image ranges without UIKit or attributed-string styling dependencies. `MarkdownStyledTextRenderer` consumes those scanner results while styling remains in the renderer for this transition slice. `MarkdownSyntaxScannerTests` covers recognition directly, and `MarkdownStyledTextRendererTests` continues to cover styled output.
+Evidence note (2026-04-25): `MarkdownSyntaxScanner` is the first extracted scanner boundary. It returns line ranges, indented code block ranges, fenced code block metadata, merged protected code block ranges, inline code spans, and image ranges without UIKit or attributed-string styling dependencies. `MarkdownStyledTextRenderer` consumes those scanner results while coordinating the remaining markdown range recognition. `MarkdownSyntaxScannerTests` covers recognition directly, and `MarkdownStyledTextRendererTests` continues to cover styled output.
+
+Evidence note (2026-04-25): `MarkdownSyntaxStyleApplicator` now owns the first extracted styling/application boundary for base text attributes, heading attributes, blockquote/list paragraph attributes, inline and block code attributes, inline emphasis marker/content styling, link/image styling, horizontal-rule markers, and syntax-hidden attributes. `MarkdownSyntaxStyleApplicatorTests` covers the helper directly while existing renderer tests continue to cover full styled output and protected code regions.
 
 ### Performance plan
 
@@ -218,9 +220,11 @@ Evidence note (2026-04-25): `MarkdownSyntaxScanner` is the first extracted scann
 - `Downward/Features/Editor/MarkdownStyledTextRenderer.swift`
 - `Downward/Features/Editor/MarkdownSyntaxScanner.swift`
 - `Downward/Features/Editor/MarkdownSyntaxVisibilityPolicy.swift`
+- `Downward/Features/Editor/MarkdownSyntaxStyleApplicator.swift`
 - `Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift`
 - `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
 - `Tests/MarkdownSyntaxScannerTests.swift`
+- `Tests/MarkdownSyntaxStyleApplicatorTests.swift`
 - `Tests/MarkdownStyledTextRendererTests.swift`
 - `Tests/MarkdownCurrentLineRestyleTests.swift`
 
@@ -232,27 +236,29 @@ Evidence note (2026-04-25): `MarkdownSyntaxScanner` is the first extracted scann
 
 ### Implementation plan
 
-- [ ] Add a per-snapshot index for relative path to node/file metadata.
-- [ ] Add a per-snapshot index for file URL or stable file identity where available.
-- [ ] Build indexes when a snapshot is created or refreshed.
-- [ ] Keep recursive traversal as a fallback while indexes are introduced.
-- [ ] Route navigation lookup through the index.
-- [ ] Route recent-file reconciliation through the index.
-- [ ] Route mutation outcome lookup through the index.
-- [ ] Ensure indexes rebuild after refresh, rename, move, delete, and reconnect.
+- [x] Add a per-snapshot index for relative path to node/file metadata.
+- [x] Add a per-snapshot index for file URL or stable file identity where available.
+- [x] Build indexes when a snapshot is created or refreshed.
+- [x] Keep recursive traversal as a fallback while indexes are introduced.
+- [x] Route navigation lookup through the index.
+- [x] Route recent-file reconciliation through the index.
+- [x] Route mutation outcome lookup through the index.
+- [x] Ensure indexes rebuild after refresh, rename, move, delete, and reconnect.
 
 ### Test plan
 
-- [ ] Duplicate filenames in different folders.
-- [ ] Rename file.
+- [x] Duplicate filenames in different folders.
+- [x] Rename file.
 - [ ] Rename folder.
-- [ ] Move file.
+- [x] Move file.
 - [ ] Move folder.
-- [ ] Delete open file.
+- [x] Delete open file.
 - [ ] Delete ancestor folder of open file.
-- [ ] Case-only rename.
-- [ ] Stale recent file after external change.
+- [x] Case-only rename.
+- [x] Stale recent file after external change.
 - [ ] Large synthetic tree lookup benchmark if practical.
+
+Evidence note: `Tests/WorkspaceSnapshotPathResolverTests.swift` covers duplicate filenames, nested paths, URL-to-relative lookup, missing/stale paths, replacement snapshots after rename/move/delete, exact-case case-only rename behavior, and file enumeration order. `WorkspaceNavigationModeTests`, `WorkspaceCoordinatorPolicyTests`, and `RecentFilesStoreTests` passed against the indexed snapshot helpers on the available iPhone 17 simulator.
 
 ### Likely files
 

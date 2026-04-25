@@ -88,6 +88,8 @@ Done when:
 - [x] Split the first markdown recognition/scanning slice from UIKit styling.
 - [x] Keep theme role mapping out of parsing code for the extracted scanner slice.
 - [x] Keep hidden-syntax reveal decisions testable without a live `UITextView`.
+- [x] Extract a focused markdown styling/application helper from the renderer.
+- [x] Add focused tests for the extracted styling/application helper.
 - [x] Preserve same-line current-line restyle as the fast path.
 - [x] Preserve deferred full rerender for line breaks, paste, block-context changes, and selection-driven reveal changes.
 - [x] Add large-document performance fixtures.
@@ -96,21 +98,22 @@ Done when:
 Done when:
 
 - [x] Renderer tests can exercise syntax recognition without attributed-string styling.
+- [x] Renderer styling/application logic has focused helper coverage.
 - [ ] Large-file typing has an explicit performance budget.
 
 ### 4. Add workspace snapshot lookup indexes
 
-- [ ] Build per-snapshot indexes for relative-path and file-identity lookup.
-- [ ] Use indexes in navigation, recents, mutation reconciliation, and restore paths.
-- [ ] Keep recursive traversal as a correctness fallback while the index lands.
-- [ ] Add tests for duplicate names in different folders.
-- [ ] Add tests for rename, move, delete, and case-only rename.
-- [ ] Add tests for stale recent-file paths after a workspace refresh.
+- [x] Build per-snapshot indexes for relative-path and file-identity lookup.
+- [x] Use indexes in navigation, recents, mutation reconciliation, and restore paths.
+- [x] Keep recursive traversal as a correctness fallback while the index lands.
+- [x] Add tests for duplicate names in different folders.
+- [x] Add tests for rename, move, delete, and case-only rename.
+- [x] Add tests for stale recent-file paths after a workspace refresh.
 
 Done when:
 
-- [ ] Path/file resolution no longer repeatedly walks the whole snapshot tree in common flows.
-- [ ] Mutation tests prove index rebuild/invalidation behavior.
+- [x] Path/file resolution no longer repeatedly walks the whole snapshot tree in common flows.
+- [x] Mutation tests prove index rebuild/invalidation behavior.
 
 ### 5. Keep coordinator and workspace view model from growing again
 
