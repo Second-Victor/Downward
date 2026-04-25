@@ -8,26 +8,26 @@ struct WorkspaceSnapshot: Equatable, Sendable {
         nonisolated let relativePath: String
     }
 
-    struct LookupIndex: Equatable, Sendable {
+    private struct LookupIndex: Equatable, Sendable {
         nonisolated let fileEntriesInTraversalOrder: [FileEntry]
-        nonisolated private let fileEntryByRelativePath: [String: FileEntry]
+        nonisolated private let fileURLByRelativePath: [String: URL]
         nonisolated private let relativePathByNormalizedNodePath: [String: String]
 
         nonisolated init(rootNodes: [WorkspaceNode]) {
             var fileEntriesInTraversalOrder: [FileEntry] = []
-            var fileEntryByRelativePath: [String: FileEntry] = [:]
+            var fileURLByRelativePath: [String: URL] = [:]
             var relativePathByNormalizedNodePath: [String: String] = [:]
 
             Self.index(
                 nodes: rootNodes,
                 parentPath: nil,
                 fileEntriesInTraversalOrder: &fileEntriesInTraversalOrder,
-                fileEntryByRelativePath: &fileEntryByRelativePath,
+                fileURLByRelativePath: &fileURLByRelativePath,
                 relativePathByNormalizedNodePath: &relativePathByNormalizedNodePath
             )
 
             self.fileEntriesInTraversalOrder = fileEntriesInTraversalOrder
-            self.fileEntryByRelativePath = fileEntryByRelativePath
+            self.fileURLByRelativePath = fileURLByRelativePath
             self.relativePathByNormalizedNodePath = relativePathByNormalizedNodePath
         }
 
@@ -36,18 +36,18 @@ struct WorkspaceSnapshot: Equatable, Sendable {
         }
 
         nonisolated func fileURL(forRelativePath relativePath: String) -> URL? {
-            fileEntryByRelativePath[relativePath]?.url
+            fileURLByRelativePath[relativePath]
         }
 
         nonisolated func containsFile(relativePath: String) -> Bool {
-            fileEntryByRelativePath[relativePath] != nil
+            fileURLByRelativePath[relativePath] != nil
         }
 
         nonisolated private static func index(
             nodes: [WorkspaceNode],
             parentPath: String?,
             fileEntriesInTraversalOrder: inout [FileEntry],
-            fileEntryByRelativePath: inout [String: FileEntry],
+            fileURLByRelativePath: inout [String: URL],
             relativePathByNormalizedNodePath: inout [String: String]
         ) {
             for node in nodes {
@@ -65,7 +65,7 @@ struct WorkspaceSnapshot: Equatable, Sendable {
                         nodes: folder.children,
                         parentPath: currentPath,
                         fileEntriesInTraversalOrder: &fileEntriesInTraversalOrder,
-                        fileEntryByRelativePath: &fileEntryByRelativePath,
+                        fileURLByRelativePath: &fileURLByRelativePath,
                         relativePathByNormalizedNodePath: &relativePathByNormalizedNodePath
                     )
                 case let .file(file):
@@ -77,8 +77,8 @@ struct WorkspaceSnapshot: Equatable, Sendable {
                     )
                     fileEntriesInTraversalOrder.append(entry)
 
-                    if fileEntryByRelativePath.keys.contains(currentPath) == false {
-                        fileEntryByRelativePath[currentPath] = entry
+                    if fileURLByRelativePath.keys.contains(currentPath) == false {
+                        fileURLByRelativePath[currentPath] = file.url
                     }
                 }
             }
@@ -99,7 +99,7 @@ struct WorkspaceSnapshot: Equatable, Sendable {
     nonisolated let displayName: String
     nonisolated let rootNodes: [WorkspaceNode]
     nonisolated let lastUpdated: Date
-    nonisolated let lookupIndex: LookupIndex
+    nonisolated private let lookupIndex: LookupIndex
 
     nonisolated init(
         workspaceID: String? = nil,
@@ -123,6 +123,22 @@ struct WorkspaceSnapshot: Equatable, Sendable {
 
     nonisolated var isEmpty: Bool {
         rootNodes.isEmpty
+    }
+
+    nonisolated func indexedFileEntries() -> [FileEntry] {
+        lookupIndex.fileEntriesInTraversalOrder
+    }
+
+    nonisolated func indexedRelativePath(forNormalizedNodePath normalizedPath: String) -> String? {
+        lookupIndex.relativePath(forNormalizedNodePath: normalizedPath)
+    }
+
+    nonisolated func indexedFileURL(forRelativePath relativePath: String) -> URL? {
+        lookupIndex.fileURL(forRelativePath: relativePath)
+    }
+
+    nonisolated func indexedContainsFile(relativePath: String) -> Bool {
+        lookupIndex.containsFile(relativePath: relativePath)
     }
 
     nonisolated private static func normalizedLookupPaths(_ paths: [String]) -> [String] {

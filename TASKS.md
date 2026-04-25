@@ -31,8 +31,8 @@ The remaining work is mostly validation, production polish, scalability, and pre
 
 No new P0 code defect was found in the 2026-04-24 static review, but release validation is still open.
 
-- [ ] Build the app in Xcode.
-- [ ] Run the focused XCTest suites for workspace restore, document manager, editor autosave, editor undo/redo, markdown rendering, settings, themes, and keyboard geometry.
+- [x] Build the app in Xcode.
+- [x] Run the focused XCTest suites for workspace restore, document manager, editor autosave, editor undo/redo, markdown rendering, settings, themes, and keyboard geometry.
 - [ ] Run the app on at least one iPhone simulator.
 - [ ] Run the app on at least one iPad simulator or device.
 - [ ] Manually verify workspace selection, restore, reconnect, recent-file reopening, and stale workspace handling.
@@ -40,6 +40,8 @@ No new P0 code defect was found in the 2026-04-24 static review, but release val
 - [ ] Manually verify keyboard accessory behavior on first keyboard presentation and during interactive dismissal.
 - [ ] Manually verify Settings sheet presentation on compact and regular width.
 - [ ] Record build/test/manual QA results here before treating the release as ready.
+
+Verification note (2026-04-25): `xcodebuild -list` identified the `Downward` scheme. `xcodebuild build -scheme Downward -destination 'generic/platform=iOS Simulator'` passed after the named simulator build destination was unavailable during build discovery. `xcodebuild test -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17'` passed on iPhone 17, iOS 26.4 Simulator with 341 passed, 2 skipped, 0 failed. The full run covered the required workspace snapshot/search/recent-file, document manager, editor autosave, editor undo/redo, markdown scanner/style/renderer/performance, settings/theme, keyboard geometry, restore, mutation, and smoke suites. An initial full test run failed in `EditorAutosaveTests.testLiveObservationReloadsCleanEditorAfterOutsideWrite()`; this batch fixed that test's observation timing and reran the focused case plus the full suite successfully.
 
 ## P1 active work
 
@@ -85,6 +87,10 @@ Done when:
 
 ### 3. Continue renderer scalability work
 
+Batch reconciliation note (2026-04-25): the code already has `MarkdownSyntaxScanner`, `MarkdownSyntaxVisibilityPolicy`, and `MarkdownSyntaxStyleApplicator`, and `MarkdownStyledTextRenderer` uses the scanner. This pass added scanner-only coverage for code-block protection, merged protected ranges, and inline matching exclusions without changing rendered output.
+
+Performance budget note (2026-04-25): large-document markdown rendering now has automated work-scope regression coverage. Initial open/theme restyle may render the whole document, ordinary same-line typing must stay on a current-line render budget of 512 characters or less in the large fixture, and structural line-break edits must defer the full-document rerender.
+
 - [x] Split the first markdown recognition/scanning slice from UIKit styling.
 - [x] Keep theme role mapping out of parsing code for the extracted scanner slice.
 - [x] Keep hidden-syntax reveal decisions testable without a live `UITextView`.
@@ -99,11 +105,13 @@ Done when:
 
 - [x] Renderer tests can exercise syntax recognition without attributed-string styling.
 - [x] Renderer styling/application logic has focused helper coverage.
-- [ ] Large-file typing has an explicit performance budget.
+- [x] Large-file typing has an explicit performance budget.
 
 ### 4. Add workspace snapshot lookup indexes
 
-- [x] Build per-snapshot indexes for relative-path and file-identity lookup.
+Batch reconciliation note (2026-04-25): `WorkspaceSnapshot` owns cached URL/path indexes, lookup APIs use them before private recursive fallbacks, `WorkspaceSearchEngine` carries relative paths through `snapshot.forEachFile`, and `RecentFilesStore.pruneInvalidItems(using:)` uses `snapshot.relativeFilePaths()`.
+
+- [x] Build per-snapshot indexes for relative-path and normalized URL lookup.
 - [x] Use indexes in navigation, recents, mutation reconciliation, and restore paths.
 - [x] Keep recursive traversal as a correctness fallback while the index lands.
 - [x] Add tests for duplicate names in different folders.

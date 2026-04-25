@@ -2,6 +2,15 @@ import SwiftUI
 import UIKit
 
 extension MarkdownEditorTextView {
+#if DEBUG
+    enum RenderWork: Equatable {
+        case fullDocument(characterCount: Int)
+        case currentLine(characterCount: Int)
+        case hiddenSyntaxVisibility(characterCount: Int)
+        case deferredFullDocumentRerenderScheduled(characterCount: Int)
+    }
+#endif
+
     @MainActor
     final class Coordinator: NSObject, UITextViewDelegate {
         nonisolated static let deferredRerenderDelay: Duration = .milliseconds(120)
@@ -33,6 +42,10 @@ extension MarkdownEditorTextView {
         var hasPendingDeferredRerender: Bool {
             deferredRerenderTask != nil
         }
+
+#if DEBUG
+        private(set) var lastRenderWork: RenderWork?
+#endif
 
         init(
             text: Binding<String>,
@@ -405,6 +418,9 @@ extension MarkdownEditorTextView {
             lastRevealedLineRange = revealedLineRange
             hasPendingFullDocumentRerender = false
             self.configuration = configuration
+#if DEBUG
+            lastRenderWork = .fullDocument(characterCount: (configuration.text as NSString).length)
+#endif
         }
 
         private func updateRevealedSyntax(
@@ -429,6 +445,22 @@ extension MarkdownEditorTextView {
             lastRevealedLineRange = revealedLineRange
             hasPendingFullDocumentRerender = false
             self.configuration = configuration
+#if DEBUG
+            let affectedRange: NSRange
+            switch (previousRevealedRange, revealedLineRange) {
+            case let (previous?, current?):
+                affectedRange = NSUnionRange(previous, current)
+            case let (previous?, nil):
+                affectedRange = previous
+            case let (nil, current?):
+                affectedRange = current
+            case (nil, nil):
+                affectedRange = NSRange(location: NSNotFound, length: 0)
+            }
+            lastRenderWork = .hiddenSyntaxVisibility(
+                characterCount: affectedRange.location == NSNotFound ? 0 : affectedRange.length
+            )
+#endif
         }
 
         /// Update the existing text storage in place so TextKit keeps its backing objects,
@@ -520,6 +552,9 @@ extension MarkdownEditorTextView {
             lastRevealedLineRange = currentLineRange
             hasPendingFullDocumentRerender = false
             self.configuration = configuration
+#if DEBUG
+            lastRenderWork = .currentLine(characterCount: localLineLength)
+#endif
             return true
         }
 
@@ -665,6 +700,11 @@ extension MarkdownEditorTextView {
             deferredRerenderGeneration += 1
             let generation = deferredRerenderGeneration
             let documentIdentity = configuration.documentIdentity
+#if DEBUG
+            lastRenderWork = .deferredFullDocumentRerenderScheduled(
+                characterCount: (configuration.text as NSString).length
+            )
+#endif
 
             deferredRerenderTask = Task { @MainActor [weak self, weak textView] in
                 do {

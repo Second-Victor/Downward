@@ -10,11 +10,11 @@ Verification status:
 
 - [x] Static source review completed.
 - [x] Steering docs refreshed to match the current code direction.
-- [ ] Xcode build completed.
-- [ ] XCTest suite completed.
+- [x] Xcode build completed.
+- [x] XCTest suite completed.
 - [ ] Simulator/device manual QA completed.
 
-Important limitation: this review was performed in a Linux container. `xcodebuild` is not available here, and SwiftUI/UIKit XCTest targets cannot be compiled or run in this environment. Treat the findings below as a static review plus documentation update, not as a passing build/test certification.
+Verification note (2026-04-25): `xcodebuild -list` found the `Downward` scheme. A simulator-specific build for `name=iPhone 17` could not resolve a concrete device during build discovery, so the build gate was run with `xcodebuild build -scheme Downward -destination 'generic/platform=iOS Simulator'` and passed. The full XCTest suite then passed with `xcodebuild test -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17'` on iPhone 17, iOS 26.4 Simulator: 341 passed, 2 skipped, 0 failed. An initial suite run exposed a timeout in `EditorAutosaveTests.testLiveObservationReloadsCleanEditorAfterOutsideWrite()`; this batch fixed the test to use the existing deterministic fallback-observation seam and reran the focused test plus the full suite successfully. Manual simulator/device QA remains open.
 
 ### Snapshot metrics
 
@@ -119,7 +119,7 @@ Done when:
 
 ### [P1] Markdown renderer remains the main scalability and maintainability risk
 
-**Status:** improved; recognition, visibility, and the first styling/application slice are now split, but large-file performance budgeting is still open.
+**Status:** improved; recognition, visibility, the first styling/application slice, and a conservative large-document work-scope budget are now covered. Real latency measurement is still open.
 
 Relevant files:
 
@@ -131,8 +131,9 @@ Relevant files:
 - `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
 - `Tests/MarkdownSyntaxScannerTests.swift`
 - `Tests/MarkdownSyntaxStyleApplicatorTests.swift`
+- `Tests/MarkdownRendererPerformanceTests.swift`
 - `Tests/MarkdownStyledTextRendererTests.swift`
-- `Tests/MarkdownCurrentLineRestyleTests.swift`
+- `Tests/EditorUndoRedoTests.swift`
 
 `MarkdownStyledTextRenderer.swift` is still a large app source file. Current-line restyling is a meaningful win for ordinary typing, and styling/application has started moving into `MarkdownSyntaxStyleApplicator`, but the renderer still owns plenty of regex-driven inline and block coordination.
 
@@ -141,19 +142,23 @@ Action items:
 - [x] Split the first syntax recognition slice from UIKit styling before adding more markdown constructs.
 - [x] Move hidden-syntax visibility decisions behind a small value type or strategy that can be tested without `UITextView`.
 - [x] Extract the first styling/application slice from the renderer.
-- [ ] Keep current-line restyle as the fast path for simple same-line edits.
-- [ ] Keep line-breaks, block-context changes, selection-driven reveal changes, and paste operations on a deferred full-rerender path until a real incremental parser exists.
+- [x] Keep current-line restyle as the fast path for simple same-line edits.
+- [x] Keep line-breaks, block-context changes, selection-driven reveal changes, and paste operations on a deferred full-rerender path until a real incremental parser exists.
 - [x] Add large-document performance fixtures before adding tables, footnotes, task-list interactions, or richer code-block behavior.
 
 Follow-up note (2026-04-25): `MarkdownSyntaxScanner` now provides a UIKit-free first recognition layer for line ranges, indented code blocks, fenced code blocks, merged protected code block ranges, inline code spans, and image ranges. `MarkdownStyledTextRenderer` consumes those scanner results while retaining attributed-string styling and theme-role mapping. `MarkdownSyntaxVisibilityPolicy` now contains the pure syntax-hidden decision. Focused scanner and renderer tests passed on the available iPhone 17 simulator.
 
 Follow-up note (2026-04-25): `MarkdownSyntaxStyleApplicator` now owns concrete attributed-string application for base attributes, headings, blockquotes, lists, inline/fenced/indented code, emphasis markers, links, images, horizontal rules, and hidden syntax markers. Focused applicator coverage was added while the renderer remains responsible for markdown recognition/range coordination.
 
+Batch reconciliation note (2026-04-25): the source already contained the scanner, visibility policy, style applicator, and renderer wiring claimed by the docs. This pass kept that scope intact, clarified that the renderer still coordinates remaining recognition and TextKit handoff, and added scanner-only coverage for code-block protection, merged protected ranges, and inline matching exclusions.
+
+Performance budget note (2026-04-25): large-document renderer coverage now uses an explicit work-scope budget rather than a brittle wall-clock threshold. Full document open/theme restyle may render the whole buffer; ordinary same-line typing in the large fixture must stay bounded to the edited line, with an automated 512-character current-line render ceiling; line-break/structural edits must schedule the deferred full-document pass.
+
 Done when:
 
 - [x] The renderer has a recognizer/scanner layer that can be tested without UIKit.
 - [x] Styling/theme application is a separate layer.
-- [ ] Large-file typing has an explicit performance budget and regression coverage.
+- [x] Large-file typing has an explicit performance budget and regression coverage.
 
 ### [P1] Workspace snapshot reverse lookup is indexed
 
@@ -161,19 +166,25 @@ Done when:
 
 Relevant files:
 
+- `Downward/Domain/Workspace/WorkspaceSnapshot.swift`
 - `Downward/Domain/Workspace/WorkspaceSnapshotPathResolver.swift`
+- `Downward/Features/Workspace/WorkspaceSearchEngine.swift`
+- `Downward/Domain/Persistence/RecentFilesStore.swift`
 - `Downward/Features/Workspace/WorkspaceViewModel.swift`
 - `Downward/App/WorkspaceNavigationPolicy.swift`
 - `Tests/WorkspaceSnapshotPathResolverTests.swift`
-- `Tests/WorkspaceViewModelMutationTests.swift`
+- `Tests/WorkspaceSearchTests.swift`
+- `Tests/RecentFilesStoreTests.swift`
 
 `WorkspaceSnapshot` now builds an immutable lookup index when each snapshot is created. `WorkspaceSnapshotPathResolver.relativePath(for:)`, `fileURL(forRelativePath:)`, `containsFile(relativePath:)`, `fileEntries()`, and `relativeFilePaths()` use that index for the common path while keeping the existing recursive tree walkers as private fallbacks for lookup correctness.
 
 Follow-up note (2026-04-25): focused resolver coverage now includes duplicate filenames in different folders, nested path lookup, URL-to-relative lookup, stale missing paths, replacement snapshots after rename/move/delete, exact-case case-only rename behavior, and traversal-order preservation. Broader workspace navigation, coordinator policy, and recent-file store tests passed on the available iPhone 17 simulator.
 
+Batch reconciliation note (2026-04-25): source inspection confirmed `WorkspaceSearchEngine` already carries relative paths from `snapshot.forEachFile` and `RecentFilesStore.pruneInvalidItems(using:)` uses `snapshot.relativeFilePaths()` instead of flattening URLs and re-resolving each one. This pass kept recursive fallbacks private, made the snapshot index storage private, and added focused file-only and ordered-enumeration coverage.
+
 Action items:
 
-- [x] Introduce a snapshot index keyed by relative path and stable file ID/URL identity where possible.
+- [x] Introduce a snapshot index keyed by relative path and normalized URL identity.
 - [x] Build the index once per snapshot refresh.
 - [x] Keep recursive traversal as a fallback or validation path while the index is introduced.
 - [x] Add tests for rename, move, delete, case-only rename, duplicate filenames in different folders, and stale recent-file paths.
@@ -272,5 +283,5 @@ Action items:
 2. Complete the runtime QA checklist for editor geometry, keyboard accessory, settings, workspace restore, and Files-provider import/export.
 3. Patch any build/test regressions before adding new product features.
 4. Harden theme import/export UX.
-5. Add workspace snapshot indexes.
-6. Split markdown recognition from styling before expanding markdown features.
+5. Keep workspace snapshot indexes protected with focused resolver/search/recent-file tests as mutation paths evolve.
+6. Continue markdown renderer decomposition before expanding markdown features.

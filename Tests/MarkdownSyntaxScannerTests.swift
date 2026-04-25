@@ -72,12 +72,87 @@ final class MarkdownSyntaxScannerTests: XCTestCase {
         XCTAssertEqual(linkRanges.map { nsText.substring(with: $0) }, ["[Link](https://example.com)"])
     }
 
+    func testFencedCodeBlocksProtectInlineMarkdownAndImages() {
+        let text = """
+        before
+        ```
+        ![literal](/code.png) and **literal**
+        ```
+        ![Alt](/real.png) and **styled**
+        """
+        let scan = scanner.scan(text)
+        let protectedRanges = scan.codeBlockRanges + scan.inlineCodeSpans.map(\.fullRange) + scan.imageRanges
+        let boldRanges = scanner.inlineRanges(
+            matching: [#"(?<!\*)\*\*(?=\S)(.+?)(?<=\S)\*\*(?!\*)"#],
+            in: text,
+            protectedRanges: protectedRanges
+        )
+        let nsText = text as NSString
+
+        XCTAssertEqual(scan.fencedCodeBlocks.count, 1)
+        XCTAssertEqual(scan.imageRanges.map { nsText.substring(with: $0) }, ["![Alt](/real.png)"])
+        XCTAssertEqual(boldRanges.map { nsText.substring(with: $0) }, ["**styled**"])
+    }
+
+    func testScanMergesAdjacentCodeBlockRangesForProtection() {
+        let text = "    indented\n```\nfenced\n```\nplain"
+        let scan = scanner.scan(text)
+        let nsText = text as NSString
+
+        XCTAssertEqual(scan.indentedCodeBlockRanges.count, 1)
+        XCTAssertEqual(scan.fencedCodeBlocks.count, 1)
+        XCTAssertEqual(scan.codeBlockRanges.count, 1)
+        XCTAssertEqual(nsText.substring(with: scan.codeBlockRanges[0]), "    indented\n```\nfenced\n```\n")
+    }
+
+    func testInlineMatchingExcludesEmphasisAndLinksInsideCodeBlocks() {
+        let text = """
+            **indented** [indented](code.md)
+        ```
+        **fenced** [fenced](code.md)
+        ```
+        **styled** [Link](https://example.com)
+        """
+        let scan = scanner.scan(text)
+        let boldRanges = scanner.inlineRanges(
+            matching: [#"(?<!\*)\*\*(?=\S)(.+?)(?<=\S)\*\*(?!\*)"#],
+            in: text,
+            protectedRanges: scan.codeBlockRanges
+        )
+        let linkRanges = scanner.inlineRanges(
+            matching: [#"\[([^\]]+)\]\(([^)]+)\)"#],
+            in: text,
+            protectedRanges: scan.codeBlockRanges
+        )
+        let nsText = text as NSString
+
+        XCTAssertEqual(boldRanges.map { nsText.substring(with: $0) }, ["**styled**"])
+        XCTAssertEqual(linkRanges.map { nsText.substring(with: $0) }, ["[Link](https://example.com)"])
+    }
+
     func testImageRangesSkipProtectedCodeRanges() {
         let text = "`![literal](/code.png)` and ![Alt](/real.png)"
         let scan = scanner.scan(text)
         let nsText = text as NSString
 
         XCTAssertEqual(scan.imageRanges.map { nsText.substring(with: $0) }, ["![Alt](/real.png)"])
+    }
+
+    func testMergedRangesCombineOverlappingAndAdjacentProtectedRanges() {
+        XCTAssertEqual(
+            scanner.mergedRanges([
+                NSRange(location: 20, length: 5),
+                NSRange(location: 0, length: 4),
+                NSRange(location: 3, length: 5),
+                NSRange(location: 8, length: 2),
+                NSRange(location: 30, length: 1)
+            ]),
+            [
+                NSRange(location: 0, length: 10),
+                NSRange(location: 20, length: 5),
+                NSRange(location: 30, length: 1)
+            ]
+        )
     }
 
     func testSyntaxVisibilityPolicyHidesOnlyModeControlledUnrevealedSyntax() {

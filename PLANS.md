@@ -10,9 +10,11 @@ Baseline: 2026-04-24 static review of the uploaded `Downward.zip` project.
 
 - [x] Static review completed.
 - [x] Steering docs refreshed.
-- [ ] Xcode build completed.
-- [ ] XCTest suites completed.
+- [x] Xcode build completed.
+- [x] XCTest suites completed.
 - [ ] Simulator/device QA completed.
+
+Verification note (2026-04-25): `xcodebuild -list` found the `Downward` scheme. `xcodebuild build -scheme Downward -destination 'generic/platform=iOS Simulator'` passed. `xcodebuild test -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17'` passed on iPhone 17, iOS 26.4 Simulator with 341 passed, 2 skipped, 0 failed. The first full XCTest attempt failed in `EditorAutosaveTests.testLiveObservationReloadsCleanEditorAfterOutsideWrite()`; this batch fixed the test to use the deterministic fallback-observation path, then the focused case and full suite passed.
 
 The codebase has moved out of emergency hardening. The current foundations are good enough to continue product work only if validation remains disciplined. The main risks are now renderer scale, runtime keyboard/accessory behavior, theme exchange polish, large-workspace lookup cost, and preventing coordinator/view-model files from regrowing.
 
@@ -69,16 +71,16 @@ No new static-review P0 was found. The P0 work is therefore validation, not a kn
 
 ### Build and test gate
 
-- [ ] Build the app in Xcode.
-- [ ] Run all available unit tests.
-- [ ] Run focused workspace restore/reconnect tests.
-- [ ] Run focused document manager tests.
-- [ ] Run focused editor autosave tests.
-- [ ] Run focused editor undo/redo tests.
-- [ ] Run focused markdown renderer tests.
-- [ ] Run focused settings/theme tests.
-- [ ] Run focused keyboard geometry/editor sizing tests.
-- [ ] Record failures in `TASKS.md` and add new review findings if needed.
+- [x] Build the app in Xcode.
+- [x] Run all available unit tests.
+- [x] Run focused workspace restore/reconnect tests.
+- [x] Run focused document manager tests.
+- [x] Run focused editor autosave tests.
+- [x] Run focused editor undo/redo tests.
+- [x] Run focused markdown renderer tests.
+- [x] Run focused settings/theme tests.
+- [x] Run focused keyboard geometry/editor sizing tests.
+- [x] Record failures in `TASKS.md` and add new review findings if needed.
 
 ### Manual app gate
 
@@ -197,7 +199,7 @@ Evidence note: `Tests/ThemeStoreTests.swift` covers file-backed single-theme, ar
 - [x] Create a syntax recognition/scanning layer that returns markdown spans and block metadata without UIKit dependencies.
 - [x] Create a styling layer that maps recognized spans to fonts, colors, paragraph styles, and hidden-syntax attributes.
 - [x] Create a hidden-syntax visibility policy that can be tested without a live text view.
-- [ ] Keep code-block/background layout drawing separate from syntax recognition.
+- [x] Keep code-block/background layout drawing separate from syntax recognition.
 - [x] Keep theme role mapping separate from markdown parsing.
 - [x] Keep renderer tests focused on both recognition and styled output during the transition.
 
@@ -205,11 +207,16 @@ Evidence note (2026-04-25): `MarkdownSyntaxScanner` is the first extracted scann
 
 Evidence note (2026-04-25): `MarkdownSyntaxStyleApplicator` now owns the first extracted styling/application boundary for base text attributes, heading attributes, blockquote/list paragraph attributes, inline and block code attributes, inline emphasis marker/content styling, link/image styling, horizontal-rule markers, and syntax-hidden attributes. `MarkdownSyntaxStyleApplicatorTests` covers the helper directly while existing renderer tests continue to cover full styled output and protected code regions.
 
+Batch reconciliation note (2026-04-25): the implementation matched the completed scanner/style-slice checklist before this pass. This batch did not attempt a broader renderer rewrite; it clarified the current ownership boundary and added scanner-only tests for code-block protection, merged protected ranges, and inline matching exclusions.
+
+Layout boundary evidence note (2026-04-25): `MarkdownSyntaxScanner` imports only Foundation and does not draw. `MarkdownSyntaxStyleApplicator` only writes semantic attributes such as `.markdownCodeBackgroundKind`, while `MarkdownCodeBackgroundLayoutManager` owns the UIKit/TextKit drawing for inline code backgrounds, block code backgrounds, blockquote blocks, hidden glyph suppression, and horizontal rules.
+
 ### Performance plan
 
 - [x] Keep same-line edits on the current-line restyle path.
 - [x] Send line breaks, paste, structural edits, and selection reveal changes through deferred full rerender until a real incremental parser exists.
 - [x] Add large-document fixtures.
+- [x] Add explicit large-document work-scope budget coverage for full render, current-line typing, deferred structural edits, and theme restyle.
 - [ ] Measure typing latency in long documents.
 - [ ] Measure paste latency in long documents.
 - [ ] Measure theme-switch restyle latency in long documents.
@@ -225,19 +232,20 @@ Evidence note (2026-04-25): `MarkdownSyntaxStyleApplicator` now owns the first e
 - `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
 - `Tests/MarkdownSyntaxScannerTests.swift`
 - `Tests/MarkdownSyntaxStyleApplicatorTests.swift`
+- `Tests/MarkdownRendererPerformanceTests.swift`
 - `Tests/MarkdownStyledTextRendererTests.swift`
-- `Tests/MarkdownCurrentLineRestyleTests.swift`
+- `Tests/EditorUndoRedoTests.swift`
 
 ## P1 plan — workspace snapshot indexing
 
 ### Current finding
 
-`WorkspaceSnapshotPathResolver` still uses recursive lookup for relative-path and URL resolution. This is correct and simple, but it will become a performance problem in large workspaces and in flows that repeatedly reconcile recents, mutations, and navigation state.
+`WorkspaceSnapshot` now owns immutable per-snapshot lookup indexes for workspace-relative file paths and normalized node URL paths. `WorkspaceSnapshotPathResolver` uses those indexes for common relative-path and URL resolution while retaining private recursive traversal fallbacks for correctness. Source inspection also confirms search and recent-file pruning already carry relative paths from snapshot enumeration instead of re-walking the tree per result.
 
 ### Implementation plan
 
 - [x] Add a per-snapshot index for relative path to node/file metadata.
-- [x] Add a per-snapshot index for file URL or stable file identity where available.
+- [x] Add a per-snapshot index for normalized node URL paths.
 - [x] Build indexes when a snapshot is created or refreshed.
 - [x] Keep recursive traversal as a fallback while indexes are introduced.
 - [x] Route navigation lookup through the index.
@@ -260,6 +268,8 @@ Evidence note (2026-04-25): `MarkdownSyntaxStyleApplicator` now owns the first e
 
 Evidence note: `Tests/WorkspaceSnapshotPathResolverTests.swift` covers duplicate filenames, nested paths, URL-to-relative lookup, missing/stale paths, replacement snapshots after rename/move/delete, exact-case case-only rename behavior, and file enumeration order. `WorkspaceNavigationModeTests`, `WorkspaceCoordinatorPolicyTests`, and `RecentFilesStoreTests` passed against the indexed snapshot helpers on the available iPhone 17 simulator.
 
+Batch reconciliation note (2026-04-25): this pass made the index storage private, preserved the public lookup API, kept recursive fallback helpers private, and added resolver tests for `forEachFile` traversal order plus file-only `fileURL(forRelativePath:)` behavior. No search or recents code changes were needed because those paths already use `snapshot.forEachFile` and `snapshot.relativeFilePaths()`.
+
 ### Likely files
 
 - `Downward/Domain/Workspace/WorkspaceSnapshotPathResolver.swift`
@@ -268,7 +278,8 @@ Evidence note: `Tests/WorkspaceSnapshotPathResolverTests.swift` covers duplicate
 - `Downward/App/WorkspaceNavigationPolicy.swift`
 - `Downward/App/WorkspaceMutationPolicy.swift`
 - `Tests/WorkspaceSnapshotPathResolverTests.swift`
-- `Tests/WorkspaceViewModelMutationTests.swift`
+- `Tests/WorkspaceSearchTests.swift`
+- `Tests/RecentFilesStoreTests.swift`
 
 ## P1 plan — runtime QA matrix
 

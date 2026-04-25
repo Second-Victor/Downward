@@ -125,7 +125,15 @@ final class EditorAutosaveTests: XCTestCase {
         )
         defer { removeItemIfPresent(at: fixture.workspaceURL) }
 
-        let liveManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let observationRecorder = FallbackObservationRecorder()
+        let liveManager = FallbackPollingLiveDocumentManager(
+            securityScopedAccess: TestDocumentSecurityAccessHandler(),
+            onFallbackPoll: {
+                Task {
+                    await observationRecorder.recordPoll()
+                }
+            }
+        )
         let initialDocument = try await liveManager.openDocument(
             at: fixture.fileURL,
             in: fixture.workspaceURL
@@ -136,6 +144,9 @@ final class EditorAutosaveTests: XCTestCase {
             autosaveDelay: .milliseconds(20)
         )
 
+        try await waitUntilAsync(timeout: .milliseconds(400)) {
+            await observationRecorder.pollCount > 0
+        }
         try "# Entry\n\nUpdated from Mac.".write(to: fixture.fileURL, atomically: true, encoding: .utf8)
         try await waitUntil {
             system.session.openDocument?.text == "# Entry\n\nUpdated from Mac."
@@ -630,6 +641,139 @@ final class EditorAutosaveTests: XCTestCase {
 
         XCTFail("Timed out waiting for condition.")
     }
+
+    private func waitUntilAsync(
+        timeout: Duration = .seconds(2),
+        pollInterval: Duration = .milliseconds(20),
+        condition: @escaping @Sendable () async -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await condition() {
+                return
+            }
+
+            try await Task.sleep(for: pollInterval)
+        }
+
+        XCTFail("Timed out waiting for condition.")
+    }
+}
+
+private actor FallbackObservationRecorder {
+    private(set) var pollCount = 0
+
+    func recordPoll() {
+        pollCount += 1
+    }
+}
+
+private actor FallbackPollingLiveDocumentManager: DocumentManager {
+    private let securityScopedAccess: any SecurityScopedAccessHandling
+    private let onFallbackPoll: @Sendable () -> Void
+    private var activeSessionKey: TestDocumentSessionKey?
+    private var activeSession: PlainTextDocumentSession?
+
+    init(
+        securityScopedAccess: any SecurityScopedAccessHandling,
+        onFallbackPoll: @escaping @Sendable () -> Void
+    ) {
+        self.securityScopedAccess = securityScopedAccess
+        self.onFallbackPoll = onFallbackPoll
+    }
+
+    func openDocument(at url: URL, in workspaceRootURL: URL) async throws -> OpenDocument {
+        guard let relativePath = WorkspaceRelativePath.make(for: url, within: workspaceRootURL) else {
+            throw AppError.documentUnavailable(name: url.lastPathComponent)
+        }
+
+        return try await openDocument(atRelativePath: relativePath, in: workspaceRootURL)
+    }
+
+    func openDocument(
+        atRelativePath relativePath: String,
+        in workspaceRootURL: URL
+    ) async throws -> OpenDocument {
+        let session = makeActiveSession(
+            for: TestDocumentSessionKey(
+                workspaceRootURL: workspaceRootURL,
+                relativePath: relativePath
+            )
+        )
+        let fallbackName = relativePath.split(separator: "/").last.map(String.init) ?? "Document"
+        return try await session.openDocument(fallbackName: fallbackName)
+    }
+
+    func reloadDocument(from document: OpenDocument) async throws -> OpenDocument {
+        try await session(for: document).reloadDocument(from: document)
+    }
+
+    func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
+        try await session(for: document).revalidateDocument(document)
+    }
+
+    func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument {
+        try await session(for: document).saveDocument(document, overwriteConflict: overwriteConflict)
+    }
+
+    func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void> {
+        try await session(for: document).observeChanges()
+    }
+
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {
+        let oldKey = TestDocumentSessionKey(
+            workspaceRootURL: document.workspaceRootURL,
+            relativePath: document.relativePath
+        )
+
+        guard activeSessionKey == oldKey, let activeSession else {
+            return
+        }
+
+        await activeSession.relocate(to: url, relativePath: relativePath)
+        activeSessionKey = TestDocumentSessionKey(
+            workspaceRootURL: document.workspaceRootURL,
+            relativePath: relativePath
+        )
+    }
+
+    private func session(for document: OpenDocument) -> PlainTextDocumentSession {
+        makeActiveSession(
+            for: TestDocumentSessionKey(
+                workspaceRootURL: document.workspaceRootURL,
+                relativePath: document.relativePath
+            )
+        )
+    }
+
+    private func makeActiveSession(for key: TestDocumentSessionKey) -> PlainTextDocumentSession {
+        if activeSessionKey == key, let activeSession {
+            return activeSession
+        }
+
+        let session = PlainTextDocumentSession(
+            relativePath: key.relativePath,
+            workspaceRootURL: key.workspaceRootURL,
+            securityScopedAccess: securityScopedAccess,
+            filePresenterEnabled: false,
+            observationFallbackSchedule: .init(
+                intervals: [.milliseconds(20), .milliseconds(20), .milliseconds(20)]
+            ),
+            onFallbackPoll: onFallbackPoll
+        )
+        activeSessionKey = key
+        activeSession = session
+        return session
+    }
+}
+
+private struct TestDocumentSessionKey: Equatable, Sendable {
+    let workspaceRootURL: URL
+    let relativePath: String
 }
 
 private actor RecordingDocumentManager: DocumentManager {

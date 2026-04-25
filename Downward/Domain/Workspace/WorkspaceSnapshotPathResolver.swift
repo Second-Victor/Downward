@@ -8,7 +8,7 @@ import Foundation
 extension WorkspaceSnapshot {
     nonisolated func relativePath(for url: URL) -> String? {
         let normalizedPath = WorkspaceIdentity.normalizedPath(for: url)
-        return lookupIndex.relativePath(forNormalizedNodePath: normalizedPath) ?? relativePath(
+        return indexedRelativePath(forNormalizedNodePath: normalizedPath) ?? relativePath(
             forNormalizedURL: normalizedPath,
             in: rootNodes,
             parentPath: nil
@@ -16,15 +16,15 @@ extension WorkspaceSnapshot {
     }
 
     nonisolated func fileEntries() -> [FileEntry] {
-        lookupIndex.fileEntriesInTraversalOrder
+        indexedFileEntries()
     }
 
     nonisolated func relativeFilePaths() -> [String] {
-        lookupIndex.fileEntriesInTraversalOrder.map(\.relativePath)
+        indexedFileEntries().map(\.relativePath)
     }
 
     nonisolated func fileURL(forRelativePath relativePath: String) -> URL? {
-        lookupIndex.fileURL(forRelativePath: relativePath) ?? nodeURL(
+        indexedFileURL(forRelativePath: relativePath) ?? nodeURL(
             forRelativePath: relativePath,
             matchingFolder: false,
             in: rootNodes,
@@ -33,7 +33,7 @@ extension WorkspaceSnapshot {
     }
 
     nonisolated func containsFile(relativePath: String) -> Bool {
-        lookupIndex.containsFile(relativePath: relativePath) || nodeURL(
+        indexedContainsFile(relativePath: relativePath) || nodeURL(
             forRelativePath: relativePath,
             matchingFolder: false,
             in: rootNodes,
@@ -46,7 +46,7 @@ extension WorkspaceSnapshot {
     nonisolated func forEachFile(
         _ visit: (FileEntry) -> Void
     ) {
-        for entry in lookupIndex.fileEntriesInTraversalOrder {
+        for entry in indexedFileEntries() {
             visit(entry)
         }
     }

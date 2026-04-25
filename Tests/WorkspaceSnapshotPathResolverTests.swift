@@ -50,6 +50,12 @@ final class WorkspaceSnapshotPathResolverTests: XCTestCase {
             ]
         )
         XCTAssertEqual(snapshot.relativeFilePaths(), ["References/README.md", "Inbox.md"])
+
+        var visitedRelativePaths: [String] = []
+        snapshot.forEachFile { entry in
+            visitedRelativePaths.append(entry.relativePath)
+        }
+        XCTAssertEqual(visitedRelativePaths, ["References/README.md", "Inbox.md"])
     }
 
     func testDuplicateFilenamesInDifferentFoldersResolveToSeparateURLs() {
@@ -80,6 +86,44 @@ final class WorkspaceSnapshotPathResolverTests: XCTestCase {
         XCTAssertEqual(snapshot.relativePath(for: archiveReadmeURL), "Archive/README.md")
         XCTAssertTrue(snapshot.containsFile(relativePath: "Notes/README.md"))
         XCTAssertTrue(snapshot.containsFile(relativePath: "Archive/README.md"))
+    }
+
+    func testKnownFileURLResolvesToWorkspaceRelativePath() {
+        let rootURL = URL(filePath: "/tmp/Workspace")
+        let draftURL = rootURL.appending(path: "Drafts/Today.md")
+        let snapshot = makeSnapshot(
+            rootURL: rootURL,
+            rootNodes: [
+                folder(
+                    url: rootURL.appending(path: "Drafts"),
+                    children: [
+                        file(url: draftURL),
+                    ]
+                ),
+            ]
+        )
+
+        XCTAssertEqual(snapshot.relativePath(for: draftURL), "Drafts/Today.md")
+    }
+
+    func testFileURLLookupRemainsFileOnly() {
+        let rootURL = URL(filePath: "/tmp/Workspace")
+        let notesURL = rootURL.appending(path: "Notes")
+        let snapshot = makeSnapshot(
+            rootURL: rootURL,
+            rootNodes: [
+                folder(
+                    url: notesURL,
+                    children: [
+                        file(url: notesURL.appending(path: "README.md")),
+                    ]
+                ),
+            ]
+        )
+
+        XCTAssertEqual(snapshot.relativePath(for: notesURL), "Notes")
+        XCTAssertNil(snapshot.fileURL(forRelativePath: "Notes"))
+        XCTAssertFalse(snapshot.containsFile(relativePath: "Notes"))
     }
 
     func testNestedRelativePathLookupResolvesFileURL() {
