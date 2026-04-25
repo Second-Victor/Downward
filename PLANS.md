@@ -194,31 +194,35 @@ Evidence note: `Tests/ThemeStoreTests.swift` covers file-backed single-theme, ar
 
 ### Architecture plan
 
-- [ ] Create a syntax recognition/scanning layer that returns markdown spans and block metadata without UIKit dependencies.
+- [x] Create a syntax recognition/scanning layer that returns markdown spans and block metadata without UIKit dependencies.
 - [ ] Create a styling layer that maps recognized spans to fonts, colors, paragraph styles, and hidden-syntax attributes.
-- [ ] Create a hidden-syntax visibility policy that can be tested without a live text view.
+- [x] Create a hidden-syntax visibility policy that can be tested without a live text view.
 - [ ] Keep code-block/background layout drawing separate from syntax recognition.
-- [ ] Keep theme role mapping separate from markdown parsing.
-- [ ] Keep renderer tests focused on both recognition and styled output during the transition.
+- [x] Keep theme role mapping separate from markdown parsing.
+- [x] Keep renderer tests focused on both recognition and styled output during the transition.
+
+Evidence note (2026-04-25): `MarkdownSyntaxScanner` is the first extracted scanner boundary. It returns line ranges, indented code block ranges, fenced code block metadata, merged protected code block ranges, inline code spans, and image ranges without UIKit or attributed-string styling dependencies. `MarkdownStyledTextRenderer` consumes those scanner results while styling remains in the renderer for this transition slice. `MarkdownSyntaxScannerTests` covers recognition directly, and `MarkdownStyledTextRendererTests` continues to cover styled output.
 
 ### Performance plan
 
-- [ ] Keep same-line edits on the current-line restyle path.
-- [ ] Send line breaks, paste, structural edits, and selection reveal changes through deferred full rerender until a real incremental parser exists.
+- [x] Keep same-line edits on the current-line restyle path.
+- [x] Send line breaks, paste, structural edits, and selection reveal changes through deferred full rerender until a real incremental parser exists.
 - [x] Add large-document fixtures.
 - [ ] Measure typing latency in long documents.
 - [ ] Measure paste latency in long documents.
 - [ ] Measure theme-switch restyle latency in long documents.
-- [ ] Do not add table/footnote/task-list interaction features until the split starts.
+- [x] Do not add table/footnote/task-list interaction features until the split starts.
 
 ### Likely files
 
 - `Downward/Features/Editor/MarkdownStyledTextRenderer.swift`
+- `Downward/Features/Editor/MarkdownSyntaxScanner.swift`
+- `Downward/Features/Editor/MarkdownSyntaxVisibilityPolicy.swift`
 - `Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift`
 - `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
+- `Tests/MarkdownSyntaxScannerTests.swift`
 - `Tests/MarkdownStyledTextRendererTests.swift`
 - `Tests/MarkdownCurrentLineRestyleTests.swift`
-- New scanner/recognizer tests.
 
 ## P1 plan — workspace snapshot indexing
 

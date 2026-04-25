@@ -220,6 +220,8 @@ The current editor stack is:
 - `EditorKeyboardAccessoryToolbarView`
 - `EditorKeyboardGeometryController`
 - `EditorChromeAwareTextView`
+- `MarkdownSyntaxScanner`
+- `MarkdownSyntaxVisibilityPolicy`
 - `MarkdownStyledTextRenderer`
 - `MarkdownCodeBackgroundLayoutManager`
 
@@ -263,6 +265,8 @@ Markdown rendering should be treated as four separate concerns, even while the c
    - should preserve the real text buffer exactly as the user typed it.
 
 The current hidden-syntax implementation is intentionally a TextKit/layout concern: syntax markers stay in storage as real text, semantic attributes mark them as syntax, and the layout manager suppresses hidden glyphs. Do not return to font-size, kerning, or whitespace hacks to collapse hidden markers.
+
+`MarkdownSyntaxScanner` is the first extracted recognition boundary. It is UIKit-free and currently returns line ranges, indented and fenced code block ranges, merged protected code ranges, inline code spans, and protected image ranges. `MarkdownStyledTextRenderer` still owns attributed-string styling and theme-role application while it consumes those scanner results. `MarkdownSyntaxVisibilityPolicy` owns the pure decision for whether a syntax token should be hidden for a given mode and revealed range; TextKit still applies and draws the resulting attributes.
 
 ### Future markdown and theming direction
 

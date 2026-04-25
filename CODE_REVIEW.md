@@ -123,9 +123,12 @@ Done when:
 
 Relevant files:
 
+- `Downward/Features/Editor/MarkdownSyntaxScanner.swift`
+- `Downward/Features/Editor/MarkdownSyntaxVisibilityPolicy.swift`
 - `Downward/Features/Editor/MarkdownStyledTextRenderer.swift`
 - `Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift`
 - `Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
+- `Tests/MarkdownSyntaxScannerTests.swift`
 - `Tests/MarkdownStyledTextRendererTests.swift`
 - `Tests/MarkdownCurrentLineRestyleTests.swift`
 
@@ -133,15 +136,17 @@ Relevant files:
 
 Action items:
 
-- [ ] Split syntax recognition from UIKit styling before adding more markdown constructs.
-- [ ] Move hidden-syntax visibility decisions behind a small value type or strategy that can be tested without `UITextView`.
+- [x] Split the first syntax recognition slice from UIKit styling before adding more markdown constructs.
+- [x] Move hidden-syntax visibility decisions behind a small value type or strategy that can be tested without `UITextView`.
 - [ ] Keep current-line restyle as the fast path for simple same-line edits.
 - [ ] Keep line-breaks, block-context changes, selection-driven reveal changes, and paste operations on a deferred full-rerender path until a real incremental parser exists.
 - [x] Add large-document performance fixtures before adding tables, footnotes, task-list interactions, or richer code-block behavior.
 
+Follow-up note (2026-04-25): `MarkdownSyntaxScanner` now provides a UIKit-free first recognition layer for line ranges, indented code blocks, fenced code blocks, merged protected code block ranges, inline code spans, and image ranges. `MarkdownStyledTextRenderer` consumes those scanner results while retaining attributed-string styling and theme-role mapping. `MarkdownSyntaxVisibilityPolicy` now contains the pure syntax-hidden decision. Focused scanner and renderer tests passed on the available iPhone 17 simulator.
+
 Done when:
 
-- [ ] The renderer has a recognizer/scanner layer that can be tested without UIKit.
+- [x] The renderer has a recognizer/scanner layer that can be tested without UIKit.
 - [ ] Styling/theme application is a separate layer.
 - [ ] Large-file typing has an explicit performance budget and regression coverage.
 

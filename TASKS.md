@@ -85,17 +85,17 @@ Done when:
 
 ### 3. Continue renderer scalability work
 
-- [ ] Split markdown recognition/scanning from UIKit styling.
-- [ ] Keep theme role mapping out of parsing code.
-- [ ] Keep hidden-syntax reveal decisions testable without a live `UITextView`.
-- [ ] Preserve same-line current-line restyle as the fast path.
-- [ ] Preserve deferred full rerender for line breaks, paste, block-context changes, and selection-driven reveal changes.
+- [x] Split the first markdown recognition/scanning slice from UIKit styling.
+- [x] Keep theme role mapping out of parsing code for the extracted scanner slice.
+- [x] Keep hidden-syntax reveal decisions testable without a live `UITextView`.
+- [x] Preserve same-line current-line restyle as the fast path.
+- [x] Preserve deferred full rerender for line breaks, paste, block-context changes, and selection-driven reveal changes.
 - [x] Add large-document performance fixtures.
-- [ ] Avoid adding tables, footnotes, or richer code-block behavior until the renderer split is underway.
+- [x] Avoid adding tables, footnotes, or richer code-block behavior until the renderer split is underway.
 
 Done when:
 
-- [ ] Renderer tests can exercise syntax recognition without attributed-string styling.
+- [x] Renderer tests can exercise syntax recognition without attributed-string styling.
 - [ ] Large-file typing has an explicit performance budget.
 
 ### 4. Add workspace snapshot lookup indexes

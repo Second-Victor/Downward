@@ -3,7 +3,7 @@ import Foundation
 /// Markdown syntax visibility is explicit per token.
 /// The shipping editor currently lets supported markdown syntax follow
 /// `MarkdownSyntaxMode`, including code span delimiters and fenced code fences.
-enum MarkdownSyntaxMode: String, CaseIterable, Codable, Equatable, Sendable {
+nonisolated enum MarkdownSyntaxMode: String, CaseIterable, Codable, Equatable, Sendable {
     case visible
     case hiddenOutsideCurrentLine
 
@@ -27,7 +27,7 @@ enum MarkdownSyntaxMode: String, CaseIterable, Codable, Equatable, Sendable {
 }
 
 /// Explicit renderer policy for how each syntax token responds to `MarkdownSyntaxMode`.
-enum MarkdownSyntaxVisibilityRule: Int, Equatable, Sendable {
+nonisolated enum MarkdownSyntaxVisibilityRule: Int, Equatable, Sendable {
     case followsMode
     case alwaysHidden
 }
