@@ -88,9 +88,23 @@ final class SettingsScreenModelTests: XCTestCase {
         XCTAssertEqual(store.colorFormattedText, false)
     }
 
+    @MainActor
+    func testLineNumberSettingUpdatesStoreForMonospacedFonts() {
+        let store = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 16
+            )
+        )
+
+        store.setShowLineNumbers(true)
+
+        XCTAssertTrue(store.showLineNumbers)
+        XCTAssertTrue(store.effectiveShowLineNumbers)
+    }
+
     func testPlaceholderSettingsAreNotMarkedImplemented() {
         let placeholders: [SettingsPlaceholderFeature] = [
-            .lineNumbers,
             .largerHeadingText,
             .tapToToggleTasks,
             .tipsPurchases,
@@ -99,5 +113,6 @@ final class SettingsScreenModelTests: XCTestCase {
         ]
 
         XCTAssertTrue(placeholders.allSatisfy { $0.isImplemented == false })
+        XCTAssertTrue(SettingsPlaceholderFeature.lineNumbers.isImplemented)
     }
 }

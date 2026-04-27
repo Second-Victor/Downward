@@ -28,6 +28,15 @@ enum EditorFontChoice: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    var isMonospaced: Bool {
+        switch self {
+        case .systemMonospaced, .menlo, .courier, .courierNew:
+            true
+        case .default, .newYork, .georgia:
+            false
+        }
+    }
+
     var runtimeFontName: String? {
         switch self {
         case .default, .systemMonospaced, .newYork:

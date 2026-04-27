@@ -23,6 +23,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
         store.setFontChoice(.menlo)
         store.setFontSize(19)
         store.setMarkdownSyntaxMode(.hiddenOutsideCurrentLine)
+        store.setShowLineNumbers(true)
         store.setColorFormattedText(false)
         store.setSelectedThemeID(EditorTheme.greyAdaptive.id)
         store.setMatchSystemChromeToTheme(false)
@@ -39,11 +40,110 @@ final class EditorAppearanceStoreTests: XCTestCase {
                 fontChoice: .menlo,
                 fontSize: 19,
                 markdownSyntaxMode: .hiddenOutsideCurrentLine,
+                showLineNumbers: true,
                 colorFormattedText: false,
                 selectedThemeID: EditorTheme.greyAdaptive.id,
                 matchSystemChromeToTheme: false
             )
         )
+    }
+
+    @MainActor
+    func testDefaultLineNumbersAreFalse() {
+        let store = EditorAppearanceStore(initialPreferences: .default)
+
+        XCTAssertFalse(store.showLineNumbers)
+        XCTAssertFalse(store.effectiveShowLineNumbers)
+    }
+
+    @MainActor
+    func testLineNumbersPersistForMonospacedFonts() throws {
+        let suiteName = "EditorAppearanceStoreTests.\(UUID().uuidString)"
+        let userDefaults = try makeIsolatedUserDefaults(suiteName: suiteName)
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        let store = EditorAppearanceStore(
+            userDefaults: userDefaults,
+            preferencesKey: "test.editor.appearance",
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 16
+            )
+        )
+
+        store.setShowLineNumbers(true)
+
+        let reloadedStore = EditorAppearanceStore(
+            userDefaults: userDefaults,
+            preferencesKey: "test.editor.appearance"
+        )
+        XCTAssertTrue(reloadedStore.showLineNumbers)
+        XCTAssertTrue(reloadedStore.effectiveShowLineNumbers)
+    }
+
+    @MainActor
+    func testSwitchingToProportionalFontDisablesAndPersistsLineNumbers() throws {
+        let suiteName = "EditorAppearanceStoreTests.\(UUID().uuidString)"
+        let userDefaults = try makeIsolatedUserDefaults(suiteName: suiteName)
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        let store = EditorAppearanceStore(
+            userDefaults: userDefaults,
+            preferencesKey: "test.editor.appearance",
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 16,
+                showLineNumbers: true
+            )
+        )
+
+        store.setFontChoice(.default)
+
+        XCTAssertFalse(store.showLineNumbers)
+        XCTAssertFalse(store.effectiveShowLineNumbers)
+
+        let reloadedStore = EditorAppearanceStore(
+            userDefaults: userDefaults,
+            preferencesKey: "test.editor.appearance"
+        )
+        XCTAssertFalse(reloadedStore.showLineNumbers)
+        XCTAssertFalse(reloadedStore.effectiveShowLineNumbers)
+    }
+
+    @MainActor
+    func testSwitchingBetweenMonospacedFontsPreservesLineNumbers() {
+        let store = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 16,
+                showLineNumbers: true
+            )
+        )
+
+        store.setFontChoice(.menlo)
+
+        XCTAssertEqual(store.selectedFontChoice, .menlo)
+        XCTAssertTrue(store.showLineNumbers)
+        XCTAssertTrue(store.effectiveShowLineNumbers)
+    }
+
+    @MainActor
+    func testDecodingOldPreferencesWithoutLineNumbersDefaultsToFalse() throws {
+        let json = """
+        {
+          "fontChoice": "systemMonospaced",
+          "fontSize": 16,
+          "markdownSyntaxMode": "visible",
+          "colorFormattedText": true,
+          "selectedThemeID": "adaptive",
+          "matchSystemChromeToTheme": true
+        }
+        """
+
+        let preferences = try JSONDecoder().decode(
+            EditorAppearancePreferences.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertFalse(preferences.showLineNumbers)
     }
 
     @MainActor

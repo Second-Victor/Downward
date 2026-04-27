@@ -4,6 +4,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
     var fontChoice: EditorFontChoice
     var fontSize: Double
     var markdownSyntaxMode: MarkdownSyntaxMode
+    var showLineNumbers: Bool
     var colorFormattedText: Bool
     var selectedThemeID: String
     var matchSystemChromeToTheme: Bool
@@ -12,6 +13,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         fontChoice: EditorFontChoice,
         fontSize: Double,
         markdownSyntaxMode: MarkdownSyntaxMode = .visible,
+        showLineNumbers: Bool = false,
         colorFormattedText: Bool = true,
         selectedThemeID: String = EditorTheme.adaptive.id,
         matchSystemChromeToTheme: Bool = true
@@ -19,6 +21,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         self.fontChoice = fontChoice
         self.fontSize = fontSize
         self.markdownSyntaxMode = markdownSyntaxMode
+        self.showLineNumbers = showLineNumbers
         self.colorFormattedText = colorFormattedText
         self.selectedThemeID = selectedThemeID
         self.matchSystemChromeToTheme = matchSystemChromeToTheme
@@ -34,6 +37,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         case fontChoice
         case fontSize
         case markdownSyntaxMode
+        case showLineNumbers
         case colorFormattedText
         case selectedThemeID
         case matchSystemChromeToTheme
@@ -47,6 +51,10 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
             MarkdownSyntaxMode.self,
             forKey: .markdownSyntaxMode
         ) ?? .visible
+        showLineNumbers = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .showLineNumbers
+        ) ?? false
         colorFormattedText = try container.decodeIfPresent(
             Bool.self,
             forKey: .colorFormattedText
@@ -66,6 +74,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         try container.encode(fontChoice, forKey: .fontChoice)
         try container.encode(fontSize, forKey: .fontSize)
         try container.encode(markdownSyntaxMode, forKey: .markdownSyntaxMode)
+        try container.encode(showLineNumbers, forKey: .showLineNumbers)
         try container.encode(colorFormattedText, forKey: .colorFormattedText)
         try container.encode(selectedThemeID, forKey: .selectedThemeID)
         try container.encode(matchSystemChromeToTheme, forKey: .matchSystemChromeToTheme)

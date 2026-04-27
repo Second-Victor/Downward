@@ -13,6 +13,7 @@ extension NSAttributedString.Key {
     nonisolated static let markdownSetextHeadingUnderline = NSAttributedString.Key("Downward.MarkdownSetextHeadingUnderline")
     nonisolated static let markdownSyntaxToken = NSAttributedString.Key("Downward.MarkdownSyntaxToken")
     nonisolated static let markdownHiddenSyntax = NSAttributedString.Key("Downward.MarkdownHiddenSyntax")
+    nonisolated static let markdownLineNumberHiddenWhenSyntaxHidden = NSAttributedString.Key("Downward.MarkdownLineNumberHiddenWhenSyntaxHidden")
 }
 
 final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {

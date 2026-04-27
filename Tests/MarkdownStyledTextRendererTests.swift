@@ -840,6 +840,35 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testStructuralSyntaxLinesMarkLineNumbersHiddenWhenSyntaxIsHidden() {
+        let text = """
+        Heading
+        =======
+
+        ```swift
+        let x = 1
+        ```
+
+        ---
+        """
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .hiddenOutsideCurrentLine,
+                revealedRange: nil
+            )
+        )
+        let nsText = rendered.string as NSString
+
+        XCTAssertEqual(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "=======")), true)
+        XCTAssertEqual(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "```swift")), true)
+        XCTAssertEqual(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "```\n\n---")), true)
+        XCTAssertNil(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "let x = 1")))
+        XCTAssertEqual(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "---")), true)
+    }
+
     private func makeLargeMarkdownDocument(lineCount: Int) -> String {
         (0..<lineCount).map { index in
             switch index % 5 {
@@ -856,6 +885,18 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
             }
         }
         .joined(separator: "\n")
+    }
+
+    private func lineNumberHiddenAttribute(in attributed: NSAttributedString, at range: NSRange) -> Bool? {
+        guard range.location != NSNotFound else {
+            return nil
+        }
+
+        return attributed.attribute(
+            .markdownLineNumberHiddenWhenSyntaxHidden,
+            at: range.location,
+            effectiveRange: nil
+        ) as? Bool
     }
 }
 

@@ -64,6 +64,14 @@ final class EditorAppearanceStore {
         effectivePreferences.markdownSyntaxMode
     }
 
+    var showLineNumbers: Bool {
+        preferences.showLineNumbers
+    }
+
+    var effectiveShowLineNumbers: Bool {
+        effectivePreferences.showLineNumbers
+    }
+
     var colorFormattedText: Bool {
         effectivePreferences.colorFormattedText
     }
@@ -101,6 +109,7 @@ final class EditorAppearanceStore {
         }
 
         preferences.fontChoice = normalizedChoice
+        preferences = Self.normalize(preferences, using: resolver)
         persist()
     }
 
@@ -120,6 +129,16 @@ final class EditorAppearanceStore {
         }
 
         preferences.markdownSyntaxMode = mode
+        persist()
+    }
+
+    func setShowLineNumbers(_ isEnabled: Bool) {
+        let normalizedValue = selectedFontChoice.isMonospaced && isEnabled
+        guard preferences.showLineNumbers != normalizedValue else {
+            return
+        }
+
+        preferences.showLineNumbers = normalizedValue
         persist()
     }
 
@@ -189,6 +208,9 @@ final class EditorAppearanceStore {
             fontChoice: resolver.normalizedChoice(preferences.fontChoice),
             fontSize: clampFontSize(preferences.fontSize),
             markdownSyntaxMode: preferences.markdownSyntaxMode,
+            showLineNumbers: resolver.normalizedChoice(preferences.fontChoice).isMonospaced
+                ? preferences.showLineNumbers
+                : false,
             colorFormattedText: preferences.colorFormattedText,
             selectedThemeID: preferences.selectedThemeID,
             matchSystemChromeToTheme: preferences.matchSystemChromeToTheme

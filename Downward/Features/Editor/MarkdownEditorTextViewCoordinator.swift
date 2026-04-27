@@ -91,6 +91,11 @@ extension MarkdownEditorTextView {
 
             if let textView = textView as? EditorChromeAwareTextView {
                 activeTextView = textView
+                textView.applyLineNumberConfiguration(
+                    showLineNumbers: configuration.showLineNumbers,
+                    resolvedTheme: configuration.resolvedTheme,
+                    font: configuration.font
+                )
                 configureKeyboardAccessory(for: textView, resolvedTheme: configuration.resolvedTheme)
                 keyboardGeometryController.attach(
                     to: textView,
@@ -137,6 +142,7 @@ extension MarkdownEditorTextView {
                     font: configuration.font,
                     resolvedTheme: configuration.resolvedTheme,
                     syntaxMode: configuration.syntaxMode,
+                    showLineNumbers: configuration.showLineNumbers,
                     isEditable: configuration.isEditable
                 )
                 handlePendingEditorCommands(
@@ -215,6 +221,9 @@ extension MarkdownEditorTextView {
                 .font: font,
                 .foregroundColor: resolvedTheme.primaryText
             ]
+            if textView.font != font {
+                textView.font = font
+            }
         }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
@@ -239,6 +248,9 @@ extension MarkdownEditorTextView {
             lastTextChangeTouchedLineBreaks = mutationContext?.touchedLineBreaks ?? false
             pendingTextMutationContext = nil
             text = updatedText
+            if let textView = textView as? EditorChromeAwareTextView {
+                textView.notePlainTextMutation()
+            }
 
             guard let configuration else {
                 return
@@ -250,6 +262,7 @@ extension MarkdownEditorTextView {
                 font: configuration.font,
                 resolvedTheme: configuration.resolvedTheme,
                 syntaxMode: configuration.syntaxMode,
+                showLineNumbers: configuration.showLineNumbers,
                 isEditable: configuration.isEditable
             )
             self.configuration = updatedConfiguration
@@ -308,6 +321,7 @@ extension MarkdownEditorTextView {
                 font: configuration.font,
                 resolvedTheme: configuration.resolvedTheme,
                 syntaxMode: configuration.syntaxMode,
+                showLineNumbers: configuration.showLineNumbers,
                 isEditable: configuration.isEditable
             )
 
@@ -321,6 +335,9 @@ extension MarkdownEditorTextView {
                     previousRevealedRange: lastRevealedLineRange,
                     revealedLineRange: revealedLineRange
                 )
+            }
+            if let textView = textView as? EditorChromeAwareTextView {
+                textView.setNeedsLineNumberDisplay()
             }
         }
 
@@ -378,7 +395,11 @@ extension MarkdownEditorTextView {
             for configuration: Configuration
         ) -> Bool {
             if previousConfiguration != configuration {
-                return true
+                return previousConfiguration?.text != configuration.text
+                    || previousConfiguration?.documentIdentity != configuration.documentIdentity
+                    || previousConfiguration?.font != configuration.font
+                    || previousConfiguration?.resolvedTheme != configuration.resolvedTheme
+                    || previousConfiguration?.syntaxMode != configuration.syntaxMode
             }
 
             return textView.text != configuration.text
@@ -409,6 +430,9 @@ extension MarkdownEditorTextView {
 
             isApplyingProgrammaticChange = true
             applyAttributedTextInPlace(attributedText, to: textView)
+            if let textView = textView as? EditorChromeAwareTextView {
+                textView.notePlainTextMutation()
+            }
             updateTypingAttributes(for: textView, font: configuration.font, resolvedTheme: configuration.resolvedTheme)
             textView.selectedRange = safeRange(selectedRange, forTextLength: textView.textStorage.length)
             if preserveViewport {
@@ -446,6 +470,9 @@ extension MarkdownEditorTextView {
                 previousRevealedRange: previousRevealedRange,
                 revealedRange: revealedLineRange
             )
+            if let textView = textView as? EditorChromeAwareTextView {
+                textView.setNeedsLineNumberDisplay()
+            }
             updateTypingAttributes(for: textView, font: configuration.font, resolvedTheme: configuration.resolvedTheme)
             textView.selectedRange = safeRange(selectedRange, forTextLength: textView.textStorage.length)
             textView.setContentOffset(contentOffset, animated: false)
@@ -770,6 +797,7 @@ extension MarkdownEditorTextView {
                         font: latestConfiguration.font,
                         resolvedTheme: latestConfiguration.resolvedTheme,
                         syntaxMode: latestConfiguration.syntaxMode,
+                        showLineNumbers: latestConfiguration.showLineNumbers,
                         isEditable: latestConfiguration.isEditable
                     ),
                     preserveViewport: true

@@ -7,6 +7,33 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 ## Latest QA run
 
 - Date: 2026-04-27
+- Branch/commit at start of run: `main` / working tree after `b35bdb3`
+- Xcode: Xcode 26.4 (17E192)
+- Host environment: macOS 26.4.1 reported by prior XCTest result bundles
+- Simulator/device:
+  - iPhone 17, iOS 26.4 Simulator (`20F3A4FD-4F55-4C03-8202-AFB6445903CD`, OS build `23E244`)
+- Commands run:
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-LineNumbers -resultBundlePath /tmp/Downward-LineNumbers-5.xcresult -only-testing:DownwardTests/TextLineMetricsTests -only-testing:DownwardTests/LineNumberGutterViewTests -only-testing:DownwardTests/MarkdownEditorTextViewSizingTests -only-testing:DownwardTests/EditorAppearanceStoreTests -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/MarkdownStyledTextRendererTests -only-testing:DownwardTests/EditorUndoRedoTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-LineNumbers-5.xcresult --format json`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-LineNumbersSmoke -resultBundlePath /tmp/Downward-LineNumbersSmoke.xcresult -only-testing:DownwardTests/MarkdownWorkspaceAppSmokeTests -only-testing:DownwardTests/MarkdownWorkspaceAppRestoreFlowTests -only-testing:DownwardTests/MarkdownWorkspaceAppMutationFlowTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-LineNumbersSmoke.xcresult --format json`
+  - `git diff --check`
+  - `rg -n "[T]ASKS\.md|[T]ASKS" . AGENTS.md ARCHITECTURE.md PLANS.md CODE_REVIEW.md RELEASE_QA.md .codex 2>/dev/null`
+- Result:
+  - Targeted line-number/editor/settings/renderer tests passed on iPhone 17 simulator: 91 passed, 0 skipped, 0 failed. One existing renderer performance test collected metrics.
+  - Covered cached line metrics, gutter visibility/insets/width, visible-line-only gutter drawing, empty files, font/theme gutter updates, non-render-affecting line-number toggle, settings persistence, monospaced-only normalization, old preference decoding, and hidden-syntax line-number suppression for fenced-code delimiters and setext underline lines.
+  - Focused app-hosted smoke/restore/mutation tests passed on iPhone 17 simulator: 58 passed, 0 skipped, 0 failed.
+  - `git diff --check` passed.
+  - Static retired task-file search passed: no retired task-file references remain.
+  - Full suite was not run in this pass.
+- Notes/failures:
+  - Earlier iterations in this pass failed while adapting the pure line-metrics type to the project default actor isolation, while ensuring cached gutter width reapplied the text inset when toggled on, and while avoiding eager `UITextView.font` resets before viewport preservation. The final targeted run passed.
+  - `xcodebuild test` emitted `IDERunDestination: Supported platforms for the buildables in the current scheme is empty.`, but the final targeted run completed successfully.
+  - No manual real-device, Files-provider, keyboard-interaction, or visual line-number QA was performed in this pass.
+
+## Previous QA runs
+
+- Date: 2026-04-27
 - Branch/commit at start of run: `main` / `23496b7`
 - Xcode: Xcode 26.4 (17E192)
 - Host environment: macOS 26.4.1 reported by the XCTest result bundle
@@ -40,8 +67,6 @@ This file is the release/runtime QA checklist for Downward. It records command-l
   - `xcodebuild test` emitted `IDERunDestination: Supported platforms for the buildables in the current scheme is empty.`, but the final targeted run completed successfully.
   - AppIntents metadata extraction/training was skipped because there is no AppIntents framework dependency.
   - No manual local Files, iCloud Drive, third-party Files-provider, real-device, keyboard, or manual theme import/export QA was performed in this pass.
-
-## Previous QA runs
 
 - Date: 2026-04-27
 - Branch/commit at start of run: `main` / `23496b7`
@@ -385,7 +410,6 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 - [ ] StoreKit tips are still placeholder-backed.
 - [ ] App Store review/rating routing is still placeholder-backed.
 - [ ] Legal/privacy URLs are still placeholder-backed.
-- [ ] Line numbers remain future work.
 - [ ] Larger heading text remains future work.
 - [ ] Richer markdown constructs such as tables and footnotes remain future work.
 - [ ] Deeper theme marketplace/sharing behavior remains future work.

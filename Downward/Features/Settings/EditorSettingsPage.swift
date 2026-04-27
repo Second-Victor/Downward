@@ -6,7 +6,6 @@ struct EditorSettingsPage: View {
     let backAction: () -> Void
 
     @State private var selectedCategory: SettingsFontCategory = .monospaced
-    @State private var lineNumbers = false
     @State private var largerHeadingText = false
 
     var body: some View {
@@ -55,9 +54,9 @@ struct EditorSettingsPage: View {
 
             if selectedCategory == .monospaced {
                 Section {
-                    Toggle("Line Numbers", isOn: $lineNumbers)
-                        .disabled(true)
-                        .accessibilityHint("Line numbers are not implemented yet.")
+                    Toggle("Line Numbers", isOn: lineNumbersBinding)
+                        .disabled(editorAppearanceStore.selectedFontChoice.isMonospaced == false)
+                        .accessibilityHint("Shows line numbers along the left edge of monospaced editor text.")
                 } footer: {
                     Text("Show line numbers along the left edge of the editor.")
                         .settingsFooterStyle()
@@ -84,6 +83,13 @@ struct EditorSettingsPage: View {
         Binding(
             get: { editorAppearanceStore.fontSize },
             set: { editorAppearanceStore.setFontSize($0) }
+        )
+    }
+
+    private var lineNumbersBinding: Binding<Bool> {
+        Binding(
+            get: { editorAppearanceStore.showLineNumbers },
+            set: { editorAppearanceStore.setShowLineNumbers($0) }
         )
     }
 
@@ -122,7 +128,7 @@ struct EditorSettingsPage: View {
     }
 
     private var largerHeadingHelperText: String {
-        if lineNumbers {
+        if editorAppearanceStore.effectiveShowLineNumbers {
             return "Larger heading text is unavailable while line numbers are enabled."
         }
 

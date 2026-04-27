@@ -100,6 +100,10 @@ Automated tests cover many risky flows, but the remaining release risk is mostly
 - [ ] Keyboard accessory remains correctly tinted after theme changes.
 - [ ] Editor first visible line is correct below top chrome on iPhone portrait and landscape.
 - [ ] Editor first visible line is correct below top chrome on iPad full screen and split view.
+- [ ] Line number toggle is verified on real iPhone.
+- [ ] Line number toggle is verified on iPad.
+- [ ] Large document scrolling with line numbers remains smooth on device.
+- [ ] Hidden syntax and line numbers are visually verified together.
 - [ ] Local Files workspace has been tested.
 - [ ] iCloud Drive workspace has been tested.
 - [ ] Third-party Files provider workspace has been tested if one is available.
@@ -291,7 +295,8 @@ Some settings affordances are intentionally placeholder-backed. That is acceptab
 - [ ] StoreKit tips remain disabled or clearly placeholder-only until StoreKit infrastructure exists.
 - [ ] App Store review/rating routing remains disabled or clearly placeholder-only until a real app identifier/path exists.
 - [ ] Legal/privacy links remain disabled or clearly placeholder-only until real URLs exist.
-- [ ] Future markdown settings such as line numbers, larger heading text, tables, and footnotes remain disabled until renderer support exists.
+- [x] Line numbers are backed by the editor, settings persistence, and focused tests.
+- [ ] Future markdown settings such as larger heading text, tables, and footnotes remain disabled until renderer support exists.
 
 ### Done when
 

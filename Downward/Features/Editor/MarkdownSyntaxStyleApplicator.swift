@@ -70,6 +70,7 @@ struct MarkdownSyntaxStyleApplicator {
             range: underlineRange
         )
         attributed.addAttribute(.markdownSetextHeadingUnderline, value: true, range: underlineRange)
+        markLineNumberHiddenWhenSyntaxHidden(forLineContaining: underlineRange, in: attributed)
         applySyntaxVisibility(underlineRange, rule: .followsMode, in: attributed)
     }
 
@@ -149,9 +150,11 @@ struct MarkdownSyntaxStyleApplicator {
         }
 
         applySyntaxVisibility(match.openingFenceRange, rule: .followsMode, in: attributed)
+        markLineNumberHiddenWhenSyntaxHidden(forLineContaining: match.openingFenceRange, in: attributed)
 
         if let closingFenceRange = match.closingFenceRange {
             applySyntaxVisibility(closingFenceRange, rule: .followsMode, in: attributed)
+            markLineNumberHiddenWhenSyntaxHidden(forLineContaining: closingFenceRange, in: attributed)
         }
     }
 
@@ -267,6 +270,7 @@ struct MarkdownSyntaxStyleApplicator {
             ],
             range: range
         )
+        markLineNumberHiddenWhenSyntaxHidden(forLineContaining: range, in: attributed)
         applySyntaxVisibility(range, rule: .followsMode, in: attributed)
     }
 
@@ -334,6 +338,33 @@ struct MarkdownSyntaxStyleApplicator {
 
         attributed.addAttribute(.markdownHiddenSyntax, value: true, range: range)
         attributed.removeAttribute(.kern, range: range)
+    }
+
+    private func markLineNumberHiddenWhenSyntaxHidden(
+        forLineContaining range: NSRange,
+        in attributed: NSMutableAttributedString
+    ) {
+        guard range.length > 0, range.location < attributed.length else {
+            return
+        }
+
+        let nsText = attributed.string as NSString
+        var lineRange = nsText.lineRange(for: NSRange(location: range.location, length: 0))
+        while lineRange.length > 0 {
+            let lastLocation = NSMaxRange(lineRange) - 1
+            let scalar = nsText.character(at: lastLocation)
+            guard scalar == 0x0A || scalar == 0x0D else {
+                break
+            }
+
+            lineRange.length -= 1
+        }
+
+        guard lineRange.length > 0 else {
+            return
+        }
+
+        attributed.addAttribute(.markdownLineNumberHiddenWhenSyntaxHidden, value: true, range: lineRange)
     }
 
     func transformedFont(

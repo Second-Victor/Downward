@@ -9,6 +9,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     let font: UIFont
     let resolvedTheme: ResolvedEditorTheme
     let syntaxMode: MarkdownSyntaxMode
+    let showLineNumbers: Bool
     let isEditable: Bool
     let undoCommandToken: Int
     let redoCommandToken: Int
@@ -68,6 +69,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 font: font,
                 resolvedTheme: resolvedTheme,
                 syntaxMode: syntaxMode,
+                showLineNumbers: showLineNumbers,
                 isEditable: isEditable
             ),
             undoCommandToken: undoCommandToken,
@@ -103,6 +105,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 font: font,
                 resolvedTheme: resolvedTheme,
                 syntaxMode: syntaxMode,
+                showLineNumbers: showLineNumbers,
                 isEditable: isEditable
             ),
             undoCommandToken: undoCommandToken,
@@ -121,6 +124,7 @@ extension MarkdownEditorTextView {
         let font: UIFont
         let resolvedTheme: ResolvedEditorTheme
         let syntaxMode: MarkdownSyntaxMode
+        let showLineNumbers: Bool
         let isEditable: Bool
 
         init(
@@ -129,6 +133,7 @@ extension MarkdownEditorTextView {
             font: UIFont,
             resolvedTheme: ResolvedEditorTheme = .default,
             syntaxMode: MarkdownSyntaxMode,
+            showLineNumbers: Bool = false,
             isEditable: Bool
         ) {
             self.text = text
@@ -136,6 +141,7 @@ extension MarkdownEditorTextView {
             self.font = font
             self.resolvedTheme = resolvedTheme
             self.syntaxMode = syntaxMode
+            self.showLineNumbers = showLineNumbers
             self.isEditable = isEditable
         }
     }

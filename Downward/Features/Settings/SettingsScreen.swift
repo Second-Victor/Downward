@@ -29,7 +29,12 @@ enum SettingsPlaceholderFeature: Equatable {
     case legalLinks
 
     nonisolated var isImplemented: Bool {
-        false
+        switch self {
+        case .lineNumbers:
+            true
+        case .largerHeadingText, .tapToToggleTasks, .tipsPurchases, .rateTheApp, .legalLinks:
+            false
+        }
     }
 }
 

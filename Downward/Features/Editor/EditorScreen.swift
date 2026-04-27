@@ -66,6 +66,7 @@ struct EditorScreen: View {
                     font: viewModel.editorUIFont,
                     resolvedTheme: resolvedTheme,
                     syntaxMode: viewModel.markdownSyntaxMode,
+                    showLineNumbers: viewModel.effectiveShowLineNumbers,
                     isEditable: viewModel.isResolvingConflict == false
                         && viewModel.isShowingConflictResolution == false,
                     undoCommandToken: viewModel.undoCommandToken,
@@ -82,7 +83,7 @@ struct EditorScreen: View {
                         .font(viewModel.editorFont)
                         .foregroundStyle(Color(uiColor: resolvedTheme.secondaryText))
                         .padding(.top, EditorTextViewLayout.effectiveTopInset(topViewportInset: topViewportInset))
-                        .padding(.leading, EditorTextViewLayout.horizontalInset)
+                        .padding(.leading, placeholderLeadingInset)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
@@ -119,6 +120,17 @@ struct EditorScreen: View {
             get: { viewModel.alertError },
             set: { _ in viewModel.dismissAlert() }
         )
+    }
+
+    private var placeholderLeadingInset: CGFloat {
+        guard viewModel.effectiveShowLineNumbers else {
+            return EditorTextViewLayout.horizontalInset
+        }
+
+        return LineNumberGutterView.width(
+            lineCount: 1,
+            fontSize: viewModel.editorUIFont.pointSize
+        ) + EditorTextViewLayout.lineNumberGutterGap
     }
 }
 

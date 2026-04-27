@@ -175,6 +175,10 @@ final class EditorViewModel {
         editorAppearanceStore.markdownSyntaxMode
     }
 
+    var effectiveShowLineNumbers: Bool {
+        editorAppearanceStore.effectiveShowLineNumbers
+    }
+
     var resolvedEditorTheme: ResolvedEditorTheme {
         editorAppearanceStore.resolvedTheme(using: themeStore)
     }

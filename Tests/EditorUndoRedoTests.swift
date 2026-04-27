@@ -90,6 +90,47 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorAppliesLineNumbersWithoutFullRerender() {
+        let textBox = MutableBox("First\nSecond")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.textContainerInset = UIEdgeInsets(
+            top: EditorTextViewLayout.contentTopInset,
+            left: EditorTextViewLayout.horizontalInset,
+            bottom: EditorTextViewLayout.bottomInset,
+            right: EditorTextViewLayout.horizontalInset
+        )
+        let initialConfiguration = makeConfiguration(text: textBox.value, showLineNumbers: false)
+
+        coordinator.apply(
+            configuration: initialConfiguration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+        textView.selectedRange = NSRange(location: 3, length: 0)
+        let initialRenderWork = coordinator.lastRenderWork
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value, showLineNumbers: true),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: false
+        )
+
+        XCTAssertEqual(textView.text, textBox.value)
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 3, length: 0))
+        XCTAssertEqual(coordinator.lastRenderWork, initialRenderWork)
+        XCTAssertFalse(coordinator.hasPendingDeferredRerender)
+        XCTAssertFalse(textView.lineNumberGutter?.isHidden ?? true)
+        XCTAssertGreaterThan(textView.textContainerInset.left, EditorTextViewLayout.horizontalInset)
+    }
+
+    @MainActor
     func testKeyboardOverlapUpdatesBottomInsetsLikePrototype() {
         let textBox = MutableBox("Draft")
         let coordinator = makeCoordinator(text: textBox)
@@ -1027,13 +1068,27 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     private func makeConfiguration(
         text: String,
-        documentIdentity: URL
+        showLineNumbers: Bool
+    ) -> MarkdownEditorTextView.Configuration {
+        makeConfiguration(
+            text: text,
+            documentIdentity: PreviewSampleData.cleanDocument.url,
+            showLineNumbers: showLineNumbers
+        )
+    }
+
+    @MainActor
+    private func makeConfiguration(
+        text: String,
+        documentIdentity: URL,
+        showLineNumbers: Bool = false
     ) -> MarkdownEditorTextView.Configuration {
         MarkdownEditorTextView.Configuration(
             text: text,
             documentIdentity: documentIdentity,
             font: .preferredFont(forTextStyle: .body),
             syntaxMode: .visible,
+            showLineNumbers: showLineNumbers,
             isEditable: true
         )
     }

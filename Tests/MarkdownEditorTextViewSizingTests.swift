@@ -18,6 +18,7 @@ final class MarkdownEditorTextViewSizingTests: XCTestCase {
             font: .preferredFont(forTextStyle: .body),
             resolvedTheme: .default,
             syntaxMode: .visible,
+            showLineNumbers: false,
             isEditable: true,
             undoCommandToken: 0,
             redoCommandToken: 0,
