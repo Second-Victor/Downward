@@ -765,6 +765,7 @@ final class EditorUndoRedoTests: XCTestCase {
         let textBox = MutableBox("Draft")
         let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.simulatedIsFirstResponder = true
         let configuration = MarkdownEditorTextView.Configuration(
             text: textBox.value,
             documentIdentity: PreviewSampleData.cleanDocument.url,
@@ -806,10 +807,45 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorDoesNotRevealTopLineMarkdownSyntaxBeforeEditorFocus() {
+        let textBox = MutableBox("# Heading\nBody")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.selectedRange = NSRange(location: 0, length: 0)
+        let configuration = MarkdownEditorTextView.Configuration(
+            text: textBox.value,
+            documentIdentity: PreviewSampleData.cleanDocument.url,
+            font: .preferredFont(forTextStyle: .body),
+            syntaxMode: .hiddenOutsideCurrentLine,
+            isEditable: true
+        )
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let markerRange = (textView.text as NSString).range(of: "#")
+        XCTAssertEqual(textView.textStorage.attribute(.markdownHiddenSyntax, at: markerRange.location, effectiveRange: nil) as? Bool, true)
+
+        textView.simulatedIsFirstResponder = true
+        coordinator.textViewDidBeginEditing(textView)
+        XCTAssertNil(textView.textStorage.attribute(.markdownHiddenSyntax, at: markerRange.location, effectiveRange: nil))
+
+        coordinator.textViewDidEndEditing(textView)
+        XCTAssertEqual(textView.textStorage.attribute(.markdownHiddenSyntax, at: markerRange.location, effectiveRange: nil) as? Bool, true)
+    }
+
+    @MainActor
     func testCoordinatorDefersFullMarkdownRerenderAfterLineBreakEdit() async {
         let textBox = MutableBox("Draft")
         let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.simulatedIsFirstResponder = true
         let configuration = MarkdownEditorTextView.Configuration(
             text: textBox.value,
             documentIdentity: PreviewSampleData.cleanDocument.url,
@@ -864,6 +900,7 @@ final class EditorUndoRedoTests: XCTestCase {
         let textBox = MutableBox(largeParagraph)
         let coordinator = makeCoordinator(text: textBox)
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        textView.simulatedIsFirstResponder = true
         let configuration = MarkdownEditorTextView.Configuration(
             text: textBox.value,
             documentIdentity: PreviewSampleData.cleanDocument.url,

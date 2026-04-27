@@ -299,6 +299,7 @@ extension MarkdownEditorTextView {
 
             guard
                 isApplyingProgrammaticChange == false,
+                textView.isFirstResponder,
                 let configuration,
                 configuration.syntaxMode == .hiddenOutsideCurrentLine,
                 textView.markedTextRange == nil
@@ -354,6 +355,7 @@ extension MarkdownEditorTextView {
                 activeTextView = textView
                 textView.setNeedsLineNumberDisplay()
             }
+            textViewDidChangeSelection(textView)
             onEditorFocusChange(true)
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
@@ -363,6 +365,7 @@ extension MarkdownEditorTextView {
             if let textView = textView as? EditorChromeAwareTextView {
                 textView.setNeedsLineNumberDisplay()
             }
+            hideRevealedSyntaxIfNeeded(in: textView)
             onEditorFocusChange(false)
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
@@ -425,9 +428,10 @@ extension MarkdownEditorTextView {
         ) {
             let selectedRange = safeSelectedRange(for: textView, text: configuration.text)
             let preservedContentOffset = textView.contentOffset
-            let revealedLineRange = renderer.revealedLineRange(
-                for: selectedRange,
-                in: configuration.text
+            let revealedLineRange = revealedLineRange(
+                in: textView,
+                selectionRange: selectedRange,
+                text: configuration.text
             )
             let attributedText = renderer.render(
                 configuration: .init(
@@ -467,6 +471,40 @@ extension MarkdownEditorTextView {
 #if DEBUG
             lastRenderWork = .fullDocument(characterCount: (configuration.text as NSString).length)
 #endif
+        }
+
+        private func revealedLineRange(
+            in textView: UITextView,
+            selectionRange: NSRange,
+            text: String
+        ) -> NSRange? {
+            // UITextView seeds selectedRange at the document start before focus; only a real cursor
+            // should reveal hidden markdown syntax for the current line.
+            guard textView.isFirstResponder else {
+                return nil
+            }
+
+            return renderer.revealedLineRange(
+                for: selectionRange,
+                in: text
+            )
+        }
+
+        private func hideRevealedSyntaxIfNeeded(in textView: UITextView) {
+            guard
+                isApplyingProgrammaticChange == false,
+                configuration?.syntaxMode == .hiddenOutsideCurrentLine,
+                lastRevealedLineRange != nil
+            else {
+                return
+            }
+
+            renderer.updateHiddenSyntaxVisibility(
+                in: textView.textStorage,
+                previousRevealedRange: lastRevealedLineRange,
+                revealedRange: nil
+            )
+            lastRevealedLineRange = nil
         }
 
         private func updateRevealedSyntax(

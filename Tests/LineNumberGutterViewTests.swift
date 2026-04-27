@@ -47,6 +47,28 @@ final class LineNumberGutterViewTests: XCTestCase {
     }
 
     @MainActor
+    func testSingleLineWithoutTrailingNewlineDoesNotDrawPhantomFinalLine() {
+        let textView = makeTextView(text: "Draft")
+        drawGutter(in: textView)
+
+#if DEBUG
+        XCTAssertEqual(textView.lineNumberGutter?.lastDrawnLineNumbers, [1])
+        XCTAssertEqual(textView.lineNumberGutter?.lastDrawnLineNumberLabels, ["01"])
+#endif
+    }
+
+    @MainActor
+    func testTrailingNewlineDrawsRealEmptyFinalLine() {
+        let textView = makeTextView(text: "Draft\n")
+        drawGutter(in: textView)
+
+#if DEBUG
+        XCTAssertEqual(textView.lineNumberGutter?.lastDrawnLineNumbers, [1, 2])
+        XCTAssertEqual(textView.lineNumberGutter?.lastDrawnLineNumberLabels, ["01", "02"])
+#endif
+    }
+
+    @MainActor
     func testSingleDigitLineNumbersAreZeroPadded() {
         let text = (1...10).map { "Line \($0)" }.joined(separator: "\n")
         let textView = makeTextView(text: text)
@@ -113,6 +135,52 @@ final class LineNumberGutterViewTests: XCTestCase {
 #if DEBUG
         XCTAssertEqual(textView.lineNumberGutter?.lastHighlightedLineNumbers, [2])
         XCTAssertNotNil(textView.lineNumberGutter?.lastHighlightedLineNumberRects[2])
+#endif
+    }
+
+    @MainActor
+    func testGutterHighlightsLineOneWhenCursorIsAtEndOfSingleLineDocument() {
+        let textView = makeTextView(text: "D")
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        window.addSubview(textView)
+        window.makeKeyAndVisible()
+        defer {
+            textView.resignFirstResponder()
+            window.isHidden = true
+        }
+
+        textView.selectedRange = NSRange(location: 1, length: 0)
+        XCTAssertTrue(textView.becomeFirstResponder())
+
+        drawGutter(in: textView)
+
+#if DEBUG
+        XCTAssertEqual(textView.lineNumberGutter?.lastDrawnLineNumbers, [1])
+        XCTAssertEqual(textView.lineNumberGutter?.lastHighlightedLineNumbers, [1])
+        XCTAssertNotNil(textView.lineNumberGutter?.lastHighlightedLineNumberRects[1])
+#endif
+    }
+
+    @MainActor
+    func testGutterHighlightsTrailingEmptyLineInsteadOfPreviousLine() {
+        let textView = makeTextView(text: "Hello\n\n")
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        window.addSubview(textView)
+        window.makeKeyAndVisible()
+        defer {
+            textView.resignFirstResponder()
+            window.isHidden = true
+        }
+
+        textView.selectedRange = NSRange(location: (textView.text as NSString).length, length: 0)
+        XCTAssertTrue(textView.becomeFirstResponder())
+
+        drawGutter(in: textView)
+
+#if DEBUG
+        XCTAssertEqual(textView.lineNumberGutter?.lastDrawnLineNumbers, [1, 2, 3])
+        XCTAssertEqual(textView.lineNumberGutter?.lastHighlightedLineNumbers, [3])
+        XCTAssertNotNil(textView.lineNumberGutter?.lastHighlightedLineNumberRects[3])
 #endif
     }
 

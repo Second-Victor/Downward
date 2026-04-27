@@ -170,8 +170,9 @@ final class LineNumberGutterView: UIView {
         var lineNumber = textView.lineMetrics.lineNumber(at: firstVisibleLineRange.location)
         var charIndex = firstVisibleLineRange.location
         var previousFragmentRect: CGRect?
+        let shouldDrawTrailingEmptyLine = textView.lineMetrics.lineStartLocations.last == fullLength
 
-        while charIndex <= fullLength {
+        while charIndex < fullLength || (shouldDrawTrailingEmptyLine && charIndex == fullLength) {
             let lineRange = charIndex < fullLength
                 ? nsText.lineRange(for: NSRange(location: charIndex, length: 0))
                 : NSRange(location: fullLength, length: 0)
@@ -465,6 +466,12 @@ final class LineNumberGutterView: UIView {
         let clampedLocation = min(max(selectedLocation, 0), fullLength)
         if lineRange.length == 0 {
             return clampedLocation == lineRange.location
+        }
+
+        if clampedLocation == fullLength,
+           clampedLocation == NSMaxRange(lineRange),
+           textView?.lineMetrics.lineStartLocations.last != fullLength {
+            return true
         }
 
         return NSLocationInRange(clampedLocation, lineRange)
