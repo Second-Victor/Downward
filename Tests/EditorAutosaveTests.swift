@@ -87,6 +87,136 @@ final class EditorAutosaveTests: XCTestCase {
     }
 
     @MainActor
+    func testCleanDuplicateEditorRefreshesAfterSameTextFocusPass() async throws {
+        let fixture = try makeLiveDocumentFixture(
+            named: "SplitFocus.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+        defer { removeItemIfPresent(at: fixture.workspaceURL) }
+
+        let firstManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let secondManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let firstDocument = try await firstManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let secondDocument = try await secondManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let firstSystem = makeEditorSystem(
+            documentManager: firstManager,
+            initialDocument: firstDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+        let secondSystem = makeEditorSystem(
+            documentManager: secondManager,
+            initialDocument: secondDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+
+        firstSystem.viewModel.handleTextChange("# Entry\n\nSaved from first split.")
+        secondSystem.viewModel.handleTextChange("# Entry\n\nOriginal text.")
+
+        try await waitUntil {
+            firstSystem.session.openDocument?.isDirty == false
+                && secondSystem.session.openDocument?.text == "# Entry\n\nSaved from first split."
+                && secondSystem.session.openDocument?.isDirty == false
+        }
+
+        XCTAssertEqual(secondSystem.session.openDocument?.conflictState, DocumentConflictState.none)
+        XCTAssertFalse(secondSystem.viewModel.isShowingConflictResolution)
+    }
+
+    @MainActor
+    func testProcessSaveNotificationRefreshesDuplicateEditorWhenObservationStreamMissesEvent() async throws {
+        let fixture = try makeLiveDocumentFixture(
+            named: "SplitNotification.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+        defer { removeItemIfPresent(at: fixture.workspaceURL) }
+
+        let firstManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let secondBaseManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let secondManager = ProcessNotificationOnlyDocumentManager(base: secondBaseManager)
+        let firstDocument = try await firstManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let secondDocument = try await secondBaseManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let firstSystem = makeEditorSystem(
+            documentManager: firstManager,
+            initialDocument: firstDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+        let secondSystem = makeEditorSystem(
+            documentManager: secondManager,
+            initialDocument: secondDocument,
+            autosaveDelay: .seconds(5)
+        )
+
+        firstSystem.viewModel.handleTextChange("# Entry\n\nSaved through process notification.")
+
+        try await waitUntil {
+            firstSystem.session.openDocument?.isDirty == false
+                && secondSystem.session.openDocument?.text == "# Entry\n\nSaved through process notification."
+                && secondSystem.session.openDocument?.isDirty == false
+        }
+
+        XCTAssertEqual(secondSystem.session.openDocument?.conflictState, DocumentConflictState.none)
+        XCTAssertFalse(secondSystem.viewModel.isShowingConflictResolution)
+    }
+
+    @MainActor
+    func testFocusSwapFlushesDirtyPaneAndRefreshesCleanDuplicateEditor() async throws {
+        let fixture = try makeLiveDocumentFixture(
+            named: "SplitSwap.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+        defer { removeItemIfPresent(at: fixture.workspaceURL) }
+
+        let firstManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let secondManager = LiveDocumentManager(securityScopedAccess: TestDocumentSecurityAccessHandler())
+        let firstDocument = try await firstManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let secondDocument = try await secondManager.openDocument(
+            at: fixture.fileURL,
+            in: fixture.workspaceURL
+        )
+        let firstSystem = makeEditorSystem(
+            documentManager: firstManager,
+            initialDocument: firstDocument,
+            autosaveDelay: .seconds(5)
+        )
+        let secondSystem = makeEditorSystem(
+            documentManager: secondManager,
+            initialDocument: secondDocument,
+            autosaveDelay: .milliseconds(20)
+        )
+
+        firstSystem.viewModel.handleTextChange("# Entry\n\nSaved while swapping panes.")
+        firstSystem.viewModel.handleEditorFocusChange(false)
+        secondSystem.viewModel.handleEditorFocusChange(true)
+
+        try await waitUntil {
+            firstSystem.session.openDocument?.isDirty == false
+                && secondSystem.session.openDocument?.text == "# Entry\n\nSaved while swapping panes."
+                && secondSystem.session.openDocument?.isDirty == false
+        }
+
+        XCTAssertEqual(
+            try String(contentsOf: fixture.fileURL, encoding: .utf8),
+            "# Entry\n\nSaved while swapping panes."
+        )
+        XCTAssertEqual(secondSystem.session.openDocument?.conflictState, DocumentConflictState.none)
+    }
+
+    @MainActor
     func testLiveDocumentManagerForegroundRevalidationDoesNotConflictAfterOwnAutosave() async throws {
         let fixture = try makeLiveDocumentFixture(
             named: "Foreground.md",
@@ -853,6 +983,49 @@ private actor FallbackPollingLiveDocumentManager: DocumentManager {
 private struct TestDocumentSessionKey: Equatable, Sendable {
     let workspaceRootURL: URL
     let relativePath: String
+}
+
+private actor ProcessNotificationOnlyDocumentManager: DocumentManager {
+    private let base: LiveDocumentManager
+
+    init(base: LiveDocumentManager) {
+        self.base = base
+    }
+
+    func openDocument(at url: URL, in workspaceRootURL: URL) async throws -> OpenDocument {
+        try await base.openDocument(at: url, in: workspaceRootURL)
+    }
+
+    func openDocument(
+        atRelativePath relativePath: String,
+        in workspaceRootURL: URL
+    ) async throws -> OpenDocument {
+        try await base.openDocument(atRelativePath: relativePath, in: workspaceRootURL)
+    }
+
+    func reloadDocument(from document: OpenDocument) async throws -> OpenDocument {
+        try await base.reloadDocument(from: document)
+    }
+
+    func revalidateDocument(_ document: OpenDocument) async throws -> OpenDocument {
+        try await base.revalidateDocument(document)
+    }
+
+    func saveDocument(_ document: OpenDocument, overwriteConflict: Bool) async throws -> OpenDocument {
+        try await base.saveDocument(document, overwriteConflict: overwriteConflict)
+    }
+
+    func observeDocumentChanges(for document: OpenDocument) async throws -> AsyncStream<Void> {
+        AsyncStream { _ in }
+    }
+
+    func relocateDocumentSession(
+        for document: OpenDocument,
+        to url: URL,
+        relativePath: String
+    ) async {
+        await base.relocateDocumentSession(for: document, to: url, relativePath: relativePath)
+    }
 }
 
 private actor RecordingDocumentManager: DocumentManager {

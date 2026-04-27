@@ -27,6 +27,8 @@ final class EditorViewModel {
     private var flushSaveTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
     private var conflictResolutionTask: Task<Void, Never>?
+    private var focusRevalidationTask: Task<Void, Never>?
+    private var processSaveObserver: NSObjectProtocol?
     private var flushSaveTaskGeneration = 0
     private var loadGeneration = 0
     private var conflictResolutionGeneration = 0
@@ -200,6 +202,10 @@ final class EditorViewModel {
             return
         }
 
+        guard text != currentRouteDocument.text else {
+            return
+        }
+
         editGeneration += 1
         coordinator.updateDocumentText(text)
 
@@ -315,9 +321,19 @@ final class EditorViewModel {
 
     func handleEditorFocusChange(_ isFocused: Bool) {
         isEditorFocused = isFocused
-        if isFocused == false {
+
+        if isFocused {
+            if let currentRouteDocument {
+                scheduleFocusedCleanRevalidation(for: currentRouteDocument)
+            }
+        } else {
             canUndo = false
             canRedo = false
+
+            if let currentRouteDocument,
+               currentRouteDocument.isDirty || saveInFlight || autosaveTask != nil {
+                scheduleImmediateSaveFlush(for: currentRouteDocument)
+            }
         }
     }
 
@@ -491,6 +507,71 @@ final class EditorViewModel {
             }
 
             await flushPendingSaveIfNeeded(request)
+        }
+    }
+
+    private func scheduleFocusedCleanRevalidation(for document: OpenDocument) {
+        let documentIdentity = documentObservationIdentity(for: document)
+        focusRevalidationTask?.cancel()
+        focusRevalidationTask = Task {
+            await revalidateFocusedCleanDocument(matching: documentIdentity)
+
+            do {
+                try await Task.sleep(for: autosaveDelay + .milliseconds(150))
+            } catch {
+                return
+            }
+
+            await revalidateFocusedCleanDocument(matching: documentIdentity)
+        }
+    }
+
+    private func scheduleProcessLocalSaveRevalidation(matching documentIdentity: String) {
+        focusRevalidationTask?.cancel()
+        focusRevalidationTask = Task {
+            await revalidateFocusedCleanDocument(matching: documentIdentity)
+
+            do {
+                try await Task.sleep(for: .milliseconds(150))
+            } catch {
+                return
+            }
+
+            await revalidateFocusedCleanDocument(matching: documentIdentity)
+        }
+    }
+
+    private func revalidateFocusedCleanDocument(matching documentIdentity: String) async {
+        guard Task.isCancelled == false else {
+            return
+        }
+
+        guard
+            isCurrentDocumentIdentity(documentIdentity),
+            let currentRouteDocument,
+            currentRouteDocument.isDirty == false,
+            saveInFlight == false
+        else {
+            return
+        }
+
+        let result = await coordinator.revalidateObservedDocument(matching: currentRouteDocument)
+        guard Task.isCancelled == false else {
+            return
+        }
+
+        guard let result else {
+            return
+        }
+
+        switch result {
+        case let .success(revalidatedDocument):
+            session.editorAlertError = nil
+            if revalidatedDocument.conflictState.needsResolution {
+                isShowingConflictResolution = true
+            }
+        case let .failure(error):
+            session.editorAlertError = error
         }
     }
 
@@ -706,6 +787,18 @@ final class EditorViewModel {
         stopObservingDocumentChanges()
         observedDocumentIdentity = identity
         let observedDocument = document
+        processSaveObserver = ProcessLocalDocumentSaveCenter.observeMatching(
+            workspaceRootURL: document.workspaceRootURL,
+            relativePath: document.relativePath
+        ) { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.isCurrentDocumentIdentity(identity) else {
+                    return
+                }
+
+                self.scheduleProcessLocalSaveRevalidation(matching: identity)
+            }
+        }
 
         documentObservationTask = Task { [weak self] in
             guard let self else {
@@ -777,6 +870,13 @@ final class EditorViewModel {
         documentObservationTask?.cancel()
         documentObservationTask = nil
         observedDocumentIdentity = nil
+        focusRevalidationTask?.cancel()
+        focusRevalidationTask = nil
+
+        if let processSaveObserver {
+            NotificationCenter.default.removeObserver(processSaveObserver)
+            self.processSaveObserver = nil
+        }
     }
 
     private func invalidatePendingLoad() {

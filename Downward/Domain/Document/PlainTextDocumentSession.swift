@@ -61,9 +61,11 @@ actor PlainTextDocumentSession {
     private let observationFallbackSchedule: ObservationFallbackSchedule
     private let onFallbackPoll: (@Sendable () -> Void)?
     private let onObservationModeActivated: (@Sendable (ObservationMode) -> Void)?
+    private let sessionID = UUID()
     private var observationLease: SecurityScopedAccessLease?
     private var observationURL: URL?
     private var filePresenter: PlainTextDocumentFilePresenter?
+    private var processSaveObserver: NSObjectProtocol?
     private var observationFallbackTask: Task<Void, Never>?
     private var changeContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
     private var lastFallbackSnapshot: ObservationFallbackSnapshot?
@@ -240,15 +242,21 @@ actor PlainTextDocumentSession {
         let workspaceRootURL = self.workspaceRootURL
         let securityScopedAccess = self.securityScopedAccess
 
-        return try await Self.runDetachedWriteOperation(priority: .utility) {
+        let savedDocument = try await Self.runDetachedWriteOperation(priority: .utility) {
             try securityScopedAccess.withAccess(
                 toDescendantAt: relativePath,
                 within: workspaceRootURL
             ) { securedURL in
                 if overwriteConflict == false {
-                    switch Self.readPresenceState(at: securedURL, fallbackName: document.displayName) {
-                    case .success:
-                        break
+                    switch Self.readDocumentState(at: securedURL) {
+                    case let .success(currentDiskState):
+                        if document.loadedVersion.matchesCurrentDisk(currentDiskState.version) == false,
+                           currentDiskState.text != document.text {
+                            return Self.makeConflictDocument(
+                                from: document,
+                                kind: .modifiedOnDisk
+                            )
+                        }
                     case .failure(.missing):
                         return Self.makeConflictDocument(
                             from: document,
@@ -283,6 +291,16 @@ actor PlainTextDocumentSession {
                 }
             }
         }
+
+        if case .none = savedDocument.conflictState {
+            ProcessLocalDocumentSaveCenter.post(
+                workspaceRootURL: workspaceRootURL,
+                relativePath: relativePath,
+                sourceSessionID: sessionID
+            )
+        }
+
+        return savedDocument
     }
 
     /// Retargets the active document session after an in-app coordinated rename so subsequent saves,
@@ -323,6 +341,15 @@ actor PlainTextDocumentSession {
 
         observationLease = lease
         observationURL = observedURL
+        processSaveObserver = ProcessLocalDocumentSaveCenter.observeMatching(
+            workspaceRootURL: workspaceRootURL,
+            relativePath: relativePath,
+            ignoredSessionID: sessionID
+        ) { [weak self] in
+            Task {
+                await self?.emitObservedChange()
+            }
+        }
 
         // File-presenter callbacks are the primary observation path. Metadata polling stays
         // degraded mode and only starts later if the session policy says presenter callbacks are
@@ -366,6 +393,11 @@ actor PlainTextDocumentSession {
         if let filePresenter {
             NSFileCoordinator.removeFilePresenter(filePresenter)
             self.filePresenter = nil
+        }
+
+        if let processSaveObserver {
+            NotificationCenter.default.removeObserver(processSaveObserver)
+            self.processSaveObserver = nil
         }
 
         observationURL = nil
@@ -585,41 +617,6 @@ actor PlainTextDocumentSession {
         )
     }
 
-    nonisolated private static func readPresenceState(
-        at url: URL,
-        fallbackName: String
-    ) -> Result<CoordinatedPresenceState, AppErrorOrMissing> {
-        var coordinationError: NSError?
-        var result: Result<CoordinatedPresenceState, AppErrorOrMissing>?
-        let coordinator = NSFileCoordinator(filePresenter: nil)
-
-        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinatedURL in
-            result = loadPresenceState(at: coordinatedURL, fallbackName: fallbackName)
-        }
-
-        if let coordinationError {
-            return wrapFilesystemError(
-                coordinationError,
-                name: fallbackName,
-                makeAppError: { name in
-                    AppError.documentSaveFailed(
-                        name: name,
-                        details: "The current file metadata could not be read before saving."
-                    )
-                }
-            )
-        }
-
-        return result ?? .failure(
-            .appError(
-                AppError.documentSaveFailed(
-                    name: fallbackName,
-                    details: "The file could not be checked before saving."
-                )
-            )
-        )
-    }
-
     nonisolated private static func writeDocumentState(
         text: String,
         to url: URL,
@@ -729,40 +726,6 @@ actor PlainTextDocumentSession {
                     AppError.documentOpenFailed(
                         name: name,
                         details: "The file could not be read from disk."
-                    )
-                }
-            )
-        }
-    }
-
-    nonisolated private static func loadPresenceState(
-        at url: URL,
-        fallbackName: String
-    ) -> Result<CoordinatedPresenceState, AppErrorOrMissing> {
-        do {
-            let resourceValues = try url.resourceValues(forKeys: documentResourceKeys)
-            guard resourceValues.isDirectory != true else {
-                throw AppError.documentSaveFailed(
-                    name: fallbackName,
-                    details: "The path now points to a folder instead of a file."
-                )
-            }
-
-            return .success(
-                CoordinatedPresenceState(
-                    displayName: resourceValues.localizedName ?? resourceValues.name ?? fallbackName
-                )
-            )
-        } catch let error as AppError {
-            return .failure(.appError(error))
-        } catch {
-            return wrapFilesystemError(
-                error,
-                name: fallbackName,
-                makeAppError: { name in
-                    AppError.documentSaveFailed(
-                        name: name,
-                        details: "The current file metadata could not be read before saving."
                     )
                 }
             )
@@ -939,6 +902,65 @@ private enum ObservationFallbackSnapshot: Equatable {
     case unreadable
 }
 
+enum ProcessLocalDocumentSaveCenter {
+    nonisolated static func post(
+        workspaceRootURL: URL,
+        relativePath: String,
+        sourceSessionID: UUID
+    ) {
+        NotificationCenter.default.post(
+            name: .downwardDocumentDidSaveInProcess,
+            object: nil,
+            userInfo: [
+                ProcessLocalSaveNotificationKey.workspaceRootPath: WorkspaceIdentity.normalizedPath(for: workspaceRootURL),
+                ProcessLocalSaveNotificationKey.relativePath: relativePath,
+                ProcessLocalSaveNotificationKey.sourceSessionID: sourceSessionID.uuidString,
+            ]
+        )
+    }
+
+    nonisolated static func observeMatching(
+        workspaceRootURL: URL,
+        relativePath: String,
+        ignoredSessionID: UUID? = nil,
+        onMatchingSave: @escaping @Sendable () -> Void
+    ) -> NSObjectProtocol {
+        let workspaceRootPath = WorkspaceIdentity.normalizedPath(for: workspaceRootURL)
+        let ignoredSessionID = ignoredSessionID?.uuidString
+
+        return NotificationCenter.default.addObserver(
+            forName: .downwardDocumentDidSaveInProcess,
+            object: nil,
+            queue: nil
+        ) { notification in
+            guard
+                let userInfo = notification.userInfo,
+                userInfo[ProcessLocalSaveNotificationKey.workspaceRootPath] as? String == workspaceRootPath,
+                userInfo[ProcessLocalSaveNotificationKey.relativePath] as? String == relativePath
+            else {
+                return
+            }
+
+            if let ignoredSessionID,
+               userInfo[ProcessLocalSaveNotificationKey.sourceSessionID] as? String == ignoredSessionID {
+                return
+            }
+
+            onMatchingSave()
+        }
+    }
+}
+
+private enum ProcessLocalSaveNotificationKey {
+    nonisolated static let workspaceRootPath = "workspaceRootPath"
+    nonisolated static let relativePath = "relativePath"
+    nonisolated static let sourceSessionID = "sourceSessionID"
+}
+
+private extension Notification.Name {
+    nonisolated static let downwardDocumentDidSaveInProcess = Notification.Name("Downward.DocumentDidSaveInProcess")
+}
+
 private struct CoordinatedDocumentState: Sendable {
     let displayName: String
     let text: String
@@ -948,10 +970,6 @@ private struct CoordinatedDocumentState: Sendable {
 private struct UTF8TextContents: Sendable {
     let text: String
     let utf8Data: Data
-}
-
-private struct CoordinatedPresenceState: Sendable {
-    let displayName: String
 }
 
 private enum AppErrorOrMissing: Error, Sendable {

@@ -101,7 +101,8 @@ These are part of the app contract and must not be casually broken.
    - Create, rename, delete, refresh, restore, and reconnect flows must keep browser, route, recents, and editor state coherent.
 
 6. **Each app scene currently owns one active live document session**
-   - Do not accidentally introduce same-file multi-window editing or multiple live sessions within a scene without an explicit design pass.
+   - Same-file multi-window editing must preserve disk changes with conflict detection.
+   - Do not introduce collaborative same-file editing or multiple live sessions within a scene without an explicit design pass.
 
 ---
 

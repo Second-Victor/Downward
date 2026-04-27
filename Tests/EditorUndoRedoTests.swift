@@ -594,6 +594,25 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testKeyboardAccessoryCanHideDismissButtonForIPad() {
+        let actionTarget = AccessoryActionTarget()
+        let accessoryView = KeyboardAccessoryToolbarView(
+            target: actionTarget,
+            undoAction: #selector(AccessoryActionTarget.performAction),
+            redoAction: #selector(AccessoryActionTarget.performAction),
+            dismissAction: #selector(AccessoryActionTarget.performAction),
+            resolvedTheme: .default,
+            showsDismissButton: false
+        )
+
+        accessoryView.update(canUndo: true, canRedo: true, canDismiss: true)
+
+        XCTAssertEqual(accessoryView.toolbar.items?.count, 3)
+        XCTAssertFalse(accessoryView.toolbar.items?.contains(accessoryView.dismissButton) ?? true)
+        XCTAssertFalse(accessoryView.dismissButton.isEnabled)
+    }
+
+    @MainActor
     func testKeyboardAccessoryKeepsUIKitHostBackgroundUntouched() {
         let actionTarget = AccessoryActionTarget()
         let accessoryView = KeyboardAccessoryToolbarView(

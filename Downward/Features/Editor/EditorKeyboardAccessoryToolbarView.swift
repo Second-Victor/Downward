@@ -8,15 +8,18 @@ final class KeyboardAccessoryToolbarView: UIView {
     let redoButton: UIBarButtonItem
     let dismissButton: UIBarButtonItem
     private var resolvedTheme: ResolvedEditorTheme
+    private let showsDismissButton: Bool
 
     init(
         target: AnyObject,
         undoAction: Selector,
         redoAction: Selector,
         dismissAction: Selector,
-        resolvedTheme: ResolvedEditorTheme
+        resolvedTheme: ResolvedEditorTheme,
+        showsDismissButton: Bool = UIDevice.current.userInterfaceIdiom != .pad
     ) {
         self.resolvedTheme = resolvedTheme
+        self.showsDismissButton = showsDismissButton
         undoButton = UIBarButtonItem(
             image: UIImage(systemName: "arrow.uturn.backward"),
             style: .plain,
@@ -53,7 +56,9 @@ final class KeyboardAccessoryToolbarView: UIView {
 
         addSubview(toolbar)
         toolbar.autoresizingMask = [.flexibleWidth]
-        toolbar.items = [undoButton, redoButton, .flexibleSpace(), dismissButton]
+        toolbar.items = showsDismissButton
+            ? [undoButton, redoButton, .flexibleSpace(), dismissButton]
+            : [undoButton, redoButton, .flexibleSpace()]
 
         applyResolvedTheme(resolvedTheme)
     }
@@ -81,7 +86,7 @@ final class KeyboardAccessoryToolbarView: UIView {
     func update(canUndo: Bool, canRedo: Bool, canDismiss: Bool) {
         undoButton.isEnabled = canUndo
         redoButton.isEnabled = canRedo
-        dismissButton.isEnabled = canDismiss
+        dismissButton.isEnabled = showsDismissButton && canDismiss
         invalidateIntrinsicContentSize()
         setNeedsLayout()
     }

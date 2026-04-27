@@ -57,7 +57,10 @@ This matters because:
 - save and revalidation logic assume one live session inside the scene-local app container,
 - change observation is wired around the currently open document,
 - multiple windows can navigate independently because each scene owns its own `AppContainer`,
-- editing the same file in multiple windows still needs an explicit conflict/coherency design pass.
+- clean duplicate windows receive in-process save notifications and refresh through normal revalidation,
+- dirty duplicate windows preserve their buffer and surface a modified-on-disk conflict instead of silently clobbering another window's save.
+
+Collaborative same-file editing still needs an explicit design pass.
 
 ### 3. Workspace-relative identity is canonical
 
@@ -429,7 +432,7 @@ A real design pass should happen before adding:
 
 - content search,
 - very large workspace optimizations,
-- same-file multi-window editing,
+- collaborative same-file multi-window editing,
 - multiple concurrent live document sessions,
 - background sync features.
 

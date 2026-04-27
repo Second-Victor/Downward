@@ -356,7 +356,7 @@ final class DocumentManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testSaveOverwritesOutsideWriteForActiveBufferWithoutConflict() async throws {
+    func testSaveWithoutOverwritePreservesOutsideWriteForActiveBuffer() async throws {
         let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
         defer { removeItemIfPresent(at: workspaceURL) }
 
@@ -378,11 +378,20 @@ final class DocumentManagerTests: XCTestCase {
 
         try Data("# Entry\n\nChanged elsewhere.".utf8).write(to: fileURL, options: .atomic)
 
-        let savedDocument = try await manager.saveDocument(document, overwriteConflict: false)
+        let conflictedDocument = try await manager.saveDocument(document, overwriteConflict: false)
 
-        XCTAssertEqual(savedDocument.conflictState, .none)
-        XCTAssertFalse(savedDocument.isDirty)
-        XCTAssertEqual(savedDocument.text, "# Entry\n\nLocal edits.")
+        guard case let .needsResolution(conflict) = conflictedDocument.conflictState else {
+            return XCTFail("Expected modified-on-disk conflict.")
+        }
+        XCTAssertEqual(conflict.kind, .modifiedOnDisk)
+        XCTAssertTrue(conflictedDocument.isDirty)
+        XCTAssertEqual(conflictedDocument.text, "# Entry\n\nLocal edits.")
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "# Entry\n\nChanged elsewhere.")
+
+        let overwrittenDocument = try await manager.saveDocument(document, overwriteConflict: true)
+        XCTAssertEqual(overwrittenDocument.conflictState, .none)
+        XCTAssertFalse(overwrittenDocument.isDirty)
+        XCTAssertEqual(overwrittenDocument.text, "# Entry\n\nLocal edits.")
         XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "# Entry\n\nLocal edits.")
     }
 
@@ -598,6 +607,58 @@ final class DocumentManagerTests: XCTestCase {
         XCTAssertEqual(savedDocument.loadedVersion.fileSize, writtenData.count)
         XCTAssertEqual(savedDocument.loadedVersion.contentDigest, expectedDigest(for: writtenData))
         XCTAssertEqual(savedDocument.text, String(decoding: writtenData, as: UTF8.self))
+    }
+
+    @MainActor
+    func testInProcessSaveObservationRefreshesDuplicateCleanSession() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        _ = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "SplitView.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+        let firstSession = PlainTextDocumentSession(
+            relativePath: "SplitView.md",
+            workspaceRootURL: workspaceURL,
+            securityScopedAccess: FakeDocumentSecurityAccessHandler(),
+            filePresenterEnabled: false,
+            observationFallbackPolicy: .never
+        )
+        let secondSession = PlainTextDocumentSession(
+            relativePath: "SplitView.md",
+            workspaceRootURL: workspaceURL,
+            securityScopedAccess: FakeDocumentSecurityAccessHandler(),
+            filePresenterEnabled: false,
+            observationFallbackPolicy: .never
+        )
+        var firstDocument = try await firstSession.openDocument(fallbackName: "SplitView.md")
+        let secondDocument = try await secondSession.openDocument(fallbackName: "SplitView.md")
+        let recorder = FallbackObservationRecorder()
+        let stream = try await secondSession.observeChanges()
+        let observationTask = Task {
+            for await _ in stream {
+                await recorder.recordEvent()
+            }
+        }
+
+        firstDocument.text = "# Entry\n\nSaved from first window."
+        firstDocument.isDirty = true
+        firstDocument.saveState = .unsaved
+        _ = try await firstSession.saveDocument(firstDocument, overwriteConflict: false)
+
+        try await waitUntil(timeout: .milliseconds(200)) {
+            await recorder.eventCount > 0
+        }
+        let revalidatedSecondDocument = try await secondSession.revalidateDocument(secondDocument)
+
+        XCTAssertEqual(revalidatedSecondDocument.text, "# Entry\n\nSaved from first window.")
+        XCTAssertFalse(revalidatedSecondDocument.isDirty)
+        XCTAssertEqual(revalidatedSecondDocument.conflictState, .none)
+
+        observationTask.cancel()
+        withExtendedLifetime(stream) {}
     }
 
     @MainActor
