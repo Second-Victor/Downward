@@ -123,6 +123,11 @@ struct MarkdownSyntaxStyleApplicator {
                 ],
                 range: taskCheckboxRange
             )
+            applyPartialTaskCheckboxColorIfNeeded(
+                in: taskCheckboxRange,
+                text: text,
+                attributed: attributed
+            )
         }
 
         let prefixRange = NSRange(
@@ -426,7 +431,7 @@ struct MarkdownSyntaxStyleApplicator {
             return nil
         }
 
-        guard checkboxState == 0x20 || checkboxState == 0x78 || checkboxState == 0x58 else {
+        guard checkboxState == 0x20 || checkboxState == 0x78 || checkboxState == 0x58 || checkboxState == 0x2F else {
             return nil
         }
 
@@ -438,6 +443,27 @@ struct MarkdownSyntaxStyleApplicator {
         return state == 0x78 || state == 0x58
             ? resolvedTheme.checkboxChecked
             : resolvedTheme.checkboxUnchecked
+    }
+
+    private func applyPartialTaskCheckboxColorIfNeeded(
+        in checkboxRange: NSRange,
+        text: NSString,
+        attributed: NSMutableAttributedString
+    ) {
+        guard text.character(at: checkboxRange.location + 1) == 0x2F else {
+            return
+        }
+
+        attributed.addAttribute(
+            .foregroundColor,
+            value: resolvedTheme.checkboxChecked,
+            range: checkboxRange
+        )
+        attributed.addAttribute(
+            .foregroundColor,
+            value: resolvedTheme.checkboxUnchecked,
+            range: NSRange(location: checkboxRange.location + 1, length: 1)
+        )
     }
 }
 

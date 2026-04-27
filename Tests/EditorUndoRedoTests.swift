@@ -199,6 +199,30 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorTogglesSlashTaskCheckboxToChecked() {
+        let textBox = MutableBox("- [/] Partial")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let slashRange = (textBox.value as NSString).range(of: "[/]")
+        coordinator.toggleTaskCheckboxForTesting(in: slashRange, textView: textView)
+
+        XCTAssertEqual(textBox.value, "- [x] Partial")
+        XCTAssertEqual(
+            textView.textStorage.attribute(.foregroundColor, at: slashRange.location, effectiveRange: nil) as? UIColor,
+            ResolvedEditorTheme.default.checkboxChecked
+        )
+    }
+
+    @MainActor
     func testCoordinatorOnlyResolvesTaskCheckboxTapWhenSettingIsEnabled() throws {
         let textBox = MutableBox("* [ ] Star")
         let coordinator = makeCoordinator(text: textBox)
@@ -237,6 +261,80 @@ final class EditorUndoRedoTests: XCTestCase {
         )
 
         XCTAssertNil(coordinator.resolvedTaskCheckboxRangeForTesting(at: tapPoint, in: textView))
+    }
+
+    @MainActor
+    func testCoordinatorContinuesTaskListWhenReturnIsPressedAtEnd() {
+        let textBox = MutableBox("- [ ] Task")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let handled = coordinator.textView(
+            textView,
+            shouldChangeTextIn: NSRange(location: (textView.text as NSString).length, length: 0),
+            replacementText: "\n"
+        )
+
+        XCTAssertFalse(handled)
+        XCTAssertEqual(textBox.value, "- [ ] Task\n- [ ] ")
+        XCTAssertEqual(textView.selectedRange.location, (textBox.value as NSString).length)
+    }
+
+    @MainActor
+    func testCoordinatorContinuesNumberedTaskListWithNextNumber() {
+        let textBox = MutableBox("1. [x] Done")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let handled = coordinator.textView(
+            textView,
+            shouldChangeTextIn: NSRange(location: (textView.text as NSString).length, length: 0),
+            replacementText: "\n"
+        )
+
+        XCTAssertFalse(handled)
+        XCTAssertEqual(textBox.value, "1. [x] Done\n2. [ ] ")
+    }
+
+    @MainActor
+    func testCoordinatorRemovesGeneratedTaskWhenReturnIsPressedAgain() {
+        let textBox = MutableBox("- [ ] Task\n- [ ] ")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let handled = coordinator.textView(
+            textView,
+            shouldChangeTextIn: NSRange(location: (textView.text as NSString).length, length: 0),
+            replacementText: "\n"
+        )
+
+        XCTAssertFalse(handled)
+        XCTAssertEqual(textBox.value, "- [ ] Task\n")
+        XCTAssertEqual(textView.selectedRange.location, (textBox.value as NSString).length)
     }
 
     @MainActor

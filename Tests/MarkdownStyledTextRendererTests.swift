@@ -868,6 +868,43 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
     }
 
     @MainActor
+    func testSlashTaskStateStylesBracketsAsCheckedAndSlashAsUnchecked() {
+        let text = "- [/] Partial task"
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                resolvedTheme: customTheme,
+                syntaxMode: .visible,
+                revealedRange: nil
+            )
+        )
+
+        let nsString = rendered.string as NSString
+        let markerRange = nsString.range(of: "-")
+        let openBracketRange = nsString.range(of: "[")
+        let slashRange = nsString.range(of: "/")
+        let closeBracketRange = nsString.range(of: "]")
+
+        XCTAssertEqual(
+            rendered.attribute(.foregroundColor, at: markerRange.location, effectiveRange: nil) as? UIColor,
+            customTheme.accent
+        )
+        XCTAssertEqual(
+            rendered.attribute(.foregroundColor, at: openBracketRange.location, effectiveRange: nil) as? UIColor,
+            customTheme.checkboxChecked
+        )
+        XCTAssertEqual(
+            rendered.attribute(.foregroundColor, at: slashRange.location, effectiveRange: nil) as? UIColor,
+            customTheme.checkboxUnchecked
+        )
+        XCTAssertEqual(
+            rendered.attribute(.foregroundColor, at: closeBracketRange.location, effectiveRange: nil) as? UIColor,
+            customTheme.checkboxChecked
+        )
+    }
+
+    @MainActor
     func testImageSyntaxCanHideMarkersWhileKeepingAltTextVisible() {
         let text = "![Mountains](/assets/mountains.jpg \"Mountain view\")"
         let rendered = renderer.render(

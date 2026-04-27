@@ -465,6 +465,34 @@ final class LineNumberGutterViewTests: XCTestCase {
     }
 
     @MainActor
+    func testHiddenFenceDelimiterLineNumbersKeepDistinctRows() throws {
+        let text = "Before\n```\ncode block\n```\nAfter"
+        let textView = makeHiddenSyntaxTextView(text: text, revealedText: "After")
+
+        drawGutter(in: textView)
+
+#if DEBUG
+        try assertDrawnLineNumberRowsIncrease(in: textView)
+        XCTAssertNotNil(textView.lineNumberGutter?.lastDrawnLineNumberRects[2])
+        XCTAssertNotNil(textView.lineNumberGutter?.lastDrawnLineNumberRects[4])
+#endif
+    }
+
+    @MainActor
+    func testHiddenHorizontalRuleLineNumbersKeepDistinctRows() throws {
+        let text = "Before\n---\nAfter\n\n***\nNext"
+        let textView = makeHiddenSyntaxTextView(text: text, revealedText: "Next")
+
+        drawGutter(in: textView)
+
+#if DEBUG
+        try assertDrawnLineNumberRowsIncrease(in: textView)
+        XCTAssertNotNil(textView.lineNumberGutter?.lastDrawnLineNumberRects[2])
+        XCTAssertNotNil(textView.lineNumberGutter?.lastDrawnLineNumberRects[5])
+#endif
+    }
+
+    @MainActor
     private func makeTextView(
         text: String,
         showLineNumbers: Bool = true
@@ -550,6 +578,29 @@ final class LineNumberGutterViewTests: XCTestCase {
         let nsText = text as NSString
         let match = nsText.range(of: needle)
         return nsText.lineRange(for: NSRange(location: match.location, length: 0))
+    }
+
+    @MainActor
+    private func assertDrawnLineNumberRowsIncrease(
+        in textView: EditorChromeAwareTextView,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+#if DEBUG
+        let rects = textView.lineNumberGutter?.lastDrawnLineNumberRects ?? [:]
+        let sortedRects = rects.sorted { $0.key < $1.key }
+        for index in sortedRects.indices.dropFirst() {
+            let previous = sortedRects[sortedRects.index(before: index)]
+            let current = sortedRects[index]
+            XCTAssertGreaterThan(
+                current.value.minY,
+                previous.value.minY + 0.5,
+                "Lines \(previous.key) and \(current.key) overlap",
+                file: file,
+                line: line
+            )
+        }
+#endif
     }
 
     private var denstoneFixture: String {

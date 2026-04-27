@@ -237,12 +237,41 @@ extension MarkdownEditorTextView {
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
             let currentText = (textView.text ?? "") as NSString
             let removedRange = safeRange(range, forTextLength: currentText.length)
+            if let plan = TaskListContinuationPlan.make(
+                in: currentText,
+                editedRange: removedRange,
+                replacementText: text
+            ) {
+                applyTaskListContinuation(plan, in: textView)
+                return false
+            }
+
             let removedText = currentText.substring(with: removedRange)
             pendingTextMutationContext = TextMutationContext(
                 changedRangeBeforeEdit: removedRange,
                 touchedLineBreaks: removedText.containsLineBreak || text.containsLineBreak
             )
             return true
+        }
+
+        private func applyTaskListContinuation(
+            _ plan: TaskListContinuationPlan,
+            in textView: UITextView
+        ) {
+            let replacementRange = safeRange(
+                plan.replacementRange,
+                forTextLength: textView.textStorage.length
+            )
+            pendingTextMutationContext = TextMutationContext(
+                changedRangeBeforeEdit: replacementRange,
+                touchedLineBreaks: true
+            )
+            textView.textStorage.replaceCharacters(in: replacementRange, with: plan.replacement)
+            textView.selectedRange = safeRange(
+                plan.selectionAfter,
+                forTextLength: textView.textStorage.length
+            )
+            textViewDidChange(textView)
         }
 
         func textViewDidChange(_ textView: UITextView) {
@@ -1028,7 +1057,7 @@ extension MarkdownEditorTextView {
             let stateLocation = safeCheckboxRange.location + 1
             let currentState = (textView.textStorage.string as NSString).character(at: stateLocation)
             let replacement: String
-            if currentState == 0x20 {
+            if currentState == 0x20 || currentState == 0x2F {
                 replacement = "x"
             } else if currentState == 0x78 || currentState == 0x58 {
                 replacement = " "
@@ -1064,7 +1093,7 @@ extension MarkdownEditorTextView {
             let state = (textView.textStorage.string as NSString).character(at: checkboxRange.location + 1)
             textView.textStorage.addAttributes(
                 [
-                    .foregroundColor: state == 0x78 || state == 0x58
+                    .foregroundColor: state == 0x78 || state == 0x58 || state == 0x2F
                         ? configuration.resolvedTheme.checkboxChecked
                         : configuration.resolvedTheme.checkboxUnchecked,
                     .markdownTaskCheckbox: true
@@ -1123,7 +1152,7 @@ extension MarkdownEditorTextView {
             guard
                 openBracket == 0x5B,
                 closeBracket == 0x5D,
-                state == 0x20 || state == 0x78 || state == 0x58
+                state == 0x20 || state == 0x78 || state == 0x58 || state == 0x2F
             else {
                 return nil
             }

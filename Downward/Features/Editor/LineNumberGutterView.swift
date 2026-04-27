@@ -247,11 +247,20 @@ final class LineNumberGutterView: UIView {
             if fragmentRect.isAfter(previousFragmentRect) {
                 return fragmentRect
             }
-            return contentFragmentRect(
+
+            if let contentFragmentRect = contentFragmentRect(
                 for: lineRange,
                 glyphCount: glyphCount,
                 layoutManager: layoutManager
-            ) ?? fragmentRect
+            ),
+               contentFragmentRect.isAfter(previousFragmentRect) {
+                return contentFragmentRect
+            }
+
+            // Hidden syntax-only lines can produce null glyphs that TextKit
+            // reports on a neighboring fragment. Keep the gutter's source-line
+            // rows monotonic so code fences and horizontal rules cannot overlap.
+            return syntheticFragmentRect(after: previousFragmentRect, fallback: fragmentRect)
         }
 
         guard nsText.length > 0, nsText.character(at: nsText.length - 1).isMarkdownLineBreak else {
@@ -292,6 +301,26 @@ final class LineNumberGutterView: UIView {
 
         let fragmentRect = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
         return fragmentRect.isValidLineNumberFragment ? fragmentRect : nil
+    }
+
+    private func syntheticFragmentRect(after previousFragmentRect: CGRect?, fallback fragmentRect: CGRect) -> CGRect {
+        guard let previousFragmentRect else {
+            return fragmentRect
+        }
+
+        let fallbackHeight = textView?.font?.lineHeight ?? fragmentRect.height
+        let height = max(fragmentRect.height, fallbackHeight, 1)
+        let width = fragmentRect.width.isFinite && fragmentRect.width > 0
+            ? fragmentRect.width
+            : previousFragmentRect.width
+        let minX = fragmentRect.minX.isFinite ? fragmentRect.minX : previousFragmentRect.minX
+
+        return CGRect(
+            x: minX,
+            y: previousFragmentRect.maxY,
+            width: width,
+            height: height
+        )
     }
 
     private func firstVisibleContentCharacterRange(from lineRange: NSRange) -> NSRange? {
