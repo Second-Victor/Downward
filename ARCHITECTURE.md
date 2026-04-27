@@ -46,17 +46,18 @@ That state is represented by:
 `WorkspaceManager` owns selection, restore, refresh, and file mutations.
 It is the boundary between UI orchestration and the real Files workspace.
 
-### 2. One active live document session
+### 2. One active live document session per scene
 
-The app currently assumes **one active live document session**.
+Each app scene currently assumes **one active live document session**.
 
 `LiveDocumentManager` owns that policy and maps one active workspace-relative document key to one active `PlainTextDocumentSession`.
 
 This matters because:
 
-- save and revalidation logic assume one live session,
+- save and revalidation logic assume one live session inside the scene-local app container,
 - change observation is wired around the currently open document,
-- multi-pane or multi-window editing would require a design pass first.
+- multiple windows can navigate independently because each scene owns its own `AppContainer`,
+- editing the same file in multiple windows still needs an explicit conflict/coherency design pass.
 
 ### 3. Workspace-relative identity is canonical
 
@@ -419,7 +420,7 @@ The app is intentionally still built around:
 
 - one selected workspace,
 - one whole `WorkspaceSnapshot`,
-- one active live document session,
+- one active live document session per scene,
 - simple filename/path search,
 - whole-snapshot refresh and mutation reconciliation.
 
@@ -428,7 +429,7 @@ A real design pass should happen before adding:
 
 - content search,
 - very large workspace optimizations,
-- multi-pane or multi-window editing,
+- same-file multi-window editing,
 - multiple concurrent live document sessions,
 - background sync features.
 

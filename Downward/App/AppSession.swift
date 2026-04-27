@@ -41,9 +41,9 @@ final class AppSession {
     var launchState: RootLaunchState = .noWorkspaceSelected
     var workspaceAccessState: WorkspaceAccessState = .noneSelected
     var workspaceSnapshot: WorkspaceSnapshot?
-    /// The app currently owns one active editor document at a time. Navigation may point at
+    /// Each app scene owns one active editor document at a time. Navigation may point at
     /// different editor URLs over time, but the live editor model still reconciles through this
-    /// single shared slot until a broader multi-document redesign exists.
+    /// scene-local slot until a broader multi-document redesign exists.
     var openDocument: OpenDocument?
     /// Workspace/browser alerts presented from the root shell while a workspace is active.
     var workspaceAlertError: UserFacingError?

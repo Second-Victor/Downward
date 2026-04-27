@@ -23,7 +23,7 @@ Previous command-line simulator evidence remains in `RELEASE_QA.md`, but the 202
 
 ## Current direction
 
-The project has a solid foundation: one selected Files workspace, one active live document session, workspace-relative identity, a real `UITextView` editor boundary, explicit session/navigation/mutation policy seams, and broad test coverage around restore, autosave, mutation, recents, renderer, and theme flows.
+The project has a solid foundation: one selected Files workspace, one active live document session per app scene, workspace-relative identity, a real `UITextView` editor boundary, explicit session/navigation/mutation policy seams, and broad test coverage around restore, autosave, mutation, recents, renderer, and theme flows.
 
 The next phase should be **release stabilization and risk reduction**, not feature expansion. The main risks are:
 

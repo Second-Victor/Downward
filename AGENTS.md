@@ -100,8 +100,8 @@ These are part of the app contract and must not be casually broken.
 5. **Workspace mutations stay coherent**
    - Create, rename, delete, refresh, restore, and reconnect flows must keep browser, route, recents, and editor state coherent.
 
-6. **The app currently owns one active live document session**
-   - Do not accidentally introduce multi-document live-session behavior without an explicit design pass.
+6. **Each app scene currently owns one active live document session**
+   - Do not accidentally introduce same-file multi-window editing or multiple live sessions within a scene without an explicit design pass.
 
 ---
 
