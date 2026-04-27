@@ -93,6 +93,7 @@ extension MarkdownEditorTextView {
                 activeTextView = textView
                 textView.applyLineNumberConfiguration(
                     showLineNumbers: configuration.showLineNumbers,
+                    lineNumberOpacity: configuration.lineNumberOpacity,
                     resolvedTheme: configuration.resolvedTheme,
                     font: configuration.font
                 )
@@ -143,6 +144,8 @@ extension MarkdownEditorTextView {
                     resolvedTheme: configuration.resolvedTheme,
                     syntaxMode: configuration.syntaxMode,
                     showLineNumbers: configuration.showLineNumbers,
+                    lineNumberOpacity: configuration.lineNumberOpacity,
+                    largerHeadingText: configuration.largerHeadingText,
                     isEditable: configuration.isEditable
                 )
                 handlePendingEditorCommands(
@@ -263,6 +266,8 @@ extension MarkdownEditorTextView {
                 resolvedTheme: configuration.resolvedTheme,
                 syntaxMode: configuration.syntaxMode,
                 showLineNumbers: configuration.showLineNumbers,
+                lineNumberOpacity: configuration.lineNumberOpacity,
+                largerHeadingText: configuration.largerHeadingText,
                 isEditable: configuration.isEditable
             )
             self.configuration = updatedConfiguration
@@ -288,6 +293,10 @@ extension MarkdownEditorTextView {
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
+            if let textView = textView as? EditorChromeAwareTextView {
+                textView.setNeedsLineNumberDisplay()
+            }
+
             guard
                 isApplyingProgrammaticChange == false,
                 let configuration,
@@ -322,6 +331,8 @@ extension MarkdownEditorTextView {
                 resolvedTheme: configuration.resolvedTheme,
                 syntaxMode: configuration.syntaxMode,
                 showLineNumbers: configuration.showLineNumbers,
+                lineNumberOpacity: configuration.lineNumberOpacity,
+                largerHeadingText: configuration.largerHeadingText,
                 isEditable: configuration.isEditable
             )
 
@@ -336,14 +347,12 @@ extension MarkdownEditorTextView {
                     revealedLineRange: revealedLineRange
                 )
             }
-            if let textView = textView as? EditorChromeAwareTextView {
-                textView.setNeedsLineNumberDisplay()
-            }
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
             if let textView = textView as? EditorChromeAwareTextView {
                 activeTextView = textView
+                textView.setNeedsLineNumberDisplay()
             }
             onEditorFocusChange(true)
             publishUndoRedoAvailability(for: textView)
@@ -351,6 +360,9 @@ extension MarkdownEditorTextView {
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
+            if let textView = textView as? EditorChromeAwareTextView {
+                textView.setNeedsLineNumberDisplay()
+            }
             onEditorFocusChange(false)
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
@@ -400,6 +412,7 @@ extension MarkdownEditorTextView {
                     || previousConfiguration?.font != configuration.font
                     || previousConfiguration?.resolvedTheme != configuration.resolvedTheme
                     || previousConfiguration?.syntaxMode != configuration.syntaxMode
+                    || previousConfiguration?.largerHeadingText != configuration.largerHeadingText
             }
 
             return textView.text != configuration.text
@@ -424,7 +437,8 @@ extension MarkdownEditorTextView {
                     syntaxMode: configuration.syntaxMode,
                     revealedRange: configuration.syntaxMode == .hiddenOutsideCurrentLine
                         ? revealedLineRange
-                        : nil
+                        : nil,
+                    largerHeadingText: configuration.largerHeadingText
                 )
             )
 
@@ -566,7 +580,8 @@ extension MarkdownEditorTextView {
                     syntaxMode: configuration.syntaxMode,
                     revealedRange: configuration.syntaxMode == .hiddenOutsideCurrentLine
                         ? NSRange(location: 0, length: localLineLength)
-                        : nil
+                        : nil,
+                    largerHeadingText: configuration.largerHeadingText
                 )
             )
 
@@ -798,6 +813,8 @@ extension MarkdownEditorTextView {
                         resolvedTheme: latestConfiguration.resolvedTheme,
                         syntaxMode: latestConfiguration.syntaxMode,
                         showLineNumbers: latestConfiguration.showLineNumbers,
+                        lineNumberOpacity: latestConfiguration.lineNumberOpacity,
+                        largerHeadingText: latestConfiguration.largerHeadingText,
                         isEditable: latestConfiguration.isEditable
                     ),
                     preserveViewport: true

@@ -25,6 +25,22 @@ class EditorChromeAwareTextView: UITextView {
             updateLineNumberVisibility()
         }
     }
+    var lineNumberOpacity = EditorAppearancePreferences.defaultLineNumberOpacity {
+        didSet {
+            let clampedValue = min(max(lineNumberOpacity, 0), 1)
+            if abs(clampedValue - lineNumberOpacity) > 0.001 {
+                lineNumberOpacity = clampedValue
+                return
+            }
+
+            guard abs(oldValue - lineNumberOpacity) > 0.001 else {
+                return
+            }
+
+            lineNumberGutterView.invalidateDrawingAttributes()
+            lineNumberGutterView.updateGutter()
+        }
+    }
 
     private var cachedLineMetrics = TextLineMetrics(text: "")
     private var needsLineMetricsRefresh = true
@@ -80,10 +96,12 @@ class EditorChromeAwareTextView: UITextView {
 
     func applyLineNumberConfiguration(
         showLineNumbers: Bool,
+        lineNumberOpacity: Double = EditorAppearancePreferences.defaultLineNumberOpacity,
         resolvedTheme: ResolvedEditorTheme,
         font: UIFont
     ) {
         self.resolvedTheme = resolvedTheme
+        self.lineNumberOpacity = lineNumberOpacity
         lineNumberFontSize = font.pointSize
         self.showLineNumbers = showLineNumbers
 
@@ -122,40 +140,8 @@ class EditorChromeAwareTextView: UITextView {
         lineNumberGutterView.setNeedsDisplay()
     }
 
-    func shouldHideLineNumber(for lineRange: NSRange) -> Bool {
-        guard textStorage.length > 0, lineRange.location < textStorage.length else {
-            return false
-        }
-
-        let contentRange = lineContentRange(from: lineRange)
-        guard contentRange.length > 0 else {
-            return false
-        }
-
-        var hasHiddenSyntax = false
-        textStorage.enumerateAttribute(.markdownHiddenSyntax, in: contentRange) { value, _, stop in
-            guard value != nil else {
-                return
-            }
-
-            hasHiddenSyntax = true
-            stop.pointee = true
-        }
-        guard hasHiddenSyntax else {
-            return false
-        }
-
-        var entireLineSuppressesNumber = true
-        textStorage.enumerateAttribute(.markdownLineNumberHiddenWhenSyntaxHidden, in: contentRange) { value, _, stop in
-            guard value == nil else {
-                return
-            }
-
-            entireLineSuppressesNumber = false
-            stop.pointee = true
-        }
-
-        return entireLineSuppressesNumber
+    func shouldHideLineNumber(for _: NSRange) -> Bool {
+        false
     }
 
     private func updateLineNumberVisibility() {
@@ -181,30 +167,4 @@ class EditorChromeAwareTextView: UITextView {
         notePlainTextMutation()
     }
 
-    private func lineContentRange(from lineRange: NSRange) -> NSRange {
-        let length = textStorage.length
-        var location = min(max(lineRange.location, 0), length)
-        var end = min(max(NSMaxRange(lineRange), location), length)
-        let nsText = textStorage.string as NSString
-
-        while location < end {
-            let scalar = nsText.character(at: location)
-            guard scalar == 0x0A || scalar == 0x0D else {
-                break
-            }
-
-            location += 1
-        }
-
-        while end > location {
-            let scalar = nsText.character(at: end - 1)
-            guard scalar == 0x0A || scalar == 0x0D else {
-                break
-            }
-
-            end -= 1
-        }
-
-        return NSRange(location: location, length: end - location)
-    }
 }

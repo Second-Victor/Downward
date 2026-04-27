@@ -103,9 +103,41 @@ final class SettingsScreenModelTests: XCTestCase {
         XCTAssertTrue(store.effectiveShowLineNumbers)
     }
 
+    @MainActor
+    func testLineNumberOpacitySettingUpdatesStore() {
+        let store = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 16,
+                showLineNumbers: true
+            )
+        )
+
+        store.setLineNumberOpacity(0.55)
+
+        XCTAssertEqual(store.lineNumberOpacity, 0.55)
+    }
+
+    @MainActor
+    func testLargerHeadingTextSettingUpdatesStoreAndDisablesLineNumbers() {
+        let store = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 16,
+                showLineNumbers: true
+            )
+        )
+
+        store.setLargerHeadingText(true)
+
+        XCTAssertTrue(store.largerHeadingText)
+        XCTAssertTrue(store.effectiveLargerHeadingText)
+        XCTAssertFalse(store.showLineNumbers)
+        XCTAssertFalse(store.effectiveShowLineNumbers)
+    }
+
     func testPlaceholderSettingsAreNotMarkedImplemented() {
         let placeholders: [SettingsPlaceholderFeature] = [
-            .largerHeadingText,
             .tapToToggleTasks,
             .tipsPurchases,
             .rateTheApp,
@@ -114,5 +146,6 @@ final class SettingsScreenModelTests: XCTestCase {
 
         XCTAssertTrue(placeholders.allSatisfy { $0.isImplemented == false })
         XCTAssertTrue(SettingsPlaceholderFeature.lineNumbers.isImplemented)
+        XCTAssertTrue(SettingsPlaceholderFeature.largerHeadingText.isImplemented)
     }
 }

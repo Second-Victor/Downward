@@ -72,6 +72,18 @@ final class EditorAppearanceStore {
         effectivePreferences.showLineNumbers
     }
 
+    var lineNumberOpacity: Double {
+        effectivePreferences.lineNumberOpacity
+    }
+
+    var largerHeadingText: Bool {
+        preferences.largerHeadingText
+    }
+
+    var effectiveLargerHeadingText: Bool {
+        effectivePreferences.largerHeadingText
+    }
+
     var colorFormattedText: Bool {
         effectivePreferences.colorFormattedText
     }
@@ -133,12 +145,34 @@ final class EditorAppearanceStore {
     }
 
     func setShowLineNumbers(_ isEnabled: Bool) {
-        let normalizedValue = selectedFontChoice.isMonospaced && isEnabled
+        let normalizedValue = selectedFontChoice.isMonospaced && effectiveLargerHeadingText == false && isEnabled
         guard preferences.showLineNumbers != normalizedValue else {
             return
         }
 
         preferences.showLineNumbers = normalizedValue
+        persist()
+    }
+
+    func setLineNumberOpacity(_ opacity: Double) {
+        let clampedOpacity = Self.clampLineNumberOpacity(opacity)
+        guard abs(preferences.lineNumberOpacity - clampedOpacity) > 0.001 else {
+            return
+        }
+
+        preferences.lineNumberOpacity = clampedOpacity
+        persist()
+    }
+
+    func setLargerHeadingText(_ isEnabled: Bool) {
+        guard preferences.largerHeadingText != isEnabled || (isEnabled && preferences.showLineNumbers) else {
+            return
+        }
+
+        preferences.largerHeadingText = isEnabled
+        if isEnabled {
+            preferences.showLineNumbers = false
+        }
         persist()
     }
 
@@ -209,8 +243,11 @@ final class EditorAppearanceStore {
             fontSize: clampFontSize(preferences.fontSize),
             markdownSyntaxMode: preferences.markdownSyntaxMode,
             showLineNumbers: resolver.normalizedChoice(preferences.fontChoice).isMonospaced
+                && preferences.largerHeadingText == false
                 ? preferences.showLineNumbers
                 : false,
+            lineNumberOpacity: clampLineNumberOpacity(preferences.lineNumberOpacity),
+            largerHeadingText: preferences.largerHeadingText,
             colorFormattedText: preferences.colorFormattedText,
             selectedThemeID: preferences.selectedThemeID,
             matchSystemChromeToTheme: preferences.matchSystemChromeToTheme
@@ -219,5 +256,13 @@ final class EditorAppearanceStore {
 
     private static func clampFontSize(_ size: Double) -> Double {
         min(max(size.rounded(), 12), 24)
+    }
+
+    private static func clampLineNumberOpacity(_ opacity: Double) -> Double {
+        guard opacity.isFinite else {
+            return EditorAppearancePreferences.defaultLineNumberOpacity
+        }
+
+        return min(max((opacity * 100).rounded() / 100, 0), 1)
     }
 }

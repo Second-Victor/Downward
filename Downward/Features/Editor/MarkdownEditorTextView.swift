@@ -10,6 +10,8 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     let resolvedTheme: ResolvedEditorTheme
     let syntaxMode: MarkdownSyntaxMode
     let showLineNumbers: Bool
+    let lineNumberOpacity: Double
+    let largerHeadingText: Bool
     let isEditable: Bool
     let undoCommandToken: Int
     let redoCommandToken: Int
@@ -70,6 +72,8 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 resolvedTheme: resolvedTheme,
                 syntaxMode: syntaxMode,
                 showLineNumbers: showLineNumbers,
+                lineNumberOpacity: lineNumberOpacity,
+                largerHeadingText: largerHeadingText,
                 isEditable: isEditable
             ),
             undoCommandToken: undoCommandToken,
@@ -106,6 +110,8 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 resolvedTheme: resolvedTheme,
                 syntaxMode: syntaxMode,
                 showLineNumbers: showLineNumbers,
+                lineNumberOpacity: lineNumberOpacity,
+                largerHeadingText: largerHeadingText,
                 isEditable: isEditable
             ),
             undoCommandToken: undoCommandToken,
@@ -125,6 +131,8 @@ extension MarkdownEditorTextView {
         let resolvedTheme: ResolvedEditorTheme
         let syntaxMode: MarkdownSyntaxMode
         let showLineNumbers: Bool
+        let lineNumberOpacity: Double
+        let largerHeadingText: Bool
         let isEditable: Bool
 
         init(
@@ -134,6 +142,8 @@ extension MarkdownEditorTextView {
             resolvedTheme: ResolvedEditorTheme = .default,
             syntaxMode: MarkdownSyntaxMode,
             showLineNumbers: Bool = false,
+            lineNumberOpacity: Double = EditorAppearancePreferences.defaultLineNumberOpacity,
+            largerHeadingText: Bool = false,
             isEditable: Bool
         ) {
             self.text = text
@@ -142,6 +152,8 @@ extension MarkdownEditorTextView {
             self.resolvedTheme = resolvedTheme
             self.syntaxMode = syntaxMode
             self.showLineNumbers = showLineNumbers
+            self.lineNumberOpacity = lineNumberOpacity
+            self.largerHeadingText = largerHeadingText
             self.isEditable = isEditable
         }
     }

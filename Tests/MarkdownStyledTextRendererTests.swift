@@ -437,7 +437,8 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
                 text: text,
                 baseFont: baseFont,
                 syntaxMode: .hiddenOutsideCurrentLine,
-                revealedRange: nil
+                revealedRange: nil,
+                largerHeadingText: true
             )
         )
 
@@ -449,6 +450,26 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
 
         XCTAssertEqual(markerIsHidden, true)
         XCTAssertGreaterThan(titleFont?.pointSize ?? 0, baseFont.pointSize)
+        XCTAssertTrue(titleFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
+    }
+
+    @MainActor
+    func testHeadingContentKeepsBaseSizeWhenLargerHeadingTextIsDisabled() {
+        let text = "# Title"
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .hiddenOutsideCurrentLine,
+                revealedRange: nil
+            )
+        )
+
+        let nsString = rendered.string as NSString
+        let titleRange = nsString.range(of: "Title")
+        let titleFont = rendered.attribute(.font, at: titleRange.location, effectiveRange: nil) as? UIFont
+
+        XCTAssertEqual(titleFont?.pointSize, baseFont.pointSize)
         XCTAssertTrue(titleFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
     }
 
@@ -522,7 +543,8 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
                 text: text,
                 baseFont: baseFont,
                 syntaxMode: .hiddenOutsideCurrentLine,
-                revealedRange: nil
+                revealedRange: nil,
+                largerHeadingText: true
             )
         )
 
@@ -841,7 +863,7 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
     }
 
     @MainActor
-    func testStructuralSyntaxLinesMarkLineNumbersHiddenWhenSyntaxIsHidden() {
+    func testStructuralSyntaxLinesDoNotHideLineNumbersWhenSyntaxIsHidden() {
         let text = """
         Heading
         =======
@@ -862,11 +884,11 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         )
         let nsText = rendered.string as NSString
 
-        XCTAssertEqual(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "=======")), true)
-        XCTAssertEqual(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "```swift")), true)
-        XCTAssertEqual(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "```\n\n---")), true)
+        XCTAssertNil(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "=======")))
+        XCTAssertNil(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "```swift")))
+        XCTAssertNil(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "```\n\n---")))
         XCTAssertNil(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "let x = 1")))
-        XCTAssertEqual(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "---")), true)
+        XCTAssertNil(lineNumberHiddenAttribute(in: rendered, at: nsText.range(of: "---")))
     }
 
     private func makeLargeMarkdownDocument(lineCount: Int) -> String {

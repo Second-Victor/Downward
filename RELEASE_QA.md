@@ -7,6 +7,41 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 ## Latest QA run
 
 - Date: 2026-04-27
+- Branch/commit at start of run: `main` / working tree after `dca6d73`
+- Xcode: Xcode 26.4 (17E192)
+- Host environment: macOS 26.4.1 reported by XCTest result bundle
+- Simulator/device:
+  - iPhone 17, iOS 26.4 Simulator (`20F3A4FD-4F55-4C03-8202-AFB6445903CD`, OS build `23E244`)
+- Commands run:
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-LargerHeadings -resultBundlePath /tmp/Downward-LargerHeadings-3.xcresult -only-testing:DownwardTests/EditorAppearanceStoreTests -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/MarkdownStyledTextRendererTests -only-testing:DownwardTests/MarkdownSyntaxStyleApplicatorTests -only-testing:DownwardTests/EditorUndoRedoTests -only-testing:DownwardTests/MarkdownEditorTextViewSizingTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-LargerHeadings-3.xcresult --format json`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-LineNumberOverlap -resultBundlePath /tmp/Downward-LineNumberOverlap-5.xcresult -only-testing:DownwardTests/LineNumberGutterViewTests -only-testing:DownwardTests/EditorUndoRedoTests -only-testing:DownwardTests/MarkdownStyledTextRendererTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-LineNumberOverlap-5.xcresult --format json`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-LineNumberScroll -resultBundlePath /tmp/Downward-LineNumberScroll.xcresult -only-testing:DownwardTests/LineNumberGutterViewTests -only-testing:DownwardTests/EditorUndoRedoTests -only-testing:DownwardTests/MarkdownStyledTextRendererTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-LineNumberScroll.xcresult --format json`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-LineNumberGutterFix -resultBundlePath /tmp/Downward-LineNumberGutterFix.xcresult -only-testing:DownwardTests/LineNumberGutterViewTests -only-testing:DownwardTests/TextLineMetricsTests -only-testing:DownwardTests/MarkdownEditorTextViewSizingTests -only-testing:DownwardTests/EditorUndoRedoTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-LineNumberGutterFix.xcresult --format json`
+  - `git diff --check`
+- Result:
+  - Targeted larger-heading/editor/settings/renderer tests passed on iPhone 17 simulator: 91 passed, 0 skipped, 0 failed. One existing renderer performance test collected metrics.
+  - Covered default larger-heading preference false, old preference decoding, persistence, renderer heading-size gating, setext/ATX heading scaling when enabled, line-number disabling when larger headings are enabled, Settings placeholder status, and editor bridge rerendering when the setting changes.
+  - Targeted line-number overlap regression tests passed on iPhone 17 simulator: 64 passed, 0 skipped, 0 failed. One existing renderer performance test collected metrics.
+  - Covered hidden markdown formatting with blank lines before headings so adjacent line numbers do not draw on the same y-position.
+  - Targeted line-number scroll regression tests passed on iPhone 17 simulator: 65 passed, 0 skipped, 0 failed. One existing renderer performance test collected metrics.
+  - Follow-up targeted gutter/metrics/editor bridge regression tests passed on iPhone 17 simulator: 43 passed, 0 skipped, 0 failed.
+  - Covered keeping the gutter in text-view content coordinates while invalidating and drawing only the scrolled visible content slice.
+  - `git diff --check` passed.
+  - Full suite and app-hosted smoke/restore/mutation tests were not run in this pass.
+- Notes/failures:
+  - An earlier targeted run failed because one existing setext heading test still expected larger heading text without enabling the new preference. The final targeted run passed after updating that expectation.
+  - The first overlap regression run reproduced the screenshot issue by placing line numbers for a blank line and the following hidden-syntax heading line at the same vertical position. The final targeted run passed after the gutter started anchoring to the first non-hidden character in each logical line.
+  - The scroll regression shown in the provided screen recording was fixed by updating the gutter display when `UITextView.contentOffset` changes without moving the gutter frame out of content coordinates.
+  - `xcodebuild test` emitted `IDERunDestination: Supported platforms for the buildables in the current scheme is empty.`, but the final targeted run completed successfully.
+  - No manual real-device, Files-provider, keyboard-interaction, line-number, or larger-heading visual QA was performed in this pass.
+
+## Previous QA runs
+
+- Date: 2026-04-27
 - Branch/commit at start of run: `main` / working tree after `b35bdb3`
 - Xcode: Xcode 26.4 (17E192)
 - Host environment: macOS 26.4.1 reported by prior XCTest result bundles
@@ -30,8 +65,6 @@ This file is the release/runtime QA checklist for Downward. It records command-l
   - Earlier iterations in this pass failed while adapting the pure line-metrics type to the project default actor isolation, while ensuring cached gutter width reapplied the text inset when toggled on, and while avoiding eager `UITextView.font` resets before viewport preservation. The final targeted run passed.
   - `xcodebuild test` emitted `IDERunDestination: Supported platforms for the buildables in the current scheme is empty.`, but the final targeted run completed successfully.
   - No manual real-device, Files-provider, keyboard-interaction, or visual line-number QA was performed in this pass.
-
-## Previous QA runs
 
 - Date: 2026-04-27
 - Branch/commit at start of run: `main` / `23496b7`
@@ -410,6 +443,5 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 - [ ] StoreKit tips are still placeholder-backed.
 - [ ] App Store review/rating routing is still placeholder-backed.
 - [ ] Legal/privacy URLs are still placeholder-backed.
-- [ ] Larger heading text remains future work.
 - [ ] Richer markdown constructs such as tables and footnotes remain future work.
 - [ ] Deeper theme marketplace/sharing behavior remains future work.

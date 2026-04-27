@@ -24,6 +24,8 @@ final class EditorAppearanceStoreTests: XCTestCase {
         store.setFontSize(19)
         store.setMarkdownSyntaxMode(.hiddenOutsideCurrentLine)
         store.setShowLineNumbers(true)
+        store.setLineNumberOpacity(0.42)
+        store.setLargerHeadingText(true)
         store.setColorFormattedText(false)
         store.setSelectedThemeID(EditorTheme.greyAdaptive.id)
         store.setMatchSystemChromeToTheme(false)
@@ -40,7 +42,9 @@ final class EditorAppearanceStoreTests: XCTestCase {
                 fontChoice: .menlo,
                 fontSize: 19,
                 markdownSyntaxMode: .hiddenOutsideCurrentLine,
-                showLineNumbers: true,
+                showLineNumbers: false,
+                lineNumberOpacity: 0.42,
+                largerHeadingText: true,
                 colorFormattedText: false,
                 selectedThemeID: EditorTheme.greyAdaptive.id,
                 matchSystemChromeToTheme: false
@@ -54,6 +58,9 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         XCTAssertFalse(store.showLineNumbers)
         XCTAssertFalse(store.effectiveShowLineNumbers)
+        XCTAssertEqual(store.lineNumberOpacity, EditorAppearancePreferences.defaultLineNumberOpacity)
+        XCTAssertFalse(store.largerHeadingText)
+        XCTAssertFalse(store.effectiveLargerHeadingText)
     }
 
     @MainActor
@@ -78,6 +85,81 @@ final class EditorAppearanceStoreTests: XCTestCase {
         )
         XCTAssertTrue(reloadedStore.showLineNumbers)
         XCTAssertTrue(reloadedStore.effectiveShowLineNumbers)
+    }
+
+    @MainActor
+    func testLineNumberOpacityPersistsAndClamps() throws {
+        let suiteName = "EditorAppearanceStoreTests.\(UUID().uuidString)"
+        let userDefaults = try makeIsolatedUserDefaults(suiteName: suiteName)
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        let store = EditorAppearanceStore(
+            userDefaults: userDefaults,
+            preferencesKey: "test.editor.appearance",
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 16
+            )
+        )
+
+        store.setLineNumberOpacity(1.25)
+        XCTAssertEqual(store.lineNumberOpacity, 1)
+
+        store.setLineNumberOpacity(0.336)
+        XCTAssertEqual(store.lineNumberOpacity, 0.34)
+
+        let reloadedStore = EditorAppearanceStore(
+            userDefaults: userDefaults,
+            preferencesKey: "test.editor.appearance"
+        )
+        XCTAssertEqual(reloadedStore.lineNumberOpacity, 0.34)
+    }
+
+    @MainActor
+    func testLargerHeadingTextPersistsAndDisablesLineNumbers() throws {
+        let suiteName = "EditorAppearanceStoreTests.\(UUID().uuidString)"
+        let userDefaults = try makeIsolatedUserDefaults(suiteName: suiteName)
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        let store = EditorAppearanceStore(
+            userDefaults: userDefaults,
+            preferencesKey: "test.editor.appearance",
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 16,
+                showLineNumbers: true
+            )
+        )
+
+        store.setLargerHeadingText(true)
+
+        XCTAssertTrue(store.largerHeadingText)
+        XCTAssertTrue(store.effectiveLargerHeadingText)
+        XCTAssertFalse(store.showLineNumbers)
+        XCTAssertFalse(store.effectiveShowLineNumbers)
+
+        let reloadedStore = EditorAppearanceStore(
+            userDefaults: userDefaults,
+            preferencesKey: "test.editor.appearance"
+        )
+        XCTAssertTrue(reloadedStore.largerHeadingText)
+        XCTAssertFalse(reloadedStore.showLineNumbers)
+        XCTAssertFalse(reloadedStore.effectiveShowLineNumbers)
+    }
+
+    @MainActor
+    func testLineNumbersCannotBeEnabledWhileLargerHeadingTextIsEnabled() {
+        let store = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 16,
+                largerHeadingText: true
+            )
+        )
+
+        store.setShowLineNumbers(true)
+
+        XCTAssertTrue(store.largerHeadingText)
+        XCTAssertFalse(store.showLineNumbers)
+        XCTAssertFalse(store.effectiveShowLineNumbers)
     }
 
     @MainActor
@@ -144,6 +226,29 @@ final class EditorAppearanceStoreTests: XCTestCase {
         )
 
         XCTAssertFalse(preferences.showLineNumbers)
+        XCTAssertEqual(preferences.lineNumberOpacity, EditorAppearancePreferences.defaultLineNumberOpacity)
+    }
+
+    @MainActor
+    func testDecodingOldPreferencesWithoutLargerHeadingTextDefaultsToFalse() throws {
+        let json = """
+        {
+          "fontChoice": "systemMonospaced",
+          "fontSize": 16,
+          "markdownSyntaxMode": "visible",
+          "showLineNumbers": false,
+          "colorFormattedText": true,
+          "selectedThemeID": "adaptive",
+          "matchSystemChromeToTheme": true
+        }
+        """
+
+        let preferences = try JSONDecoder().decode(
+            EditorAppearancePreferences.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertFalse(preferences.largerHeadingText)
     }
 
     @MainActor

@@ -67,6 +67,8 @@ struct EditorScreen: View {
                     resolvedTheme: resolvedTheme,
                     syntaxMode: viewModel.markdownSyntaxMode,
                     showLineNumbers: viewModel.effectiveShowLineNumbers,
+                    lineNumberOpacity: viewModel.lineNumberOpacity,
+                    largerHeadingText: viewModel.effectiveLargerHeadingText,
                     isEditable: viewModel.isResolvingConflict == false
                         && viewModel.isShowingConflictResolution == false,
                     undoCommandToken: viewModel.undoCommandToken,

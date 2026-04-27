@@ -131,6 +131,38 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorRerendersWhenLargerHeadingTextChanges() {
+        let textBox = MutableBox("# Title")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let initialConfiguration = makeConfiguration(text: textBox.value, largerHeadingText: false)
+
+        coordinator.apply(
+            configuration: initialConfiguration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value, largerHeadingText: true),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: false
+        )
+
+        let nsString = textView.textStorage.string as NSString
+        let titleRange = nsString.range(of: "Title")
+        let titleFont = textView.textStorage.attribute(.font, at: titleRange.location, effectiveRange: nil) as? UIFont
+
+        XCTAssertGreaterThan(titleFont?.pointSize ?? 0, UIFont.preferredFont(forTextStyle: .body).pointSize)
+    }
+
+    @MainActor
     func testKeyboardOverlapUpdatesBottomInsetsLikePrototype() {
         let textBox = MutableBox("Draft")
         let coordinator = makeCoordinator(text: textBox)
@@ -1080,8 +1112,21 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     private func makeConfiguration(
         text: String,
+        largerHeadingText: Bool
+    ) -> MarkdownEditorTextView.Configuration {
+        makeConfiguration(
+            text: text,
+            documentIdentity: PreviewSampleData.cleanDocument.url,
+            largerHeadingText: largerHeadingText
+        )
+    }
+
+    @MainActor
+    private func makeConfiguration(
+        text: String,
         documentIdentity: URL,
-        showLineNumbers: Bool = false
+        showLineNumbers: Bool = false,
+        largerHeadingText: Bool = false
     ) -> MarkdownEditorTextView.Configuration {
         MarkdownEditorTextView.Configuration(
             text: text,
@@ -1089,6 +1134,7 @@ final class EditorUndoRedoTests: XCTestCase {
             font: .preferredFont(forTextStyle: .body),
             syntaxMode: .visible,
             showLineNumbers: showLineNumbers,
+            largerHeadingText: largerHeadingText,
             isEditable: true
         )
     }

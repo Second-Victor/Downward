@@ -30,9 +30,9 @@ enum SettingsPlaceholderFeature: Equatable {
 
     nonisolated var isImplemented: Bool {
         switch self {
-        case .lineNumbers:
+        case .lineNumbers, .largerHeadingText:
             true
-        case .largerHeadingText, .tapToToggleTasks, .tipsPurchases, .rateTheApp, .legalLinks:
+        case .tapToToggleTasks, .tipsPurchases, .rateTheApp, .legalLinks:
             false
         }
     }

@@ -25,13 +25,13 @@ final class LineNumberGutterViewTests: XCTestCase {
         let hundredLines = (1...100).map { "Line \($0)" }.joined(separator: "\n")
 
         let textView = makeTextView(text: nineLines)
-        let oneDigitWidth = textView.lineNumberGutter?.gutterWidth ?? 0
+        let twoDigitWidth = textView.lineNumberGutter?.gutterWidth ?? 0
 
         textView.text = hundredLines
         textView.notePlainTextMutation()
         textView.layoutIfNeeded()
 
-        XCTAssertGreaterThan(textView.lineNumberGutter?.gutterWidth ?? 0, oneDigitWidth)
+        XCTAssertGreaterThan(textView.lineNumberGutter?.gutterWidth ?? 0, twoDigitWidth)
     }
 
     @MainActor
@@ -42,6 +42,22 @@ final class LineNumberGutterViewTests: XCTestCase {
         XCTAssertGreaterThan(textView.lineNumberGutter?.gutterWidth ?? 0, 0)
 #if DEBUG
         XCTAssertEqual(textView.lineNumberGutter?.lastDrawnLineNumbers, [1])
+        XCTAssertEqual(textView.lineNumberGutter?.lastDrawnLineNumberLabels, ["01"])
+#endif
+    }
+
+    @MainActor
+    func testSingleDigitLineNumbersAreZeroPadded() {
+        let text = (1...10).map { "Line \($0)" }.joined(separator: "\n")
+        let textView = makeTextView(text: text)
+
+        drawGutter(in: textView)
+
+#if DEBUG
+        XCTAssertEqual(
+            Array(textView.lineNumberGutter?.lastDrawnLineNumberLabels.prefix(10) ?? []),
+            ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
+        )
 #endif
     }
 
@@ -62,6 +78,108 @@ final class LineNumberGutterViewTests: XCTestCase {
     }
 
     @MainActor
+    func testGutterDrawsWithConfiguredOpacity() {
+        let textView = makeTextView(text: "One\nTwo")
+        textView.applyLineNumberConfiguration(
+            showLineNumbers: true,
+            lineNumberOpacity: 0.4,
+            resolvedTheme: .default,
+            font: textView.font ?? .systemFont(ofSize: 16)
+        )
+
+        drawGutter(in: textView)
+
+#if DEBUG
+        XCTAssertEqual(textView.lineNumberGutter?.lastDrawingLineNumberOpacity ?? -1, 0.4, accuracy: 0.001)
+#endif
+    }
+
+    @MainActor
+    func testGutterHighlightsCurrentCursorLineNumber() {
+        let textView = makeTextView(text: "One\nTwo\nThree")
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        window.addSubview(textView)
+        window.makeKeyAndVisible()
+        defer {
+            textView.resignFirstResponder()
+            window.isHidden = true
+        }
+
+        textView.selectedRange = NSRange(location: 4, length: 0)
+        XCTAssertTrue(textView.becomeFirstResponder())
+
+        drawGutter(in: textView)
+
+#if DEBUG
+        XCTAssertEqual(textView.lineNumberGutter?.lastHighlightedLineNumbers, [2])
+        XCTAssertNotNil(textView.lineNumberGutter?.lastHighlightedLineNumberRects[2])
+#endif
+    }
+
+    @MainActor
+    func testGutterCurrentLineHighlightUsesThemeTextBackgroundAndOpacity() throws {
+        let textView = makeTextView(text: "One\nTwo\nThree")
+        let theme = ResolvedEditorTheme.default.withCoreEditorColors(
+            background: .white,
+            primaryText: .black,
+            tertiaryText: .purple
+        )
+        textView.applyLineNumberConfiguration(
+            showLineNumbers: true,
+            lineNumberOpacity: 0.5,
+            resolvedTheme: theme,
+            font: textView.font ?? .systemFont(ofSize: 16)
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        window.addSubview(textView)
+        window.makeKeyAndVisible()
+        defer {
+            textView.resignFirstResponder()
+            window.isHidden = true
+        }
+
+        textView.selectedRange = NSRange(location: 4, length: 0)
+        XCTAssertTrue(textView.becomeFirstResponder())
+
+        drawGutter(in: textView)
+
+#if DEBUG
+        let highlightColor = try XCTUnwrap(textView.lineNumberGutter?.lastHighlightColor)
+            .resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        XCTAssertTrue(highlightColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+        XCTAssertEqual(red, 0.5, accuracy: 0.01)
+        XCTAssertEqual(green, 0, accuracy: 0.01)
+        XCTAssertEqual(blue, 0.5, accuracy: 0.01)
+        XCTAssertEqual(alpha, 0.15, accuracy: 0.01)
+#endif
+    }
+
+    @MainActor
+    func testGutterDoesNotHighlightLineNumberForTextSelection() {
+        let textView = makeTextView(text: "One\nTwo\nThree")
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        window.addSubview(textView)
+        window.makeKeyAndVisible()
+        defer {
+            textView.resignFirstResponder()
+            window.isHidden = true
+        }
+
+        textView.selectedRange = NSRange(location: 4, length: 3)
+        XCTAssertTrue(textView.becomeFirstResponder())
+
+        drawGutter(in: textView)
+
+#if DEBUG
+        XCTAssertEqual(textView.lineNumberGutter?.lastHighlightedLineNumbers, [])
+#endif
+    }
+
+    @MainActor
     func testVisibleLineDrawingDoesNotWalkEntireLargeDocument() {
         let text = (1...1_000).map { "Line \($0)" }.joined(separator: "\n")
         let textView = makeTextView(text: text)
@@ -77,7 +195,109 @@ final class LineNumberGutterViewTests: XCTestCase {
     }
 
     @MainActor
-    func testHiddenSyntaxSuppressesFenceDelimiterLineNumbersOnlyWhenHidden() {
+    func testGutterUsesContentCoordinatesWhenTextViewScrolls() {
+        let text = (1...120).map { "Line \($0)" }.joined(separator: "\n")
+        let textView = makeTextView(text: text)
+        textView.layoutManager.ensureLayout(for: textView.textContainer)
+
+        textView.contentOffset = CGPoint(x: 0, y: 900)
+        drawGutter(in: textView)
+
+        XCTAssertEqual(textView.lineNumberGutter?.frame.origin.y, 0)
+        XCTAssertGreaterThanOrEqual(
+            textView.lineNumberGutter?.bounds.height ?? 0,
+            max(textView.contentSize.height, textView.bounds.height) - 0.5
+        )
+#if DEBUG
+        let visibleRect = CGRect(
+            x: 0,
+            y: textView.contentOffset.y,
+            width: textView.lineNumberGutter?.bounds.width ?? 0,
+            height: textView.bounds.height
+        )
+        XCTAssertNotEqual(textView.lineNumberGutter?.lastDrawnLineNumbers.first, 1)
+        XCTAssertTrue(
+            textView.lineNumberGutter?.lastDrawnLineNumberRects.values.allSatisfy { rect in
+                rect.maxY >= visibleRect.minY && rect.minY <= visibleRect.maxY
+            } ?? false
+        )
+#endif
+    }
+
+    @MainActor
+    func testBlankLineBeforeHiddenMarkdownSyntaxKeepsDistinctPosition() throws {
+        let text = denstoneFixture
+        let textView = makeHiddenSyntaxTextView(text: text, revealedText: "Main Doors")
+
+        drawGutter(in: textView)
+
+#if DEBUG
+        let blankLineRect = try XCTUnwrap(textView.lineNumberGutter?.lastDrawnLineNumberRects[5])
+        let headingLineRect = try XCTUnwrap(textView.lineNumberGutter?.lastDrawnLineNumberRects[6])
+        let drawnLineNumbers = textView.lineNumberGutter?.lastDrawnLineNumbers ?? []
+        XCTAssertTrue(drawnLineNumbers.contains(5))
+        XCTAssertTrue(drawnLineNumbers.contains(6))
+        XCTAssertNotEqual(blankLineRect.minY, headingLineRect.minY, accuracy: 0.5)
+        XCTAssertGreaterThan(headingLineRect.minY, blankLineRect.minY + blankLineRect.height * 0.5)
+#endif
+    }
+
+    @MainActor
+    func testNoVisibleLineNumbersShareTheSameYPosition() throws {
+        let textView = makeHiddenSyntaxTextView(text: denstoneFixture, revealedText: "Main Doors")
+
+        drawGutter(in: textView)
+
+#if DEBUG
+        let rects = textView.lineNumberGutter?.lastDrawnLineNumberRects ?? [:]
+        let sortedRects = rects.sorted { $0.key < $1.key }
+        for index in sortedRects.indices.dropFirst() {
+            let previous = sortedRects[sortedRects.index(before: index)]
+            let current = sortedRects[index]
+            XCTAssertNotEqual(
+                previous.value.minY,
+                current.value.minY,
+                accuracy: 0.5,
+                "Lines \(previous.key) and \(current.key) share a y position"
+            )
+            XCTAssertGreaterThanOrEqual(
+                current.value.minY,
+                previous.value.minY,
+                "Line \(current.key) moved above line \(previous.key)"
+            )
+        }
+#endif
+    }
+
+    @MainActor
+    func testLineNumberContentPositionsDoNotChangeWhenScrolled() throws {
+        let textView = makeHiddenSyntaxTextView(text: denstoneFixture, revealedText: "Main Doors")
+
+        textView.contentOffset = .zero
+        drawGutter(in: textView)
+
+#if DEBUG
+        let rectsBeforeScroll = textView.lineNumberGutter?.lastDrawnLineNumberRects ?? [:]
+#endif
+
+        textView.contentOffset = CGPoint(x: 0, y: 72)
+        drawGutter(in: textView)
+
+#if DEBUG
+        let rectsAfterScroll = textView.lineNumberGutter?.lastDrawnLineNumberRects ?? [:]
+        let commonLineNumbers = Set(rectsBeforeScroll.keys).intersection(rectsAfterScroll.keys)
+        XCTAssertFalse(commonLineNumbers.isEmpty)
+
+        for lineNumber in commonLineNumbers {
+            let before = try XCTUnwrap(rectsBeforeScroll[lineNumber])
+            let after = try XCTUnwrap(rectsAfterScroll[lineNumber])
+            XCTAssertEqual(after.minY, before.minY, accuracy: 0.5, "Line \(lineNumber) drifted while scrolling")
+        }
+#endif
+    }
+
+    @MainActor
+    func testHiddenSyntaxDoesNotSuppressFenceDelimiterLineNumbers() {
         let text = "Before\n```swift\nlet x = 1\n```\nAfter"
         let renderer = MarkdownStyledTextRenderer()
         let offLineRendered = renderer.render(
@@ -100,8 +320,8 @@ final class LineNumberGutterViewTests: XCTestCase {
         let textView = makeTextView(text: text)
         textView.attributedText = offLineRendered
 
-        XCTAssertTrue(textView.shouldHideLineNumber(for: lineRange(in: text, containing: "```swift")))
-        XCTAssertTrue(textView.shouldHideLineNumber(for: lineRange(in: text, containing: "```\nAfter")))
+        XCTAssertFalse(textView.shouldHideLineNumber(for: lineRange(in: text, containing: "```swift")))
+        XCTAssertFalse(textView.shouldHideLineNumber(for: lineRange(in: text, containing: "```\nAfter")))
         XCTAssertFalse(textView.shouldHideLineNumber(for: lineRange(in: text, containing: "let x = 1")))
 
         textView.attributedText = currentLineRendered
@@ -109,7 +329,7 @@ final class LineNumberGutterViewTests: XCTestCase {
     }
 
     @MainActor
-    func testHiddenSyntaxSuppressesSetextUnderlineLineNumber() {
+    func testHiddenSyntaxDoesNotSuppressSetextUnderlineLineNumber() {
         let text = "Heading\n=======\nBody"
         let nsText = text as NSString
         let renderer = MarkdownStyledTextRenderer()
@@ -124,8 +344,21 @@ final class LineNumberGutterViewTests: XCTestCase {
         let textView = makeTextView(text: text)
         textView.attributedText = rendered
 
-        XCTAssertTrue(textView.shouldHideLineNumber(for: lineRange(in: text, containing: "=======")))
+        XCTAssertFalse(textView.shouldHideLineNumber(for: lineRange(in: text, containing: "=======")))
         XCTAssertFalse(textView.shouldHideLineNumber(for: lineRange(in: text, containing: "Heading")))
+    }
+
+    @MainActor
+    func testHiddenSyntaxDoesNotSuppressHorizontalRuleLineNumber() throws {
+        let text = "Before\n---\nAfter"
+        let textView = makeHiddenSyntaxTextView(text: text, revealedText: "After")
+
+        drawGutter(in: textView)
+
+        XCTAssertFalse(textView.shouldHideLineNumber(for: lineRange(in: text, containing: "---")))
+#if DEBUG
+        XCTAssertNotNil(textView.lineNumberGutter?.lastDrawnLineNumberRects[2])
+#endif
     }
 
     @MainActor
@@ -163,6 +396,27 @@ final class LineNumberGutterViewTests: XCTestCase {
     }
 
     @MainActor
+    private func makeHiddenSyntaxTextView(
+        text: String,
+        revealedText: String
+    ) -> EditorChromeAwareTextView {
+        let nsText = text as NSString
+        let renderer = MarkdownStyledTextRenderer()
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: .monospacedSystemFont(ofSize: 16, weight: .regular),
+                syntaxMode: .hiddenOutsideCurrentLine,
+                revealedRange: nsText.lineRange(for: nsText.range(of: revealedText))
+            )
+        )
+        let textView = makeTextView(text: text)
+        textView.attributedText = rendered
+        textView.layoutManager.ensureLayout(for: textView.textContainer)
+        return textView
+    }
+
+    @MainActor
     private func drawGutter(in textView: EditorChromeAwareTextView) {
         guard let gutter = textView.lineNumberGutter else {
             XCTFail("Expected line number gutter")
@@ -181,13 +435,44 @@ final class LineNumberGutterViewTests: XCTestCase {
         let match = nsText.range(of: needle)
         return nsText.lineRange(for: NSRange(location: match.location, length: 0))
     }
+
+    private var denstoneFixture: String {
+        """
+        # Denstone College
+
+
+        Main Doors C6734Y
+
+        ## South Boarding
+        1st floor 1835X
+        2nd floor 1435X
+        Alarm - 1976
+        Phone - 2348
+        Safe - 1067#
+
+        ## North Boarding
+        North - 1864X
+        """
+    }
 }
 
 @MainActor
 private extension ResolvedEditorTheme {
     func withEditorBackground(_ color: UIColor) -> ResolvedEditorTheme {
+        withCoreEditorColors(
+            background: color,
+            primaryText: primaryText,
+            tertiaryText: tertiaryText
+        )
+    }
+
+    func withCoreEditorColors(
+        background: UIColor,
+        primaryText: UIColor,
+        tertiaryText: UIColor
+    ) -> ResolvedEditorTheme {
         ResolvedEditorTheme(
-            editorBackground: color,
+            editorBackground: background,
             keyboardAccessoryUnderlayBackground: keyboardAccessoryUnderlayBackground,
             accent: accent,
             primaryText: primaryText,

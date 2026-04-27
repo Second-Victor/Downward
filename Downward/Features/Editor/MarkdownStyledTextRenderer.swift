@@ -14,19 +14,22 @@ struct MarkdownStyledTextRenderer {
         let resolvedTheme: ResolvedEditorTheme
         let syntaxMode: MarkdownSyntaxMode
         let revealedRange: NSRange?
+        let largerHeadingText: Bool
 
         init(
             text: String,
             baseFont: UIFont,
             resolvedTheme: ResolvedEditorTheme = .default,
             syntaxMode: MarkdownSyntaxMode,
-            revealedRange: NSRange?
+            revealedRange: NSRange?,
+            largerHeadingText: Bool = false
         ) {
             self.text = text
             self.baseFont = baseFont
             self.resolvedTheme = resolvedTheme
             self.syntaxMode = syntaxMode
             self.revealedRange = revealedRange
+            self.largerHeadingText = largerHeadingText
         }
     }
 
@@ -43,7 +46,8 @@ struct MarkdownStyledTextRenderer {
             baseFont: configuration.baseFont,
             resolvedTheme: configuration.resolvedTheme,
             syntaxMode: configuration.syntaxMode,
-            revealedRange: configuration.revealedRange
+            revealedRange: configuration.revealedRange,
+            usesLargerHeadingText: configuration.largerHeadingText
         )
         let attributed = NSMutableAttributedString(
             string: text,

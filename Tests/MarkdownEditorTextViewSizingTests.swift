@@ -19,6 +19,8 @@ final class MarkdownEditorTextViewSizingTests: XCTestCase {
             resolvedTheme: .default,
             syntaxMode: .visible,
             showLineNumbers: false,
+            lineNumberOpacity: EditorAppearancePreferences.defaultLineNumberOpacity,
+            largerHeadingText: false,
             isEditable: true,
             undoCommandToken: 0,
             redoCommandToken: 0,

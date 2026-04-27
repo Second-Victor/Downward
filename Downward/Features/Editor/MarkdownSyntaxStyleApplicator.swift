@@ -4,16 +4,19 @@ import UIKit
 struct MarkdownSyntaxStyleApplicator {
     let baseFont: UIFont
     let resolvedTheme: ResolvedEditorTheme
+    let usesLargerHeadingText: Bool
     private let visibilityPolicy: MarkdownSyntaxVisibilityPolicy
 
     init(
         baseFont: UIFont,
         resolvedTheme: ResolvedEditorTheme,
         syntaxMode: MarkdownSyntaxMode,
-        revealedRange: NSRange?
+        revealedRange: NSRange?,
+        usesLargerHeadingText: Bool = false
     ) {
         self.baseFont = baseFont
         self.resolvedTheme = resolvedTheme
+        self.usesLargerHeadingText = usesLargerHeadingText
         visibilityPolicy = MarkdownSyntaxVisibilityPolicy(
             syntaxMode: syntaxMode,
             revealedRange: revealedRange
@@ -70,7 +73,6 @@ struct MarkdownSyntaxStyleApplicator {
             range: underlineRange
         )
         attributed.addAttribute(.markdownSetextHeadingUnderline, value: true, range: underlineRange)
-        markLineNumberHiddenWhenSyntaxHidden(forLineContaining: underlineRange, in: attributed)
         applySyntaxVisibility(underlineRange, rule: .followsMode, in: attributed)
     }
 
@@ -150,11 +152,9 @@ struct MarkdownSyntaxStyleApplicator {
         }
 
         applySyntaxVisibility(match.openingFenceRange, rule: .followsMode, in: attributed)
-        markLineNumberHiddenWhenSyntaxHidden(forLineContaining: match.openingFenceRange, in: attributed)
 
         if let closingFenceRange = match.closingFenceRange {
             applySyntaxVisibility(closingFenceRange, rule: .followsMode, in: attributed)
-            markLineNumberHiddenWhenSyntaxHidden(forLineContaining: closingFenceRange, in: attributed)
         }
     }
 
@@ -270,7 +270,6 @@ struct MarkdownSyntaxStyleApplicator {
             ],
             range: range
         )
-        markLineNumberHiddenWhenSyntaxHidden(forLineContaining: range, in: attributed)
         applySyntaxVisibility(range, rule: .followsMode, in: attributed)
     }
 
@@ -340,33 +339,6 @@ struct MarkdownSyntaxStyleApplicator {
         attributed.removeAttribute(.kern, range: range)
     }
 
-    private func markLineNumberHiddenWhenSyntaxHidden(
-        forLineContaining range: NSRange,
-        in attributed: NSMutableAttributedString
-    ) {
-        guard range.length > 0, range.location < attributed.length else {
-            return
-        }
-
-        let nsText = attributed.string as NSString
-        var lineRange = nsText.lineRange(for: NSRange(location: range.location, length: 0))
-        while lineRange.length > 0 {
-            let lastLocation = NSMaxRange(lineRange) - 1
-            let scalar = nsText.character(at: lastLocation)
-            guard scalar == 0x0A || scalar == 0x0D else {
-                break
-            }
-
-            lineRange.length -= 1
-        }
-
-        guard lineRange.length > 0 else {
-            return
-        }
-
-        attributed.addAttribute(.markdownLineNumberHiddenWhenSyntaxHidden, value: true, range: lineRange)
-    }
-
     func transformedFont(
         _ font: UIFont,
         adding traits: UIFontDescriptor.SymbolicTraits,
@@ -394,13 +366,18 @@ struct MarkdownSyntaxStyleApplicator {
     }
 
     private func headingFont(level: Int) -> UIFont {
-        let scale = max(1.0, 1.5 - CGFloat(level - 1) * 0.08)
+        let scale = usesLargerHeadingText ? max(1.0, 1.5 - CGFloat(level - 1) * 0.08) : 1.0
         return transformedFont(baseFont, adding: .traitBold, size: baseFont.pointSize * scale)
             ?? UIFont.boldSystemFont(ofSize: baseFont.pointSize * scale)
     }
 
     private func setextHeadingFont(level: Int) -> UIFont {
-        let scale: CGFloat = level == 1 ? 1.5 : 1.42
+        let scale: CGFloat
+        if usesLargerHeadingText {
+            scale = level == 1 ? 1.5 : 1.42
+        } else {
+            scale = 1.0
+        }
         return transformedFont(baseFont, adding: .traitBold, size: baseFont.pointSize * scale)
             ?? UIFont.boldSystemFont(ofSize: baseFont.pointSize * scale)
     }

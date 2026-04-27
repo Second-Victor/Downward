@@ -179,6 +179,14 @@ final class EditorViewModel {
         editorAppearanceStore.effectiveShowLineNumbers
     }
 
+    var lineNumberOpacity: Double {
+        editorAppearanceStore.lineNumberOpacity
+    }
+
+    var effectiveLargerHeadingText: Bool {
+        editorAppearanceStore.effectiveLargerHeadingText
+    }
+
     var resolvedEditorTheme: ResolvedEditorTheme {
         editorAppearanceStore.resolvedTheme(using: themeStore)
     }

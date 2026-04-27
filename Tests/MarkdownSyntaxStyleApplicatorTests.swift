@@ -31,13 +31,14 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
 
     func testHeadingApplicationUsesHeadingFontThemeAndSyntaxVisibility() {
         let text = "# Heading"
+        let applicator = hiddenApplicator(usesLargerHeadingText: true)
         let attributed = NSMutableAttributedString(
             string: text,
-            attributes: hiddenApplicator.baseAttributes
+            attributes: applicator.baseAttributes
         )
         let nsText = text as NSString
 
-        hiddenApplicator.applyATXHeading(
+        applicator.applyATXHeading(
             contentRange: nsText.range(of: "Heading"),
             markerRange: nsText.range(of: "#"),
             spacerRange: nsText.range(of: " "),
@@ -56,11 +57,35 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
         XCTAssertEqual(attributed.attribute(.markdownHiddenSyntax, at: markerRange.location, effectiveRange: nil) as? Bool, true)
     }
 
-    func testInlineCodeApplicationUsesMonospaceCodeAttributesAndHiddenDelimiters() {
-        let text = "Use `code` today."
+    func testHeadingApplicationKeepsBaseSizeWhenLargerHeadingsAreDisabled() {
+        let text = "# Heading"
         let attributed = NSMutableAttributedString(
             string: text,
-            attributes: hiddenApplicator.baseAttributes
+            attributes: hiddenApplicator().baseAttributes
+        )
+        let nsText = text as NSString
+
+        hiddenApplicator().applyATXHeading(
+            contentRange: nsText.range(of: "Heading"),
+            markerRange: nsText.range(of: "#"),
+            spacerRange: nsText.range(of: " "),
+            level: 1,
+            in: attributed
+        )
+
+        let headingRange = nsText.range(of: "Heading")
+        let headingFont = attributed.attribute(.font, at: headingRange.location, effectiveRange: nil) as? UIFont
+
+        XCTAssertEqual(headingFont?.pointSize, baseFont.pointSize)
+        XCTAssertTrue(headingFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
+    }
+
+    func testInlineCodeApplicationUsesMonospaceCodeAttributesAndHiddenDelimiters() {
+        let text = "Use `code` today."
+        let applicator = hiddenApplicator()
+        let attributed = NSMutableAttributedString(
+            string: text,
+            attributes: applicator.baseAttributes
         )
         let nsText = text as NSString
         let match = MarkdownCodeSpan(
@@ -69,7 +94,7 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
             delimiterLength: 1
         )
 
-        hiddenApplicator.applyInlineCode(match, in: attributed)
+        applicator.applyInlineCode(match, in: attributed)
 
         let codeRange = nsText.range(of: "code")
         let delimiterRange = nsText.range(of: "`")
@@ -129,25 +154,26 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
 
     func testInlineContentApplicationStylesEmphasisAndMarksOnlyProvidedSyntaxRanges() {
         let text = "**bold** plain"
+        let applicator = hiddenApplicator()
         let attributed = NSMutableAttributedString(
             string: text,
-            attributes: hiddenApplicator.baseAttributes
+            attributes: applicator.baseAttributes
         )
         let nsText = text as NSString
         let contentRange = nsText.range(of: "bold")
         let openingMarkerRange = nsText.range(of: "**")
         let closingMarkerRange = NSRange(location: NSMaxRange(contentRange), length: 2)
 
-        hiddenApplicator.applyInlineContent(
+        applicator.applyInlineContent(
             range: contentRange,
             in: attributed,
-            transform: { [hiddenApplicator] font in
-                hiddenApplicator.transformedFont(font, adding: .traitBold)
+            transform: { font in
+                applicator.transformedFont(font, adding: .traitBold)
                     ?? UIFont.boldSystemFont(ofSize: font.pointSize)
             },
             additionalAttributes: [.foregroundColor: theme.emphasisText]
         )
-        hiddenApplicator.applySyntaxMarkerRanges(
+        applicator.applySyntaxMarkerRanges(
             [openingMarkerRange, closingMarkerRange],
             in: attributed
         )
@@ -163,13 +189,14 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
 
     func testDelimitedInlineSpanApplicationOwnsInlineStyleChoices() {
         let text = "***both*** ~~gone~~"
+        let applicator = hiddenApplicator()
         let attributed = NSMutableAttributedString(
             string: text,
-            attributes: hiddenApplicator.baseAttributes
+            attributes: applicator.baseAttributes
         )
         let nsText = text as NSString
 
-        hiddenApplicator.applyDelimitedInlineSpan(
+        applicator.applyDelimitedInlineSpan(
             MarkdownDelimitedInlineSpan(
                 style: .boldItalic,
                 fullRange: nsText.range(of: "***both***"),
@@ -181,7 +208,7 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
             ),
             in: attributed
         )
-        hiddenApplicator.applyDelimitedInlineSpan(
+        applicator.applyDelimitedInlineSpan(
             MarkdownDelimitedInlineSpan(
                 style: .strikethrough,
                 fullRange: nsText.range(of: "~~gone~~"),
@@ -214,12 +241,13 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
         )
     }
 
-    private var hiddenApplicator: MarkdownSyntaxStyleApplicator {
+    private func hiddenApplicator(usesLargerHeadingText: Bool = false) -> MarkdownSyntaxStyleApplicator {
         MarkdownSyntaxStyleApplicator(
             baseFont: baseFont,
             resolvedTheme: theme,
             syntaxMode: .hiddenOutsideCurrentLine,
-            revealedRange: nil
+            revealedRange: nil,
+            usesLargerHeadingText: usesLargerHeadingText
         )
     }
 }

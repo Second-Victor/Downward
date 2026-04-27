@@ -1,10 +1,14 @@
 import Foundation
 
 struct EditorAppearancePreferences: Codable, Equatable, Sendable {
+    static let defaultLineNumberOpacity = 0.85
+
     var fontChoice: EditorFontChoice
     var fontSize: Double
     var markdownSyntaxMode: MarkdownSyntaxMode
     var showLineNumbers: Bool
+    var lineNumberOpacity: Double
+    var largerHeadingText: Bool
     var colorFormattedText: Bool
     var selectedThemeID: String
     var matchSystemChromeToTheme: Bool
@@ -14,6 +18,8 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         fontSize: Double,
         markdownSyntaxMode: MarkdownSyntaxMode = .visible,
         showLineNumbers: Bool = false,
+        lineNumberOpacity: Double = Self.defaultLineNumberOpacity,
+        largerHeadingText: Bool = false,
         colorFormattedText: Bool = true,
         selectedThemeID: String = EditorTheme.adaptive.id,
         matchSystemChromeToTheme: Bool = true
@@ -22,6 +28,8 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         self.fontSize = fontSize
         self.markdownSyntaxMode = markdownSyntaxMode
         self.showLineNumbers = showLineNumbers
+        self.lineNumberOpacity = lineNumberOpacity
+        self.largerHeadingText = largerHeadingText
         self.colorFormattedText = colorFormattedText
         self.selectedThemeID = selectedThemeID
         self.matchSystemChromeToTheme = matchSystemChromeToTheme
@@ -38,6 +46,8 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         case fontSize
         case markdownSyntaxMode
         case showLineNumbers
+        case lineNumberOpacity
+        case largerHeadingText
         case colorFormattedText
         case selectedThemeID
         case matchSystemChromeToTheme
@@ -54,6 +64,14 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         showLineNumbers = try container.decodeIfPresent(
             Bool.self,
             forKey: .showLineNumbers
+        ) ?? false
+        lineNumberOpacity = try container.decodeIfPresent(
+            Double.self,
+            forKey: .lineNumberOpacity
+        ) ?? Self.defaultLineNumberOpacity
+        largerHeadingText = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .largerHeadingText
         ) ?? false
         colorFormattedText = try container.decodeIfPresent(
             Bool.self,
@@ -75,6 +93,8 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         try container.encode(fontSize, forKey: .fontSize)
         try container.encode(markdownSyntaxMode, forKey: .markdownSyntaxMode)
         try container.encode(showLineNumbers, forKey: .showLineNumbers)
+        try container.encode(lineNumberOpacity, forKey: .lineNumberOpacity)
+        try container.encode(largerHeadingText, forKey: .largerHeadingText)
         try container.encode(colorFormattedText, forKey: .colorFormattedText)
         try container.encode(selectedThemeID, forKey: .selectedThemeID)
         try container.encode(matchSystemChromeToTheme, forKey: .matchSystemChromeToTheme)
