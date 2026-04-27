@@ -1,13 +1,6 @@
 import UIKit
 
 final class LineNumberGutterView: UIView {
-    private struct LogicalLineLayout {
-        var lineNumber: Int
-        var lineRange: NSRange
-        var drawRect: CGRect
-        var fragmentRect: CGRect
-    }
-
     private weak var textView: EditorChromeAwareTextView?
     private var cachedFont: UIFont?
     private var cachedAttributes: [NSAttributedString.Key: Any]?
@@ -177,43 +170,48 @@ final class LineNumberGutterView: UIView {
                 ? nsText.lineRange(for: NSRange(location: charIndex, length: 0))
                 : NSRange(location: fullLength, length: 0)
 
-            guard let lineLayout = logicalLineLayout(
-                lineNumber: lineNumber,
-                lineRange: lineRange,
+            guard let fragmentRect = lineFragmentRect(
+                for: lineRange,
+                forLineStartingAt: charIndex,
                 previousFragmentRect: previousFragmentRect,
                 glyphCount: glyphCount,
-                layoutManager: layoutManager,
+                layoutManager: layoutManager
+            ) else {
+                break
+            }
+
+            guard let drawRect = lineNumberDrawRect(
+                fragmentRect: fragmentRect,
                 topInset: topInset,
                 numberFontLineHeight: font.lineHeight
             ) else {
                 break
             }
-
-            previousFragmentRect = lineLayout.fragmentRect
-            if lineLayout.drawRect.minY > visibleRect.maxY {
+            if drawRect.minY > visibleRect.maxY {
                 break
             }
 
+            previousFragmentRect = fragmentRect
 #if DEBUG
             lastVisitedLogicalLineCount += 1
 #endif
 
-            if lineLayout.drawRect.maxY >= visibleRect.minY,
+            if drawRect.maxY >= visibleRect.minY,
                textView.shouldHideLineNumber(for: lineRange) == false {
                 drawSelectionHighlightIfNeeded(
-                    for: lineLayout.lineNumber,
+                    for: lineNumber,
                     lineRange: lineRange,
-                    lineFragmentRect: lineLayout.fragmentRect,
+                    lineFragmentRect: fragmentRect,
                     topInset: topInset,
                     in: context,
                     fullLength: fullLength
                 )
-                let label = Self.displayLabel(for: lineLayout.lineNumber)
-                (label as NSString).draw(in: lineLayout.drawRect, withAttributes: attributes)
+                let label = Self.displayLabel(for: lineNumber)
+                (label as NSString).draw(in: drawRect, withAttributes: attributes)
 #if DEBUG
-                lastDrawnLineNumbers.append(lineLayout.lineNumber)
+                lastDrawnLineNumbers.append(lineNumber)
                 lastDrawnLineNumberLabels.append(label)
-                lastDrawnLineNumberRects[lineLayout.lineNumber] = lineLayout.drawRect
+                lastDrawnLineNumberRects[lineNumber] = drawRect
 #endif
             }
 
@@ -225,98 +223,10 @@ final class LineNumberGutterView: UIView {
         }
     }
 
-    private func logicalLineLayout(
-        lineNumber: Int,
-        lineRange: NSRange,
-        previousFragmentRect: CGRect?,
-        glyphCount: Int,
-        layoutManager: NSLayoutManager,
-        topInset: CGFloat,
-        numberFontLineHeight: CGFloat
-    ) -> LogicalLineLayout? {
-        guard let textView else {
-            return nil
-        }
-
-        let fallbackLineHeight = max(textView.font?.lineHeight ?? numberFontLineHeight, numberFontLineHeight)
-        guard let fragmentRect = lineFragmentRect(
-            for: lineRange,
-            previousFragmentRect: previousFragmentRect,
-            glyphCount: glyphCount,
-            layoutManager: layoutManager,
-            fallbackLineHeight: fallbackLineHeight
-        ) else {
-            return nil
-        }
-
-        let lineTop = fragmentRect.origin.y + topInset
-        let drawRect = CGRect(
-            x: 0,
-            y: lineTop + (fragmentRect.height - numberFontLineHeight) / 2,
-            width: gutterWidth - EditorTextViewLayout.lineNumberGutterTrailingPadding,
-            height: numberFontLineHeight
-        )
-
-        return LogicalLineLayout(
-            lineNumber: lineNumber,
-            lineRange: lineRange,
-            drawRect: drawRect,
-            fragmentRect: fragmentRect
-        )
-    }
-
     private func lineFragmentRect(
         for lineRange: NSRange,
+        forLineStartingAt charIndex: Int,
         previousFragmentRect: CGRect?,
-        glyphCount: Int,
-        layoutManager: NSLayoutManager,
-        fallbackLineHeight: CGFloat
-    ) -> CGRect? {
-        if let visibleRange = firstVisibleContentCharacterRange(from: lineRange) {
-            let glyphRange = layoutManager.glyphRange(
-                forCharacterRange: visibleRange,
-                actualCharacterRange: nil
-            )
-            if glyphRange.location < glyphCount, glyphRange.length > 0 {
-                let fragmentRect = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
-                if isValid(fragmentRect) {
-                    return fragmentRect
-                }
-            }
-        }
-
-        if let previousFragmentRect {
-            return CGRect(
-                x: previousFragmentRect.minX,
-                y: previousFragmentRect.maxY,
-                width: previousFragmentRect.width,
-                height: fallbackLineHeight
-            )
-        }
-
-        if let nextFragmentRect = nextVisibleFragmentRect(
-            after: lineRange,
-            glyphCount: glyphCount,
-            layoutManager: layoutManager
-        ) {
-            return CGRect(
-                x: nextFragmentRect.minX,
-                y: max(0, nextFragmentRect.minY - fallbackLineHeight),
-                width: nextFragmentRect.width,
-                height: fallbackLineHeight
-            )
-        }
-
-        return CGRect(
-            x: 0,
-            y: 0,
-            width: textView?.textContainer.size.width ?? 0,
-            height: fallbackLineHeight
-        )
-    }
-
-    private func nextVisibleFragmentRect(
-        after lineRange: NSRange,
         glyphCount: Int,
         layoutManager: NSLayoutManager
     ) -> CGRect? {
@@ -325,28 +235,63 @@ final class LineNumberGutterView: UIView {
         }
 
         let nsText = (textView.text ?? "") as NSString
-        var charIndex = NSMaxRange(lineRange)
-        while charIndex < nsText.length {
-            let nextLineRange = nsText.lineRange(for: NSRange(location: charIndex, length: 0))
-            if let visibleRange = firstVisibleContentCharacterRange(from: nextLineRange) {
-                let glyphRange = layoutManager.glyphRange(
-                    forCharacterRange: visibleRange,
-                    actualCharacterRange: nil
-                )
-                if glyphRange.location < glyphCount, glyphRange.length > 0 {
-                    return layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
-                }
+        if charIndex < nsText.length {
+            let glyphIndex = layoutManager.glyphIndexForCharacter(at: charIndex)
+            guard glyphIndex < glyphCount else {
+                return nil
             }
-
-            let nextIndex = NSMaxRange(nextLineRange)
-            guard nextIndex > charIndex else {
-                break
+            let fragmentRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+            guard fragmentRect.isValidLineNumberFragment else {
+                return nil
             }
-
-            charIndex = nextIndex
+            if fragmentRect.isAfter(previousFragmentRect) {
+                return fragmentRect
+            }
+            return contentFragmentRect(
+                for: lineRange,
+                glyphCount: glyphCount,
+                layoutManager: layoutManager
+            ) ?? fragmentRect
         }
 
-        return nil
+        guard nsText.length > 0, nsText.character(at: nsText.length - 1).isMarkdownLineBreak else {
+            return nil
+        }
+
+        let lastGlyphIndex = glyphCount - 1
+        let lastFragmentRect = layoutManager.lineFragmentRect(forGlyphAt: lastGlyphIndex, effectiveRange: nil)
+        guard lastFragmentRect.isValidLineNumberFragment else {
+            return nil
+        }
+        return CGRect(
+            x: lastFragmentRect.minX,
+            y: lastFragmentRect.maxY,
+            width: lastFragmentRect.width,
+            height: lastFragmentRect.height
+        )
+    }
+
+    private func contentFragmentRect(
+        for lineRange: NSRange,
+        glyphCount: Int,
+        layoutManager: NSLayoutManager
+    ) -> CGRect? {
+        guard
+            let visibleContentRange = firstVisibleContentCharacterRange(from: lineRange)
+        else {
+            return nil
+        }
+
+        let glyphRange = layoutManager.glyphRange(
+            forCharacterRange: visibleContentRange,
+            actualCharacterRange: nil
+        )
+        guard glyphRange.location < glyphCount, glyphRange.length > 0 else {
+            return nil
+        }
+
+        let fragmentRect = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+        return fragmentRect.isValidLineNumberFragment ? fragmentRect : nil
     }
 
     private func firstVisibleContentCharacterRange(from lineRange: NSRange) -> NSRange? {
@@ -371,10 +316,6 @@ final class LineNumberGutterView: UIView {
         return visibleRange
     }
 
-    private func isValid(_ fragmentRect: CGRect) -> Bool {
-        fragmentRect.isNull == false && fragmentRect.isInfinite == false
-    }
-
     private func lineContentRange(from lineRange: NSRange) -> NSRange? {
         guard let textView else {
             return nil
@@ -384,25 +325,32 @@ final class LineNumberGutterView: UIView {
         var location = min(max(lineRange.location, 0), nsText.length)
         var end = min(max(NSMaxRange(lineRange), location), nsText.length)
 
-        while location < end {
-            let scalar = nsText.character(at: location)
-            guard scalar == 0x0A || scalar == 0x0D else {
-                break
-            }
-
+        while location < end, nsText.character(at: location).isMarkdownLineBreak {
             location += 1
         }
 
-        while end > location {
-            let scalar = nsText.character(at: end - 1)
-            guard scalar == 0x0A || scalar == 0x0D else {
-                break
-            }
-
+        while end > location, nsText.character(at: end - 1).isMarkdownLineBreak {
             end -= 1
         }
 
         return NSRange(location: location, length: end - location)
+    }
+
+    private func lineNumberDrawRect(
+        fragmentRect: CGRect,
+        topInset: CGFloat,
+        numberFontLineHeight: CGFloat
+    ) -> CGRect? {
+        guard fragmentRect.isValidLineNumberFragment else {
+            return nil
+        }
+
+        return CGRect(
+            x: 0,
+            y: fragmentRect.origin.y + topInset + (fragmentRect.height - numberFontLineHeight) / 2,
+            width: gutterWidth - EditorTextViewLayout.lineNumberGutterTrailingPadding,
+            height: numberFontLineHeight
+        )
     }
 
     private func drawSelectionHighlightIfNeeded(
@@ -529,5 +477,25 @@ final class LineNumberGutterView: UIView {
 
     private static func displayLabel(for lineNumber: Int) -> String {
         String(format: "%02d", max(1, lineNumber))
+    }
+}
+
+private extension CGRect {
+    var isValidLineNumberFragment: Bool {
+        isNull == false && isInfinite == false && height.isFinite && width.isFinite
+    }
+
+    func isAfter(_ previousFragmentRect: CGRect?) -> Bool {
+        guard let previousFragmentRect else {
+            return true
+        }
+
+        return minY > previousFragmentRect.minY + 0.5
+    }
+}
+
+private extension unichar {
+    var isMarkdownLineBreak: Bool {
+        self == 0x0A || self == 0x0D
     }
 }
