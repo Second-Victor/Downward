@@ -279,7 +279,7 @@ final class LineNumberGutterView: UIView {
             )
             if glyphRange.location < glyphCount, glyphRange.length > 0 {
                 let fragmentRect = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
-                if isUsable(fragmentRect, after: previousFragmentRect) {
+                if isValid(fragmentRect) {
                     return fragmentRect
                 }
             }
@@ -371,16 +371,8 @@ final class LineNumberGutterView: UIView {
         return visibleRange
     }
 
-    private func isUsable(_ fragmentRect: CGRect, after previousFragmentRect: CGRect?) -> Bool {
-        guard fragmentRect.isNull == false, fragmentRect.isInfinite == false else {
-            return false
-        }
-
-        guard let previousFragmentRect else {
-            return true
-        }
-
-        return fragmentRect.minY > previousFragmentRect.minY + 0.5
+    private func isValid(_ fragmentRect: CGRect) -> Bool {
+        fragmentRect.isNull == false && fragmentRect.isInfinite == false
     }
 
     private func lineContentRange(from lineRange: NSRange) -> NSRange? {

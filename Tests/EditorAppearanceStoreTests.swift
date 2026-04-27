@@ -326,7 +326,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testColorFormattedTextMapsHeadingAndEmphasisToSyntaxMarkerColor() async {
+    func testColorFormattedTextMapsHeadingToAccentAndEmphasisToSyntaxMarkerColor() async {
         let customTheme = CustomTheme(
             id: UUID(),
             name: "Custom",
@@ -355,7 +355,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
         )
         let enabledTheme = enabledStore.resolvedTheme(using: themeStore)
 
-        XCTAssertSameResolvedColor(enabledTheme.headingText, customTheme.boldItalicMarker.uiColor)
+        XCTAssertSameResolvedColor(enabledTheme.headingText, customTheme.tint.uiColor)
         XCTAssertSameResolvedColor(enabledTheme.emphasisText, customTheme.boldItalicMarker.uiColor)
 
         let disabledStore = EditorAppearanceStore(

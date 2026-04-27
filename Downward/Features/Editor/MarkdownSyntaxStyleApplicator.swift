@@ -108,7 +108,12 @@ struct MarkdownSyntaxStyleApplicator {
         text: NSString,
         in attributed: NSMutableAttributedString
     ) {
-        attributed.addAttribute(.foregroundColor, value: resolvedTheme.syntaxMarkerText, range: markerRange)
+        let markerColor = isTaskListItem(
+            fullMatch: fullMatch,
+            spacerRange: spacerRange,
+            text: text
+        ) ? resolvedTheme.accent : resolvedTheme.syntaxMarkerText
+        attributed.addAttribute(.foregroundColor, value: markerColor, range: markerRange)
 
         let prefixRange = NSRange(
             location: leadingWhitespaceRange.location,
@@ -391,6 +396,27 @@ struct MarkdownSyntaxStyleApplicator {
             let currentFont = (value as? UIFont) ?? baseFont
             attributed.addAttribute(.font, value: transform(currentFont), range: subrange)
         }
+    }
+
+    private func isTaskListItem(
+        fullMatch: NSRange,
+        spacerRange: NSRange,
+        text: NSString
+    ) -> Bool {
+        let contentStart = NSMaxRange(spacerRange)
+        let fullEnd = NSMaxRange(fullMatch)
+        guard fullEnd - contentStart >= 3 else {
+            return false
+        }
+
+        let openBracket = text.character(at: contentStart)
+        let checkboxState = text.character(at: contentStart + 1)
+        let closeBracket = text.character(at: contentStart + 2)
+        guard openBracket == 0x5B, closeBracket == 0x5D else {
+            return false
+        }
+
+        return checkboxState == 0x20 || checkboxState == 0x78 || checkboxState == 0x58
     }
 }
 

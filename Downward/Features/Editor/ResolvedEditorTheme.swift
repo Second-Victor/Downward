@@ -89,7 +89,7 @@ struct ResolvedEditorTheme: Equatable {
             primaryText: primaryText,
             secondaryText: secondaryText,
             tertiaryText: tertiaryText,
-            headingText: syntaxMarkerText,
+            headingText: accent,
             emphasisText: syntaxMarkerText,
             strikethroughText: strikethroughText,
             syntaxMarkerText: syntaxMarkerText,

@@ -338,6 +338,41 @@ final class LineNumberGutterViewTests: XCTestCase {
     }
 
     @MainActor
+    func testVisibleBoldSyntaxLineNumberUsesTextKitPositionAfterBlankLines() throws {
+        let text = """
+        Backlog item
+
+
+        **inProgress**
+        - [ ] check boxes
+        """
+        let textView = makeRenderedTextView(text: text, syntaxMode: .visible)
+
+        drawGutter(in: textView)
+
+#if DEBUG
+        let nsText = text as NSString
+        let boldRange = nsText.range(of: "**inProgress**")
+        let lineNumber = textView.lineMetrics.lineNumber(at: boldRange.location)
+        let gutterRect = try XCTUnwrap(textView.lineNumberGutter?.lastDrawnLineNumberRects[lineNumber])
+        let glyphRange = textView.layoutManager.glyphRange(
+            forCharacterRange: NSRange(location: boldRange.location, length: 1),
+            actualCharacterRange: nil
+        )
+        let fragmentRect = textView.layoutManager.lineFragmentRect(
+            forGlyphAt: glyphRange.location,
+            effectiveRange: nil
+        )
+
+        XCTAssertEqual(
+            gutterRect.midY,
+            fragmentRect.midY + textView.textContainerInset.top,
+            accuracy: 0.5
+        )
+#endif
+    }
+
+    @MainActor
     func testLineNumberContentPositionsDoNotChangeWhenScrolled() throws {
         let textView = makeHiddenSyntaxTextView(text: denstoneFixture, revealedText: "Main Doors")
 
@@ -469,13 +504,26 @@ final class LineNumberGutterViewTests: XCTestCase {
         revealedText: String
     ) -> EditorChromeAwareTextView {
         let nsText = text as NSString
+        return makeRenderedTextView(
+            text: text,
+            syntaxMode: .hiddenOutsideCurrentLine,
+            revealedRange: nsText.lineRange(for: nsText.range(of: revealedText))
+        )
+    }
+
+    @MainActor
+    private func makeRenderedTextView(
+        text: String,
+        syntaxMode: MarkdownSyntaxMode,
+        revealedRange: NSRange? = nil
+    ) -> EditorChromeAwareTextView {
         let renderer = MarkdownStyledTextRenderer()
         let rendered = renderer.render(
             configuration: .init(
                 text: text,
                 baseFont: .monospacedSystemFont(ofSize: 16, weight: .regular),
-                syntaxMode: .hiddenOutsideCurrentLine,
-                revealedRange: nsText.lineRange(for: nsText.range(of: revealedText))
+                syntaxMode: syntaxMode,
+                revealedRange: revealedRange
             )
         )
         let textView = makeTextView(text: text)

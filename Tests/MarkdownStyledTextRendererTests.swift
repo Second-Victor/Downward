@@ -820,6 +820,38 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
     }
 
     @MainActor
+    func testTaskListDashUsesAccentWhileOrdinaryListMarkerUsesSyntaxMarkerColor() {
+        let text = "- [ ] Task\n- Ordinary item\n1. [x] Ordered task"
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                resolvedTheme: customTheme,
+                syntaxMode: .visible,
+                revealedRange: nil
+            )
+        )
+
+        let nsString = rendered.string as NSString
+        let taskDashRange = nsString.range(of: "- [ ]")
+        let ordinaryDashRange = nsString.range(of: "- Ordinary")
+        let orderedTaskMarkerRange = nsString.range(of: "1. [x]")
+
+        XCTAssertEqual(
+            rendered.attribute(.foregroundColor, at: taskDashRange.location, effectiveRange: nil) as? UIColor,
+            customTheme.accent
+        )
+        XCTAssertEqual(
+            rendered.attribute(.foregroundColor, at: ordinaryDashRange.location, effectiveRange: nil) as? UIColor,
+            customTheme.syntaxMarkerText
+        )
+        XCTAssertEqual(
+            rendered.attribute(.foregroundColor, at: orderedTaskMarkerRange.location, effectiveRange: nil) as? UIColor,
+            customTheme.accent
+        )
+    }
+
+    @MainActor
     func testImageSyntaxCanHideMarkersWhileKeepingAltTextVisible() {
         let text = "![Mountains](/assets/mountains.jpg \"Mountain view\")"
         let rendered = renderer.render(
