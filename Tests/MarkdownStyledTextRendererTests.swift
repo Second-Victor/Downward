@@ -26,7 +26,9 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         blockquoteText: .systemMint,
         blockquoteBackground: .lightGray,
         blockquoteBar: .systemIndigo,
-        horizontalRuleText: .systemGray
+        horizontalRuleText: .systemGray,
+        checkboxUnchecked: .systemRed,
+        checkboxChecked: .systemGreen
     )
 
     private func syntaxVisibilityRule(
@@ -834,12 +836,22 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
 
         let nsString = rendered.string as NSString
         let taskDashRange = nsString.range(of: "- [ ]")
+        let uncheckedCheckboxRange = nsString.range(of: "[ ]")
         let ordinaryDashRange = nsString.range(of: "- Ordinary")
         let orderedTaskMarkerRange = nsString.range(of: "1. [x]")
+        let checkedCheckboxRange = nsString.range(of: "[x]")
 
         XCTAssertEqual(
             rendered.attribute(.foregroundColor, at: taskDashRange.location, effectiveRange: nil) as? UIColor,
             customTheme.accent
+        )
+        XCTAssertEqual(
+            rendered.attribute(.foregroundColor, at: uncheckedCheckboxRange.location, effectiveRange: nil) as? UIColor,
+            customTheme.checkboxUnchecked
+        )
+        XCTAssertEqual(
+            rendered.attribute(.markdownTaskCheckbox, at: uncheckedCheckboxRange.location, effectiveRange: nil) as? Bool,
+            true
         )
         XCTAssertEqual(
             rendered.attribute(.foregroundColor, at: ordinaryDashRange.location, effectiveRange: nil) as? UIColor,
@@ -848,6 +860,10 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         XCTAssertEqual(
             rendered.attribute(.foregroundColor, at: orderedTaskMarkerRange.location, effectiveRange: nil) as? UIColor,
             customTheme.accent
+        )
+        XCTAssertEqual(
+            rendered.attribute(.foregroundColor, at: checkedCheckboxRange.location, effectiveRange: nil) as? UIColor,
+            customTheme.checkboxChecked
         )
     }
 

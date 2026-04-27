@@ -15,7 +15,7 @@ extension MarkdownEditorTextView {
     /// Owns the `UITextView` bridge: text syncing, selection, viewport, keyboard accessory, and
     /// render scheduling. Push file/session state to `EditorViewModel` and markdown semantics to
     /// renderer/scanner/style collaborators before adding more bridge logic.
-    final class Coordinator: NSObject, UITextViewDelegate {
+    final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
         nonisolated static let deferredRerenderDelay: Duration = .milliseconds(120)
         typealias ViewportInsetsSnapshot = EditorKeyboardGeometryController.ViewportInsetsSnapshot
         private struct TextMutationContext {
@@ -42,6 +42,9 @@ extension MarkdownEditorTextView {
         private var deferredRerenderGeneration = 0
         private var viewportResetTask: Task<Void, Never>?
         private var viewportResetGeneration = 0
+        private weak var taskToggleTapGesture: UITapGestureRecognizer?
+        private var pendingTaskToggleRange: NSRange?
+        private let taskToggleFeedback = UIImpactFeedbackGenerator(style: .light)
 
         var hasPendingDeferredRerender: Bool {
             deferredRerenderTask != nil
@@ -97,6 +100,7 @@ extension MarkdownEditorTextView {
                     resolvedTheme: configuration.resolvedTheme,
                     font: configuration.font
                 )
+                configureTaskToggleGesture(for: textView, isEnabled: configuration.tapToToggleTasks)
                 configureKeyboardAccessory(for: textView, resolvedTheme: configuration.resolvedTheme)
                 keyboardGeometryController.attach(
                     to: textView,
@@ -146,6 +150,7 @@ extension MarkdownEditorTextView {
                     showLineNumbers: configuration.showLineNumbers,
                     lineNumberOpacity: configuration.lineNumberOpacity,
                     largerHeadingText: configuration.largerHeadingText,
+                    tapToToggleTasks: configuration.tapToToggleTasks,
                     isEditable: configuration.isEditable
                 )
                 handlePendingEditorCommands(
@@ -268,6 +273,7 @@ extension MarkdownEditorTextView {
                 showLineNumbers: configuration.showLineNumbers,
                 lineNumberOpacity: configuration.lineNumberOpacity,
                 largerHeadingText: configuration.largerHeadingText,
+                tapToToggleTasks: configuration.tapToToggleTasks,
                 isEditable: configuration.isEditable
             )
             self.configuration = updatedConfiguration
@@ -334,6 +340,7 @@ extension MarkdownEditorTextView {
                 showLineNumbers: configuration.showLineNumbers,
                 lineNumberOpacity: configuration.lineNumberOpacity,
                 largerHeadingText: configuration.largerHeadingText,
+                tapToToggleTasks: configuration.tapToToggleTasks,
                 isEditable: configuration.isEditable
             )
 
@@ -853,6 +860,7 @@ extension MarkdownEditorTextView {
                         showLineNumbers: latestConfiguration.showLineNumbers,
                         lineNumberOpacity: latestConfiguration.lineNumberOpacity,
                         largerHeadingText: latestConfiguration.largerHeadingText,
+                        tapToToggleTasks: latestConfiguration.tapToToggleTasks,
                         isEditable: latestConfiguration.isEditable
                     ),
                     preserveViewport: true
@@ -913,6 +921,268 @@ extension MarkdownEditorTextView {
                 textView.isEditable && (textView.undoManager?.canRedo ?? false)
             )
         }
+
+        private func configureTaskToggleGesture(
+            for textView: EditorChromeAwareTextView,
+            isEnabled: Bool
+        ) {
+            if let existingGesture = taskToggleTapGesture, existingGesture.view !== textView {
+                existingGesture.view?.removeGestureRecognizer(existingGesture)
+                taskToggleTapGesture = nil
+            }
+
+            guard isEnabled else {
+                taskToggleTapGesture?.isEnabled = false
+                pendingTaskToggleRange = nil
+                return
+            }
+
+            let gesture: UITapGestureRecognizer
+            if let existingGesture = taskToggleTapGesture {
+                gesture = existingGesture
+            } else {
+                gesture = UITapGestureRecognizer(target: self, action: #selector(handleTaskToggleTap(_:)))
+                gesture.delegate = self
+                gesture.cancelsTouchesInView = true
+                textView.addGestureRecognizer(gesture)
+                taskToggleTapGesture = gesture
+            }
+            gesture.isEnabled = true
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard
+                gestureRecognizer === taskToggleTapGesture,
+                let textView = gestureRecognizer.view as? UITextView
+            else {
+                return true
+            }
+
+            let point = gestureRecognizer.location(in: textView)
+            pendingTaskToggleRange = resolvedTaskCheckboxRange(at: point, in: textView)
+            return pendingTaskToggleRange != nil
+        }
+
+        @objc
+        private func handleTaskToggleTap(_ gesture: UITapGestureRecognizer) {
+            guard
+                gesture.state == .ended,
+                let textView = gesture.view as? UITextView
+            else {
+                pendingTaskToggleRange = nil
+                return
+            }
+
+            let checkboxRange = pendingTaskToggleRange
+                ?? resolvedTaskCheckboxRange(at: gesture.location(in: textView), in: textView)
+            pendingTaskToggleRange = nil
+
+            guard let checkboxRange else {
+                return
+            }
+
+            toggleTaskCheckbox(in: checkboxRange, textView: textView)
+        }
+
+        private func resolvedTaskCheckboxRange(
+            at point: CGPoint,
+            in textView: UITextView
+        ) -> NSRange? {
+            guard
+                configuration?.tapToToggleTasks == true,
+                textView.isEditable,
+                textView.textStorage.length > 0
+            else {
+                return nil
+            }
+
+            let textContainerPoint = CGPoint(
+                x: point.x - textView.textContainerInset.left,
+                y: point.y - textView.textContainerInset.top
+            )
+            var fraction: CGFloat = 0
+            let rawCharacterIndex = textView.layoutManager.characterIndex(
+                for: textContainerPoint,
+                in: textView.textContainer,
+                fractionOfDistanceBetweenInsertionPoints: &fraction
+            )
+            let characterIndex = min(max(rawCharacterIndex, 0), textView.textStorage.length - 1)
+            let nsText = textView.textStorage.string as NSString
+            guard
+                let checkboxRange = taskCheckboxRange(in: nsText, near: characterIndex),
+                textStorageHasTaskCheckboxAttribute(in: checkboxRange, textStorage: textView.textStorage),
+                pointHitsCharacterRange(checkboxRange, at: textContainerPoint, in: textView)
+            else {
+                return nil
+            }
+
+            return checkboxRange
+        }
+
+        private func toggleTaskCheckbox(in checkboxRange: NSRange, textView: UITextView) {
+            let safeCheckboxRange = safeRange(checkboxRange, forTextLength: textView.textStorage.length)
+            guard safeCheckboxRange.length == 3 else {
+                return
+            }
+
+            let stateLocation = safeCheckboxRange.location + 1
+            let currentState = (textView.textStorage.string as NSString).character(at: stateLocation)
+            let replacement: String
+            if currentState == 0x20 {
+                replacement = "x"
+            } else if currentState == 0x78 || currentState == 0x58 {
+                replacement = " "
+            } else {
+                return
+            }
+
+            let selectedRange = textView.selectedRange
+            pendingTextMutationContext = TextMutationContext(
+                changedRangeBeforeEdit: NSRange(location: stateLocation, length: 1),
+                touchedLineBreaks: false
+            )
+            textView.textStorage.replaceCharacters(
+                in: NSRange(location: stateLocation, length: 1),
+                with: replacement
+            )
+            applyTaskCheckboxPresentation(in: safeCheckboxRange, textView: textView)
+            textView.selectedRange = safeRange(selectedRange, forTextLength: textView.textStorage.length)
+            taskToggleFeedback.impactOccurred()
+            textViewDidChange(textView)
+            publishUndoRedoAvailability(for: textView)
+            updateKeyboardAccessoryState(for: textView)
+        }
+
+        private func applyTaskCheckboxPresentation(in checkboxRange: NSRange, textView: UITextView) {
+            guard
+                let configuration,
+                checkboxRange.location + checkboxRange.length <= textView.textStorage.length
+            else {
+                return
+            }
+
+            let state = (textView.textStorage.string as NSString).character(at: checkboxRange.location + 1)
+            textView.textStorage.addAttributes(
+                [
+                    .foregroundColor: state == 0x78 || state == 0x58
+                        ? configuration.resolvedTheme.checkboxChecked
+                        : configuration.resolvedTheme.checkboxUnchecked,
+                    .markdownTaskCheckbox: true
+                ],
+                range: checkboxRange
+            )
+            textView.layoutManager.invalidateDisplay(forCharacterRange: checkboxRange)
+        }
+
+        private func taskCheckboxRange(in text: NSString, near characterIndex: Int) -> NSRange? {
+            let lineRange = text.lineRange(
+                for: NSRange(location: min(max(characterIndex, 0), text.length), length: 0)
+            )
+            var index = lineRange.location
+            var end = NSMaxRange(lineRange)
+            while end > index, text.character(at: end - 1).isMarkdownLineBreak {
+                end -= 1
+            }
+
+            while index < end, text.character(at: index).isMarkdownHorizontalWhitespace {
+                index += 1
+            }
+
+            guard index < end else {
+                return nil
+            }
+
+            let marker = text.character(at: index)
+            if marker == 0x2A || marker == 0x2B || marker == 0x2D {
+                index += 1
+            } else {
+                let numberStart = index
+                while index < end, text.character(at: index).isMarkdownDigit {
+                    index += 1
+                }
+                guard index > numberStart, index < end, text.character(at: index) == 0x2E else {
+                    return nil
+                }
+                index += 1
+            }
+
+            guard index < end, text.character(at: index).isMarkdownHorizontalWhitespace else {
+                return nil
+            }
+            while index < end, text.character(at: index).isMarkdownHorizontalWhitespace {
+                index += 1
+            }
+
+            guard index + 2 < end else {
+                return nil
+            }
+
+            let openBracket = text.character(at: index)
+            let state = text.character(at: index + 1)
+            let closeBracket = text.character(at: index + 2)
+            guard
+                openBracket == 0x5B,
+                closeBracket == 0x5D,
+                state == 0x20 || state == 0x78 || state == 0x58
+            else {
+                return nil
+            }
+
+            return NSRange(location: index, length: 3)
+        }
+
+        private func textStorageHasTaskCheckboxAttribute(
+            in checkboxRange: NSRange,
+            textStorage: NSTextStorage
+        ) -> Bool {
+            var hasAttribute = false
+            textStorage.enumerateAttribute(.markdownTaskCheckbox, in: checkboxRange) { value, _, stop in
+                guard value != nil else {
+                    return
+                }
+
+                hasAttribute = true
+                stop.pointee = true
+            }
+            return hasAttribute
+        }
+
+        private func pointHitsCharacterRange(
+            _ range: NSRange,
+            at point: CGPoint,
+            in textView: UITextView
+        ) -> Bool {
+            textView.layoutManager.ensureLayout(for: textView.textContainer)
+            let glyphRange = textView.layoutManager.glyphRange(
+                forCharacterRange: range,
+                actualCharacterRange: nil
+            )
+            guard glyphRange.length > 0 else {
+                return false
+            }
+
+            var didHit = false
+            textView.layoutManager.enumerateEnclosingRects(
+                forGlyphRange: glyphRange,
+                withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
+                in: textView.textContainer
+            ) { rect, _ in
+                if rect.insetBy(dx: -8, dy: -6).contains(point) {
+                    didHit = true
+                }
+            }
+            return didHit
+        }
+
+#if DEBUG
+        func resolvedTaskCheckboxRangeForTesting(at point: CGPoint, in textView: UITextView) -> NSRange? {
+            resolvedTaskCheckboxRange(at: point, in: textView)
+        }
+
+        func toggleTaskCheckboxForTesting(in checkboxRange: NSRange, textView: UITextView) {
+            toggleTaskCheckbox(in: checkboxRange, textView: textView)
+        }
+#endif
 
         func configureKeyboardAccessory(for textView: EditorChromeAwareTextView, resolvedTheme: ResolvedEditorTheme) {
             if textView.keyboardAccessoryToolbarView == nil {
@@ -1048,5 +1318,19 @@ extension MarkdownEditorTextView {
 private extension String {
     var containsLineBreak: Bool {
         contains("\n") || contains("\r")
+    }
+}
+
+private extension unichar {
+    var isMarkdownDigit: Bool {
+        self >= 0x30 && self <= 0x39
+    }
+
+    var isMarkdownHorizontalWhitespace: Bool {
+        self == 0x20 || self == 0x09
+    }
+
+    var isMarkdownLineBreak: Bool {
+        self == 0x0A || self == 0x0D
     }
 }

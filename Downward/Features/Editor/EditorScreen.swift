@@ -69,6 +69,7 @@ struct EditorScreen: View {
                     showLineNumbers: viewModel.effectiveShowLineNumbers,
                     lineNumberOpacity: viewModel.lineNumberOpacity,
                     largerHeadingText: viewModel.effectiveLargerHeadingText,
+                    tapToToggleTasks: viewModel.tapToToggleTasks,
                     isEditable: viewModel.isResolvingConflict == false
                         && viewModel.isShowingConflictResolution == false,
                     undoCommandToken: viewModel.undoCommandToken,

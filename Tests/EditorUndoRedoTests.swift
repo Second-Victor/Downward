@@ -163,6 +163,83 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorTogglesTaskCheckboxesAndUpdatesThemedPresentation() {
+        let textBox = MutableBox("- [ ] Task\n1. [x] Done\n* [ ] Star")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let configuration = makeConfiguration(text: textBox.value)
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let nsText = textBox.value as NSString
+        let uncheckedRange = nsText.range(of: "[ ]")
+        coordinator.toggleTaskCheckboxForTesting(in: uncheckedRange, textView: textView)
+
+        XCTAssertEqual(textBox.value, "- [x] Task\n1. [x] Done\n* [ ] Star")
+        XCTAssertEqual(
+            textView.textStorage.attribute(.foregroundColor, at: uncheckedRange.location, effectiveRange: nil) as? UIColor,
+            ResolvedEditorTheme.default.checkboxChecked
+        )
+
+        let checkedRange = (textBox.value as NSString).range(of: "[x]")
+        coordinator.toggleTaskCheckboxForTesting(in: checkedRange, textView: textView)
+
+        XCTAssertEqual(textBox.value, "- [ ] Task\n1. [x] Done\n* [ ] Star")
+        XCTAssertEqual(
+            textView.textStorage.attribute(.foregroundColor, at: checkedRange.location, effectiveRange: nil) as? UIColor,
+            ResolvedEditorTheme.default.checkboxUnchecked
+        )
+    }
+
+    @MainActor
+    func testCoordinatorOnlyResolvesTaskCheckboxTapWhenSettingIsEnabled() throws {
+        let textBox = MutableBox("* [ ] Star")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.textContainerInset = UIEdgeInsets(
+            top: EditorTextViewLayout.contentTopInset,
+            left: EditorTextViewLayout.horizontalInset,
+            bottom: EditorTextViewLayout.bottomInset,
+            right: EditorTextViewLayout.horizontalInset
+        )
+        let enabledConfiguration = makeConfiguration(text: textBox.value, tapToToggleTasks: true)
+
+        coordinator.apply(
+            configuration: enabledConfiguration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let checkboxRange = (textBox.value as NSString).range(of: "[ ]")
+        let tapPoint = try XCTUnwrap(pointForCharacterRange(checkboxRange, in: textView))
+        XCTAssertEqual(
+            coordinator.resolvedTaskCheckboxRangeForTesting(at: tapPoint, in: textView),
+            checkboxRange
+        )
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value, tapToToggleTasks: false),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: false
+        )
+
+        XCTAssertNil(coordinator.resolvedTaskCheckboxRangeForTesting(at: tapPoint, in: textView))
+    }
+
+    @MainActor
     func testKeyboardOverlapUpdatesBottomInsetsLikePrototype() {
         let textBox = MutableBox("Draft")
         let coordinator = makeCoordinator(text: textBox)
@@ -484,7 +561,9 @@ final class EditorUndoRedoTests: XCTestCase {
             blockquoteText: .systemMint,
             blockquoteBackground: .lightGray,
             blockquoteBar: .systemIndigo,
-            horizontalRuleText: .systemGray
+            horizontalRuleText: .systemGray,
+            checkboxUnchecked: .systemRed,
+            checkboxChecked: .systemGreen
         )
 
         accessoryView.applyResolvedTheme(customTheme)
@@ -530,7 +609,9 @@ final class EditorUndoRedoTests: XCTestCase {
             blockquoteText: .systemMint,
             blockquoteBackground: .lightGray,
             blockquoteBar: .systemIndigo,
-            horizontalRuleText: .systemGray
+            horizontalRuleText: .systemGray,
+            checkboxUnchecked: .systemRed,
+            checkboxChecked: .systemGreen
         )
         let configuration = MarkdownEditorTextView.Configuration(
             text: textBox.value,
@@ -1161,9 +1242,22 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     private func makeConfiguration(
         text: String,
+        tapToToggleTasks: Bool
+    ) -> MarkdownEditorTextView.Configuration {
+        makeConfiguration(
+            text: text,
+            documentIdentity: PreviewSampleData.cleanDocument.url,
+            tapToToggleTasks: tapToToggleTasks
+        )
+    }
+
+    @MainActor
+    private func makeConfiguration(
+        text: String,
         documentIdentity: URL,
         showLineNumbers: Bool = false,
-        largerHeadingText: Bool = false
+        largerHeadingText: Bool = false,
+        tapToToggleTasks: Bool = true
     ) -> MarkdownEditorTextView.Configuration {
         MarkdownEditorTextView.Configuration(
             text: text,
@@ -1172,7 +1266,29 @@ final class EditorUndoRedoTests: XCTestCase {
             syntaxMode: .visible,
             showLineNumbers: showLineNumbers,
             largerHeadingText: largerHeadingText,
+            tapToToggleTasks: tapToToggleTasks,
             isEditable: true
+        )
+    }
+
+    @MainActor
+    private func pointForCharacterRange(_ range: NSRange, in textView: UITextView) -> CGPoint? {
+        textView.layoutManager.ensureLayout(for: textView.textContainer)
+        let glyphRange = textView.layoutManager.glyphRange(
+            forCharacterRange: range,
+            actualCharacterRange: nil
+        )
+        guard glyphRange.length > 0 else {
+            return nil
+        }
+
+        let rect = textView.layoutManager.boundingRect(
+            forGlyphRange: glyphRange,
+            in: textView.textContainer
+        )
+        return CGPoint(
+            x: rect.midX + textView.textContainerInset.left,
+            y: rect.midY + textView.textContainerInset.top
         )
     }
 
@@ -1298,7 +1414,9 @@ private func makeResolvedTheme(
         blockquoteText: .label,
         blockquoteBackground: .secondarySystemFill,
         blockquoteBar: .tertiaryLabel,
-        horizontalRuleText: .tertiaryLabel
+        horizontalRuleText: .tertiaryLabel,
+        checkboxUnchecked: .systemRed,
+        checkboxChecked: .systemGreen
     )
 }
 

@@ -12,6 +12,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     let showLineNumbers: Bool
     let lineNumberOpacity: Double
     let largerHeadingText: Bool
+    let tapToToggleTasks: Bool
     let isEditable: Bool
     let undoCommandToken: Int
     let redoCommandToken: Int
@@ -74,6 +75,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 showLineNumbers: showLineNumbers,
                 lineNumberOpacity: lineNumberOpacity,
                 largerHeadingText: largerHeadingText,
+                tapToToggleTasks: tapToToggleTasks,
                 isEditable: isEditable
             ),
             undoCommandToken: undoCommandToken,
@@ -112,6 +114,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 showLineNumbers: showLineNumbers,
                 lineNumberOpacity: lineNumberOpacity,
                 largerHeadingText: largerHeadingText,
+                tapToToggleTasks: tapToToggleTasks,
                 isEditable: isEditable
             ),
             undoCommandToken: undoCommandToken,
@@ -133,6 +136,7 @@ extension MarkdownEditorTextView {
         let showLineNumbers: Bool
         let lineNumberOpacity: Double
         let largerHeadingText: Bool
+        let tapToToggleTasks: Bool
         let isEditable: Bool
 
         init(
@@ -144,6 +148,7 @@ extension MarkdownEditorTextView {
             showLineNumbers: Bool = false,
             lineNumberOpacity: Double = EditorAppearancePreferences.defaultLineNumberOpacity,
             largerHeadingText: Bool = false,
+            tapToToggleTasks: Bool = true,
             isEditable: Bool
         ) {
             self.text = text
@@ -154,6 +159,7 @@ extension MarkdownEditorTextView {
             self.showLineNumbers = showLineNumbers
             self.lineNumberOpacity = lineNumberOpacity
             self.largerHeadingText = largerHeadingText
+            self.tapToToggleTasks = tapToToggleTasks
             self.isEditable = isEditable
         }
     }

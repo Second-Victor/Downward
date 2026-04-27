@@ -10,6 +10,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
     var lineNumberOpacity: Double
     var largerHeadingText: Bool
     var colorFormattedText: Bool
+    var tapToToggleTasks: Bool
     var selectedThemeID: String
     var matchSystemChromeToTheme: Bool
 
@@ -21,6 +22,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         lineNumberOpacity: Double = Self.defaultLineNumberOpacity,
         largerHeadingText: Bool = false,
         colorFormattedText: Bool = true,
+        tapToToggleTasks: Bool = true,
         selectedThemeID: String = EditorTheme.adaptive.id,
         matchSystemChromeToTheme: Bool = true
     ) {
@@ -31,6 +33,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         self.lineNumberOpacity = lineNumberOpacity
         self.largerHeadingText = largerHeadingText
         self.colorFormattedText = colorFormattedText
+        self.tapToToggleTasks = tapToToggleTasks
         self.selectedThemeID = selectedThemeID
         self.matchSystemChromeToTheme = matchSystemChromeToTheme
     }
@@ -49,6 +52,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         case lineNumberOpacity
         case largerHeadingText
         case colorFormattedText
+        case tapToToggleTasks
         case selectedThemeID
         case matchSystemChromeToTheme
     }
@@ -77,6 +81,10 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
             Bool.self,
             forKey: .colorFormattedText
         ) ?? true
+        tapToToggleTasks = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .tapToToggleTasks
+        ) ?? true
         selectedThemeID = try container.decodeIfPresent(
             String.self,
             forKey: .selectedThemeID
@@ -96,6 +104,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         try container.encode(lineNumberOpacity, forKey: .lineNumberOpacity)
         try container.encode(largerHeadingText, forKey: .largerHeadingText)
         try container.encode(colorFormattedText, forKey: .colorFormattedText)
+        try container.encode(tapToToggleTasks, forKey: .tapToToggleTasks)
         try container.encode(selectedThemeID, forKey: .selectedThemeID)
         try container.encode(matchSystemChromeToTheme, forKey: .matchSystemChromeToTheme)
     }

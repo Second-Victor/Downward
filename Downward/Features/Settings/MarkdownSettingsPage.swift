@@ -4,12 +4,17 @@ struct MarkdownSettingsPage: View {
     let editorAppearanceStore: EditorAppearanceStore
     let backAction: () -> Void
 
-    @State private var tapToToggleTasks = true
-
     private var colorFormattedTextBinding: Binding<Bool> {
         Binding(
             get: { editorAppearanceStore.colorFormattedText },
             set: { editorAppearanceStore.setColorFormattedText($0) }
+        )
+    }
+
+    private var tapToToggleTasksBinding: Binding<Bool> {
+        Binding(
+            get: { editorAppearanceStore.tapToToggleTasks },
+            set: { editorAppearanceStore.setTapToToggleTasks($0) }
         )
     }
 
@@ -49,9 +54,7 @@ struct MarkdownSettingsPage: View {
             SettingsCard {
                 SettingsToggleRow(
                     title: "Tap to Toggle Tasks",
-                    isOn: $tapToToggleTasks,
-                    isEnabled: false,
-                    accessibilityHint: "Task checkbox tapping is not implemented yet."
+                    isOn: tapToToggleTasksBinding
                 )
             }
             SettingsHelperText("Tap a task checkbox to mark it as done or undone.")

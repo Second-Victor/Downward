@@ -147,7 +147,9 @@ struct EditorTheme: Identifiable, Equatable {
             blockquoteText: text,
             blockquoteBackground: codeBackground,
             blockquoteBar: horizontalRule,
-            horizontalRuleText: horizontalRule
+            horizontalRuleText: horizontalRule,
+            checkboxUnchecked: checkboxUnchecked,
+            checkboxChecked: checkboxChecked
         )
     }
 }

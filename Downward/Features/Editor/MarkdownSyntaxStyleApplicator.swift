@@ -108,12 +108,22 @@ struct MarkdownSyntaxStyleApplicator {
         text: NSString,
         in attributed: NSMutableAttributedString
     ) {
-        let markerColor = isTaskListItem(
+        let taskCheckboxRange = taskCheckboxRange(
             fullMatch: fullMatch,
             spacerRange: spacerRange,
             text: text
-        ) ? resolvedTheme.accent : resolvedTheme.syntaxMarkerText
+        )
+        let markerColor = taskCheckboxRange == nil ? resolvedTheme.syntaxMarkerText : resolvedTheme.accent
         attributed.addAttribute(.foregroundColor, value: markerColor, range: markerRange)
+        if let taskCheckboxRange {
+            attributed.addAttributes(
+                [
+                    .foregroundColor: taskCheckboxColor(in: taskCheckboxRange, text: text),
+                    .markdownTaskCheckbox: true
+                ],
+                range: taskCheckboxRange
+            )
+        }
 
         let prefixRange = NSRange(
             location: leadingWhitespaceRange.location,
@@ -398,25 +408,36 @@ struct MarkdownSyntaxStyleApplicator {
         }
     }
 
-    private func isTaskListItem(
+    private func taskCheckboxRange(
         fullMatch: NSRange,
         spacerRange: NSRange,
         text: NSString
-    ) -> Bool {
+    ) -> NSRange? {
         let contentStart = NSMaxRange(spacerRange)
         let fullEnd = NSMaxRange(fullMatch)
         guard fullEnd - contentStart >= 3 else {
-            return false
+            return nil
         }
 
         let openBracket = text.character(at: contentStart)
         let checkboxState = text.character(at: contentStart + 1)
         let closeBracket = text.character(at: contentStart + 2)
         guard openBracket == 0x5B, closeBracket == 0x5D else {
-            return false
+            return nil
         }
 
-        return checkboxState == 0x20 || checkboxState == 0x78 || checkboxState == 0x58
+        guard checkboxState == 0x20 || checkboxState == 0x78 || checkboxState == 0x58 else {
+            return nil
+        }
+
+        return NSRange(location: contentStart, length: 3)
+    }
+
+    private func taskCheckboxColor(in checkboxRange: NSRange, text: NSString) -> UIColor {
+        let state = text.character(at: checkboxRange.location + 1)
+        return state == 0x78 || state == 0x58
+            ? resolvedTheme.checkboxChecked
+            : resolvedTheme.checkboxUnchecked
     }
 }
 

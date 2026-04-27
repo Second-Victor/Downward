@@ -27,6 +27,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
         store.setLineNumberOpacity(0.42)
         store.setLargerHeadingText(true)
         store.setColorFormattedText(false)
+        store.setTapToToggleTasks(false)
         store.setSelectedThemeID(EditorTheme.greyAdaptive.id)
         store.setMatchSystemChromeToTheme(false)
 
@@ -46,6 +47,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
                 lineNumberOpacity: 0.42,
                 largerHeadingText: true,
                 colorFormattedText: false,
+                tapToToggleTasks: false,
                 selectedThemeID: EditorTheme.greyAdaptive.id,
                 matchSystemChromeToTheme: false
             )
@@ -227,6 +229,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         XCTAssertFalse(preferences.showLineNumbers)
         XCTAssertEqual(preferences.lineNumberOpacity, EditorAppearancePreferences.defaultLineNumberOpacity)
+        XCTAssertTrue(preferences.tapToToggleTasks)
     }
 
     @MainActor

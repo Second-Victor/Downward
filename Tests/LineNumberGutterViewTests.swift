@@ -608,7 +608,9 @@ private extension ResolvedEditorTheme {
             blockquoteText: blockquoteText,
             blockquoteBackground: blockquoteBackground,
             blockquoteBar: blockquoteBar,
-            horizontalRuleText: horizontalRuleText
+            horizontalRuleText: horizontalRuleText,
+            checkboxUnchecked: checkboxUnchecked,
+            checkboxChecked: checkboxChecked
         )
     }
 }

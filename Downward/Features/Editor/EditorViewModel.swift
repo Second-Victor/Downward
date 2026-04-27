@@ -187,6 +187,10 @@ final class EditorViewModel {
         editorAppearanceStore.effectiveLargerHeadingText
     }
 
+    var tapToToggleTasks: Bool {
+        editorAppearanceStore.tapToToggleTasks
+    }
+
     var resolvedEditorTheme: ResolvedEditorTheme {
         editorAppearanceStore.resolvedTheme(using: themeStore)
     }

@@ -580,7 +580,9 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
             blockquoteText: .systemMint,
             blockquoteBackground: .lightGray,
             blockquoteBar: .systemIndigo,
-            horizontalRuleText: .systemGray
+            horizontalRuleText: .systemGray,
+            checkboxUnchecked: .systemRed,
+            checkboxChecked: .systemGreen
         )
     }
 }

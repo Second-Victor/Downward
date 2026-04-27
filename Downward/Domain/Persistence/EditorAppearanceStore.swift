@@ -88,6 +88,10 @@ final class EditorAppearanceStore {
         effectivePreferences.colorFormattedText
     }
 
+    var tapToToggleTasks: Bool {
+        effectivePreferences.tapToToggleTasks
+    }
+
     var selectedThemeID: String {
         effectivePreferences.selectedThemeID
     }
@@ -185,6 +189,15 @@ final class EditorAppearanceStore {
         persist()
     }
 
+    func setTapToToggleTasks(_ isEnabled: Bool) {
+        guard preferences.tapToToggleTasks != isEnabled else {
+            return
+        }
+
+        preferences.tapToToggleTasks = isEnabled
+        persist()
+    }
+
     func setSelectedThemeID(_ id: String) {
         guard preferences.selectedThemeID != id else {
             return
@@ -249,6 +262,7 @@ final class EditorAppearanceStore {
             lineNumberOpacity: clampLineNumberOpacity(preferences.lineNumberOpacity),
             largerHeadingText: preferences.largerHeadingText,
             colorFormattedText: preferences.colorFormattedText,
+            tapToToggleTasks: preferences.tapToToggleTasks,
             selectedThemeID: preferences.selectedThemeID,
             matchSystemChromeToTheme: preferences.matchSystemChromeToTheme
         )

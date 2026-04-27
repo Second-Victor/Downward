@@ -28,6 +28,8 @@ struct ResolvedEditorTheme: Equatable {
     let blockquoteBackground: UIColor
     let blockquoteBar: UIColor
     let horizontalRuleText: UIColor
+    let checkboxUnchecked: UIColor
+    let checkboxChecked: UIColor
 
     nonisolated static let `default` = ResolvedEditorTheme(
         editorBackground: .systemBackground,
@@ -50,7 +52,9 @@ struct ResolvedEditorTheme: Equatable {
         blockquoteText: .label,
         blockquoteBackground: .secondarySystemFill,
         blockquoteBar: .tertiaryLabel,
-        horizontalRuleText: .tertiaryLabel
+        horizontalRuleText: .tertiaryLabel,
+        checkboxUnchecked: .systemRed,
+        checkboxChecked: .systemGreen
     )
 
     static func == (lhs: ResolvedEditorTheme, rhs: ResolvedEditorTheme) -> Bool {
@@ -75,6 +79,8 @@ struct ResolvedEditorTheme: Equatable {
             && lhs.blockquoteBackground.isEqual(rhs.blockquoteBackground)
             && lhs.blockquoteBar.isEqual(rhs.blockquoteBar)
             && lhs.horizontalRuleText.isEqual(rhs.horizontalRuleText)
+            && lhs.checkboxUnchecked.isEqual(rhs.checkboxUnchecked)
+            && lhs.checkboxChecked.isEqual(rhs.checkboxChecked)
     }
 
     func applyingColorFormattedText(_ isEnabled: Bool) -> ResolvedEditorTheme {
@@ -103,7 +109,9 @@ struct ResolvedEditorTheme: Equatable {
             blockquoteText: blockquoteText,
             blockquoteBackground: blockquoteBackground,
             blockquoteBar: blockquoteBar,
-            horizontalRuleText: horizontalRuleText
+            horizontalRuleText: horizontalRuleText,
+            checkboxUnchecked: checkboxUnchecked,
+            checkboxChecked: checkboxChecked
         )
     }
 }

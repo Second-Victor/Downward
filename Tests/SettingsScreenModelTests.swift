@@ -83,9 +83,11 @@ final class SettingsScreenModelTests: XCTestCase {
 
         store.setMarkdownSyntaxMode(.hiddenOutsideCurrentLine)
         store.setColorFormattedText(false)
+        store.setTapToToggleTasks(false)
 
         XCTAssertEqual(store.markdownSyntaxMode, .hiddenOutsideCurrentLine)
         XCTAssertEqual(store.colorFormattedText, false)
+        XCTAssertFalse(store.tapToToggleTasks)
     }
 
     @MainActor
@@ -138,7 +140,6 @@ final class SettingsScreenModelTests: XCTestCase {
 
     func testPlaceholderSettingsAreNotMarkedImplemented() {
         let placeholders: [SettingsPlaceholderFeature] = [
-            .tapToToggleTasks,
             .tipsPurchases,
             .rateTheApp,
             .legalLinks
@@ -147,5 +148,6 @@ final class SettingsScreenModelTests: XCTestCase {
         XCTAssertTrue(placeholders.allSatisfy { $0.isImplemented == false })
         XCTAssertTrue(SettingsPlaceholderFeature.lineNumbers.isImplemented)
         XCTAssertTrue(SettingsPlaceholderFeature.largerHeadingText.isImplemented)
+        XCTAssertTrue(SettingsPlaceholderFeature.tapToToggleTasks.isImplemented)
     }
 }
