@@ -73,6 +73,125 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertNil(store.lastError)
     }
 
+    @MainActor
+    func testThemeStoreImportAddsAllThemesFromExplicitImport() async throws {
+        let fileURL = try makeTemporaryThemeURL()
+        let store = ThemeStore(fileURL: fileURL)
+        let firstTheme = Self.makeTheme(id: UUID(), name: "Bundle One")
+        let secondTheme = Self.makeTheme(id: UUID(), name: "Bundle Two")
+
+        let didImport = await store.importThemes([firstTheme, secondTheme])
+
+        XCTAssertTrue(didImport)
+        XCTAssertEqual(store.themes, [firstTheme, secondTheme])
+        XCTAssertNil(store.lastError)
+    }
+
+    @MainActor
+    func testThemeStoreSerializesOverlappingExplicitMutations() async throws {
+        let fileURL = try makeTemporaryThemeURL()
+        let recorder = DelayedThemePersistenceRecorder()
+        let firstTheme = Self.makeTheme(id: UUID(), name: "First")
+        let secondTheme = Self.makeTheme(id: UUID(), name: "Second")
+        let store = ThemeStore(
+            fileURL: fileURL,
+            persistThemes: { themes, fileURL in
+                try await recorder.persist(themes, to: fileURL)
+            }
+        )
+
+        async let didAddFirst = store.add(firstTheme)
+        try await Task.sleep(for: .milliseconds(20))
+        async let didAddSecond = store.add(secondTheme)
+
+        let results = await (didAddFirst, didAddSecond)
+        let persistedThemeNames = await recorder.persistedThemeNames
+        let reloadedStore = ThemeStore(fileURL: fileURL)
+        await reloadedStore.waitForInitialLoad()
+
+        XCTAssertEqual(results.0, true)
+        XCTAssertEqual(results.1, true)
+        XCTAssertEqual(persistedThemeNames, [["First"], ["First", "Second"]])
+        XCTAssertEqual(store.themes, [firstTheme, secondTheme])
+        XCTAssertEqual(reloadedStore.themes, [firstTheme, secondTheme])
+        XCTAssertNil(store.lastError)
+    }
+
+    @MainActor
+    func testThemeStoreSerializesExplicitImportsWithOtherMutations() async throws {
+        let fileURL = try makeTemporaryThemeURL()
+        let recorder = DelayedThemePersistenceRecorder()
+        let importedTheme = Self.makeTheme(id: UUID(), name: "Imported")
+        let manualTheme = Self.makeTheme(id: UUID(), name: "Manual")
+        let store = ThemeStore(
+            fileURL: fileURL,
+            persistThemes: { themes, fileURL in
+                try await recorder.persist(themes, to: fileURL)
+            }
+        )
+
+        async let didImport = store.importThemes([importedTheme])
+        try await Task.sleep(for: .milliseconds(20))
+        async let didAdd = store.add(manualTheme)
+
+        let results = await (didImport, didAdd)
+        let persistedThemeNames = await recorder.persistedThemeNames
+        let reloadedStore = ThemeStore(fileURL: fileURL)
+        await reloadedStore.waitForInitialLoad()
+
+        XCTAssertEqual(results.0, true)
+        XCTAssertEqual(results.1, true)
+        XCTAssertEqual(persistedThemeNames, [["Imported"], ["Imported", "Manual"]])
+        XCTAssertEqual(store.themes, [importedTheme, manualTheme])
+        XCTAssertEqual(reloadedStore.themes, [importedTheme, manualTheme])
+        XCTAssertNil(store.lastError)
+    }
+
+    @MainActor
+    func testSettingsImportHandlerLoadsSelectedFileAndImportsThroughThemeStore() async throws {
+        let fileURL = try makeTemporaryThemeURL()
+        let store = ThemeStore(fileURL: fileURL)
+        await store.waitForInitialLoad()
+        let selectedURL = fileURL.deletingLastPathComponent().appending(path: "SelectedTheme.json")
+        let theme = Self.makeTheme(id: UUID(), name: "Settings Import")
+        let recorder = ThemeImportLoadRecorder(themes: [theme])
+
+        await ThemeSettingsImportHandler.handle(
+            result: .success(selectedURL),
+            themeStore: store
+        ) { url in
+            try await recorder.load(from: url)
+        }
+
+        let loadedURLs = await recorder.recordedLoadedURLs()
+
+        XCTAssertEqual(loadedURLs, [selectedURL])
+        XCTAssertEqual(store.themes, [theme])
+        XCTAssertNil(store.lastError)
+    }
+
+    @MainActor
+    func testSettingsImportHandlerIgnoresUserCancellation() async throws {
+        let fileURL = try makeTemporaryThemeURL()
+        let store = ThemeStore(fileURL: fileURL)
+        await store.waitForInitialLoad()
+        let cancellationError = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.userCancelled.rawValue,
+            userInfo: nil
+        )
+
+        await ThemeSettingsImportHandler.handle(
+            result: .failure(cancellationError),
+            themeStore: store
+        ) { _ in
+            []
+        }
+
+        XCTAssertTrue(store.themes.isEmpty)
+        XCTAssertNil(store.lastError)
+    }
+
     func testThemeExchangeDocumentRoundTripsSingleTheme() throws {
         let theme = Self.makeTheme(name: "Portable")
         let document = ThemeExchangeDocument(theme: theme)
@@ -173,6 +292,48 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertThrowsError(try ThemeExchangeDocument(data: data)) { error in
             let localizedError = error as? LocalizedError
             XCTAssertEqual(localizedError?.errorDescription, "The selected file is not valid JSON.")
+        }
+    }
+
+    func testThemeExchangeDocumentRejectsNonThemeJSONObjectWithUserReadableError() {
+        let data = """
+        {
+          "name" : "Not a theme",
+          "kind" : "ordinary workspace JSON"
+        }
+        """.data(using: .utf8)!
+
+        XCTAssertThrowsError(try ThemeExchangeDocument(data: data)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "The selected JSON file is not a valid Downward theme export."
+            )
+        }
+    }
+
+    func testThemeExchangeDocumentRejectsEmptyArrayWithUserReadableError() {
+        let data = Data("[]".utf8)
+
+        XCTAssertThrowsError(try ThemeExchangeDocument(data: data)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "The selected JSON file is not a valid Downward theme export."
+            )
+        }
+    }
+
+    func testThemeExchangeDocumentRejectsEmptyBundleWithUserReadableError() {
+        let data = """
+        {
+          "themes" : []
+        }
+        """.data(using: .utf8)!
+
+        XCTAssertThrowsError(try ThemeExchangeDocument(data: data)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "The selected JSON file is not a valid Downward theme export."
+            )
         }
     }
 
@@ -458,5 +619,42 @@ final class ThemeStoreTests: XCTestCase {
             checkboxUnchecked: HexColor(hex: "#F44747"),
             checkboxChecked: HexColor(hex: "#6A9955")
         )
+    }
+}
+
+private actor DelayedThemePersistenceRecorder {
+    private(set) var persistedThemeNames: [[String]] = []
+    private var persistCount = 0
+
+    func persist(_ themes: [CustomTheme], to fileURL: URL) async throws {
+        persistCount += 1
+        if persistCount == 1 {
+            try await Task.sleep(for: .milliseconds(80))
+        }
+
+        persistedThemeNames.append(themes.map(\.name))
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try JSONEncoder().encode(themes).write(to: fileURL, options: .atomic)
+    }
+}
+
+private actor ThemeImportLoadRecorder {
+    private var loadedURLs: [URL] = []
+    private let themes: [CustomTheme]
+
+    init(themes: [CustomTheme]) {
+        self.themes = themes
+    }
+
+    func load(from url: URL) async throws -> [CustomTheme] {
+        loadedURLs.append(url)
+        return themes
+    }
+
+    func recordedLoadedURLs() -> [URL] {
+        loadedURLs
     }
 }

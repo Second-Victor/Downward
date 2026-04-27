@@ -1,6 +1,9 @@
 import Foundation
 import UIKit
 
+/// Turns scanned markdown roles into attributed text for the editor.
+/// Keep recognition in `MarkdownSyntaxScanner`, styling rules in `MarkdownSyntaxStyleApplicator`,
+/// and TextKit drawing/layout in editor layout collaborators before expanding this renderer.
 struct MarkdownStyledTextRenderer {
     private static let regexCache = NSCache<NSString, NSRegularExpression>()
     private let scanner = MarkdownSyntaxScanner()

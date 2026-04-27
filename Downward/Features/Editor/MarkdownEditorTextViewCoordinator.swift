@@ -12,6 +12,9 @@ extension MarkdownEditorTextView {
 #endif
 
     @MainActor
+    /// Owns the `UITextView` bridge: text syncing, selection, viewport, keyboard accessory, and
+    /// render scheduling. Push file/session state to `EditorViewModel` and markdown semantics to
+    /// renderer/scanner/style collaborators before adding more bridge logic.
     final class Coordinator: NSObject, UITextViewDelegate {
         nonisolated static let deferredRerenderDelay: Duration = .milliseconds(120)
         typealias ViewportInsetsSnapshot = EditorKeyboardGeometryController.ViewportInsetsSnapshot
@@ -38,6 +41,7 @@ extension MarkdownEditorTextView {
         private var deferredRerenderTask: Task<Void, Never>?
         private var deferredRerenderGeneration = 0
         private var viewportResetTask: Task<Void, Never>?
+        private var viewportResetGeneration = 0
 
         var hasPendingDeferredRerender: Bool {
             deferredRerenderTask != nil
@@ -45,6 +49,10 @@ extension MarkdownEditorTextView {
 
 #if DEBUG
         private(set) var lastRenderWork: RenderWork?
+
+        var hasPendingViewportReset: Bool {
+            viewportResetTask != nil
+        }
 #endif
 
         init(
@@ -591,6 +599,8 @@ extension MarkdownEditorTextView {
             guard
                 lineContainsFenceDelimiter(trimmedCurrentLine) == false,
                 isSetextUnderlineLine(trimmedCurrentLine) == false,
+                lineContainsSetextUnderlineAttributes(in: lineRange, textStorage: textStorage) == false,
+                isHorizontalRuleLine(trimmedCurrentLine) == false,
                 lineStartsBlockquote(trimmedCurrentLine) == false,
                 lineContainsBlockquoteAttributes(in: lineRange, textStorage: textStorage) == false,
                 lineContainsBlockCodeBackground(in: lineRange, textStorage: textStorage) == false
@@ -652,6 +662,31 @@ extension MarkdownEditorTextView {
             }
 
             return (marker == "=" || marker == "-") && Set(compact).count == 1
+        }
+
+        private func isHorizontalRuleLine(_ lineText: String) -> Bool {
+            let compact = lineText.filter { $0.isWhitespace == false }
+            guard compact.count >= 3, let marker = compact.first else {
+                return false
+            }
+
+            return (marker == "*" || marker == "-" || marker == "_") && Set(compact).count == 1
+        }
+
+        private func lineContainsSetextUnderlineAttributes(
+            in lineRange: NSRange,
+            textStorage: NSTextStorage
+        ) -> Bool {
+            var containsSetextUnderline = false
+            textStorage.enumerateAttribute(.markdownSetextHeadingUnderline, in: lineRange) { value, _, stop in
+                guard value != nil else {
+                    return
+                }
+
+                containsSetextUnderline = true
+                stop.pointee = true
+            }
+            return containsSetextUnderline
         }
 
         private func lineContainsBlockquoteAttributes(
@@ -752,6 +787,7 @@ extension MarkdownEditorTextView {
         private func cancelViewportReset() {
             viewportResetTask?.cancel()
             viewportResetTask = nil
+            viewportResetGeneration += 1
         }
 
         private func handlePendingEditorCommands(
@@ -906,11 +942,14 @@ extension MarkdownEditorTextView {
             documentIdentity: URL
         ) {
             cancelViewportReset()
+            let generation = viewportResetGeneration
             viewportResetTask = Task { @MainActor [weak self, weak textView] in
                 await Task.yield()
                 guard
                     let self,
                     let textView,
+                    Task.isCancelled == false,
+                    self.viewportResetGeneration == generation,
                     self.configuration?.documentIdentity == documentIdentity
                 else {
                     return

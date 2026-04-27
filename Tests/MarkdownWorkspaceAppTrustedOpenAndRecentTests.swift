@@ -136,6 +136,88 @@ final class MarkdownWorkspaceAppTrustedOpenAndRecentTests: MarkdownWorkspaceAppT
     }
 
     @MainActor
+    func testBrowserJSONFileOpenLoadsEditorDocumentWithoutThemeImport() async throws {
+        let workspaceURL = try makeTemporaryWorkspace(named: "JSONBrowserWorkspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+        let jsonText = #"{"kind":"ordinary workspace JSON"}"#
+        let jsonURL = try createFile(named: "Theme.json", contents: jsonText, in: workspaceURL)
+        let snapshot = WorkspaceSnapshot(
+            rootURL: workspaceURL,
+            displayName: "JSON Browser Workspace",
+            rootNodes: [
+                .file(
+                    .init(
+                        url: jsonURL,
+                        displayName: "Theme.json",
+                        subtitle: "Root document"
+                    )
+                ),
+            ],
+            lastUpdated: PreviewSampleData.previewDate
+        )
+        let document = Self.makeOpenDocument(
+            url: jsonURL,
+            workspaceRootURL: workspaceURL,
+            relativePath: "Theme.json",
+            text: jsonText
+        )
+        let existingTheme = Self.makeTheme(name: "Existing Theme")
+        let themeStore = ThemeStore(fileURL: try makeTemporaryThemeURL())
+        await themeStore.waitForInitialLoad()
+        let didAddExistingTheme = await themeStore.add(existingTheme)
+        XCTAssertTrue(didAddExistingTheme)
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceAccessState = .ready(displayName: snapshot.displayName)
+        session.workspaceSnapshot = snapshot
+        let documentManager = RelativePathOnlyDocumentManager(
+            documentsByRelativePath: [document.relativePath: document]
+        )
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: snapshot
+            ),
+            documentManager: documentManager,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+        let workspaceViewModel = WorkspaceViewModel(
+            session: session,
+            coordinator: coordinator,
+            recentFilesStore: RecentFilesStore(initialItems: [])
+        )
+        let editorViewModel = EditorViewModel(
+            session: session,
+            coordinator: coordinator,
+            editorAppearanceStore: EditorAppearanceStore(),
+            themeStore: themeStore,
+            autosaveDelay: .milliseconds(20)
+        )
+
+        workspaceViewModel.openDocument(relativePath: "Theme.json", preferredURL: jsonURL)
+        let routedURL = try XCTUnwrap(session.path.last?.editorURL)
+        editorViewModel.handleAppear(for: routedURL)
+
+        try await waitUntil {
+            session.openDocument?.relativePath == "Theme.json"
+        }
+
+        let openedRelativePaths = await documentManager.recordedOpenedRelativePaths()
+        let attemptedURLBasedOpenURLs = await documentManager.recordedURLBasedOpenAttempts()
+
+        XCTAssertEqual(session.openDocument, document)
+        XCTAssertEqual(session.path, [.trustedEditor(jsonURL, "Theme.json")])
+        XCTAssertEqual(openedRelativePaths, ["Theme.json"])
+        XCTAssertTrue(attemptedURLBasedOpenURLs.isEmpty)
+        XCTAssertEqual(themeStore.themes, [existingTheme])
+        XCTAssertNil(themeStore.lastError)
+        XCTAssertNil(session.editorLoadError)
+    }
+
+    @MainActor
     func testSearchResultOpenUsesTrustedRelativePathIdentity() async throws {
         let session = AppSession()
         session.launchState = .workspaceReady
@@ -528,6 +610,100 @@ final class MarkdownWorkspaceAppTrustedOpenAndRecentTests: MarkdownWorkspaceAppT
     }
 
     @MainActor
+    func testRecentJSONFileOpenLoadsEditorDocumentWithoutThemeImport() async throws {
+        let workspaceURL = try makeTemporaryWorkspace(named: "JSONRecentWorkspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+        let jsonText = #"{"palette":["text","background"]}"#
+        let jsonURL = try createFile(named: "palette.json", contents: jsonText, in: workspaceURL)
+        let snapshot = WorkspaceSnapshot(
+            rootURL: workspaceURL,
+            displayName: "JSON Recent Workspace",
+            rootNodes: [
+                .file(
+                    .init(
+                        url: jsonURL,
+                        displayName: "palette.json",
+                        subtitle: "Root document"
+                    )
+                ),
+            ],
+            lastUpdated: PreviewSampleData.previewDate
+        )
+        let document = Self.makeOpenDocument(
+            url: jsonURL,
+            workspaceRootURL: workspaceURL,
+            relativePath: "palette.json",
+            text: jsonText
+        )
+        let recentFilesStore = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceID: snapshot.workspaceID,
+                    workspaceRootPath: workspaceURL.path,
+                    relativePath: document.relativePath,
+                    displayName: document.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+            ]
+        )
+        let existingTheme = Self.makeTheme(name: "Existing Theme")
+        let themeStore = ThemeStore(fileURL: try makeTemporaryThemeURL())
+        await themeStore.waitForInitialLoad()
+        let didAddExistingTheme = await themeStore.add(existingTheme)
+        XCTAssertTrue(didAddExistingTheme)
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceAccessState = .ready(displayName: snapshot.displayName)
+        session.workspaceSnapshot = snapshot
+        let documentManager = RelativePathOnlyDocumentManager(
+            documentsByRelativePath: [document.relativePath: document]
+        )
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: snapshot
+            ),
+            documentManager: documentManager,
+            recentFilesStore: recentFilesStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+        let workspaceViewModel = WorkspaceViewModel(
+            session: session,
+            coordinator: coordinator,
+            recentFilesStore: recentFilesStore
+        )
+        let editorViewModel = EditorViewModel(
+            session: session,
+            coordinator: coordinator,
+            editorAppearanceStore: EditorAppearanceStore(),
+            themeStore: themeStore,
+            autosaveDelay: .milliseconds(20)
+        )
+        let item = try XCTUnwrap(workspaceViewModel.recentFiles.first)
+
+        workspaceViewModel.openRecentFile(item)
+        let routedURL = try XCTUnwrap(session.path.last?.editorURL)
+        editorViewModel.handleAppear(for: routedURL)
+
+        try await waitUntil {
+            session.openDocument?.relativePath == "palette.json"
+        }
+
+        let openedRelativePaths = await documentManager.recordedOpenedRelativePaths()
+        let attemptedURLBasedOpenURLs = await documentManager.recordedURLBasedOpenAttempts()
+
+        XCTAssertEqual(session.openDocument, document)
+        XCTAssertEqual(openedRelativePaths, ["palette.json"])
+        XCTAssertTrue(attemptedURLBasedOpenURLs.isEmpty)
+        XCTAssertEqual(themeStore.themes, [existingTheme])
+        XCTAssertNil(themeStore.lastError)
+        XCTAssertNil(session.editorLoadError)
+    }
+
+    @MainActor
     func testStaleRecentFileOpenRemovesEntryAndShowsRecentSpecificError() async throws {
         let workspaceURL = try makeTemporaryWorkspace(named: "StaleRecentWorkspace")
         defer { removeItemIfPresent(at: workspaceURL) }
@@ -545,7 +721,13 @@ final class MarkdownWorkspaceAppTrustedOpenAndRecentTests: MarkdownWorkspaceAppT
             displayName: "Missing.md",
             lastOpenedAt: PreviewSampleData.previewDate
         )
-        let recentFilesStore = RecentFilesStore(initialItems: [staleItem])
+        let otherWorkspaceItem = RecentFileItem(
+            workspaceRootPath: "/preview/OtherWorkspace",
+            relativePath: "Elsewhere.md",
+            displayName: "Elsewhere.md",
+            lastOpenedAt: PreviewSampleData.previewDate.addingTimeInterval(-60)
+        )
+        let recentFilesStore = RecentFilesStore(initialItems: [staleItem, otherWorkspaceItem])
         let session = AppSession()
         session.launchState = .workspaceReady
         session.workspaceAccessState = .ready(displayName: snapshot.displayName)
@@ -584,12 +766,86 @@ final class MarkdownWorkspaceAppTrustedOpenAndRecentTests: MarkdownWorkspaceAppT
             session.editorLoadError?.title == "Recent File Unavailable"
         }
 
-        XCTAssertTrue(recentFilesStore.items.isEmpty)
+        XCTAssertEqual(recentFilesStore.items.map(\.displayName), ["Elsewhere.md"])
+        XCTAssertEqual(session.path, [])
+        XCTAssertNil(session.pendingEditorPresentation)
+        XCTAssertNil(session.openDocument)
         XCTAssertEqual(session.editorLoadError?.title, "Recent File Unavailable")
         XCTAssertEqual(
             session.editorLoadError?.recoverySuggestion,
             "It was removed from Recent Files. Choose another file from the browser."
         )
+        XCTAssertEqual(session.workspaceAlertError?.title, "Recent File Unavailable")
+    }
+
+    @MainActor
+    func testStaleRecentJSONFileOpenKeepsRecentMissingFileHandling() async throws {
+        let workspaceURL = try makeTemporaryWorkspace(named: "StaleRecentJSONWorkspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+        let snapshot = WorkspaceSnapshot(
+            rootURL: workspaceURL,
+            displayName: "Stale Recent JSON Workspace",
+            rootNodes: [],
+            lastUpdated: PreviewSampleData.previewDate
+        )
+        let staleItem = RecentFileItem(
+            workspaceID: snapshot.workspaceID,
+            workspaceRootPath: workspaceURL.path,
+            relativePath: "Missing.json",
+            displayName: "Missing.json",
+            lastOpenedAt: PreviewSampleData.previewDate
+        )
+        let recentFilesStore = RecentFilesStore(initialItems: [staleItem])
+        let existingTheme = Self.makeTheme(name: "Existing Theme")
+        let themeStore = ThemeStore(fileURL: try makeTemporaryThemeURL())
+        await themeStore.waitForInitialLoad()
+        let didAddExistingTheme = await themeStore.add(existingTheme)
+        XCTAssertTrue(didAddExistingTheme)
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceAccessState = .ready(displayName: snapshot.displayName)
+        session.workspaceSnapshot = snapshot
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: snapshot
+            ),
+            documentManager: RelativePathOnlyDocumentManager(documentsByRelativePath: [:]),
+            recentFilesStore: recentFilesStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+        let workspaceViewModel = WorkspaceViewModel(
+            session: session,
+            coordinator: coordinator,
+            recentFilesStore: recentFilesStore
+        )
+        let editorViewModel = EditorViewModel(
+            session: session,
+            coordinator: coordinator,
+            editorAppearanceStore: EditorAppearanceStore(),
+            themeStore: themeStore,
+            autosaveDelay: .milliseconds(20)
+        )
+        let item = try XCTUnwrap(workspaceViewModel.recentFiles.first)
+
+        workspaceViewModel.openRecentFile(item)
+        let routedURL = try XCTUnwrap(session.path.last?.editorURL)
+        editorViewModel.handleAppear(for: routedURL)
+
+        try await waitUntil {
+            session.editorLoadError?.title == "Recent File Unavailable"
+        }
+
+        XCTAssertTrue(recentFilesStore.items.isEmpty)
+        XCTAssertEqual(session.path, [])
+        XCTAssertNil(session.openDocument)
+        XCTAssertEqual(session.editorLoadError?.title, "Recent File Unavailable")
+        XCTAssertEqual(session.workspaceAlertError?.title, "Recent File Unavailable")
+        XCTAssertEqual(themeStore.themes, [existingTheme])
+        XCTAssertNil(themeStore.lastError)
     }
 
     @MainActor
@@ -820,5 +1076,49 @@ final class MarkdownWorkspaceAppTrustedOpenAndRecentTests: MarkdownWorkspaceAppT
         _ = await coordinator.deleteFile(at: PreviewSampleData.inboxDocumentURL)
 
         XCTAssertTrue(recentFilesStore.items.isEmpty)
+    }
+
+    private func makeTemporaryThemeURL() throws -> URL {
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appending(path: "MarkdownWorkspaceJSONThemeStore-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        return directoryURL.appending(path: "themes.json")
+    }
+
+    @MainActor
+    private static func makeOpenDocument(
+        url: URL,
+        workspaceRootURL: URL,
+        relativePath: String,
+        text: String
+    ) -> OpenDocument {
+        OpenDocument(
+            url: url,
+            workspaceRootURL: workspaceRootURL,
+            relativePath: relativePath,
+            displayName: url.lastPathComponent,
+            text: text,
+            loadedVersion: PreviewSampleData.cleanDocument.loadedVersion,
+            isDirty: false,
+            saveState: .idle,
+            conflictState: .none
+        )
+    }
+
+    private static func makeTheme(id: UUID = UUID(), name: String) -> CustomTheme {
+        CustomTheme(
+            id: id,
+            name: name,
+            background: HexColor(hex: "#1E1E1E"),
+            text: HexColor(hex: "#D4D4D4"),
+            tint: HexColor(hex: "#569CD6"),
+            boldItalicMarker: HexColor(hex: "#72727F"),
+            strikethrough: HexColor(hex: "#808080"),
+            inlineCode: HexColor(hex: "#CE9178"),
+            codeBackground: HexColor(hex: "#2D2D2D"),
+            horizontalRule: HexColor(hex: "#404040"),
+            checkboxUnchecked: HexColor(hex: "#F44747"),
+            checkboxChecked: HexColor(hex: "#6A9955")
+        )
     }
 }

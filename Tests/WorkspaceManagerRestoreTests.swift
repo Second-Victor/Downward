@@ -707,6 +707,36 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
     }
 
     @MainActor
+    func testMoveRootFolderToWorkspaceRootIsHarmlessNoOp() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+        let draftsURL = workspaceURL.appending(path: "Drafts")
+        try FileManager.default.createDirectory(at: draftsURL, withIntermediateDirectories: false)
+        try Data("# Note".utf8).write(to: draftsURL.appending(path: "Note.md"))
+        let fileCoordinator = RecordingWorkspaceFileCoordinator()
+
+        let manager = makeLiveWorkspaceManager(
+            for: workspaceURL,
+            fileCoordinator: fileCoordinator
+        )
+        _ = await manager.selectWorkspace(at: workspaceURL)
+
+        let mutationResult = try await manager.moveItem(at: draftsURL, toFolder: nil)
+
+        guard case let .renamedFolder(oldURL, newURL, displayName, relativePath) = mutationResult.outcome else {
+            return XCTFail("Expected renamedFolder no-op result.")
+        }
+
+        XCTAssertEqual(WorkspaceIdentity.normalizedPath(for: oldURL), WorkspaceIdentity.normalizedPath(for: draftsURL))
+        XCTAssertEqual(WorkspaceIdentity.normalizedPath(for: newURL), WorkspaceIdentity.normalizedPath(for: draftsURL))
+        XCTAssertEqual(displayName, "Drafts")
+        XCTAssertEqual(relativePath, "Drafts")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: draftsURL.appending(path: "Note.md").path))
+        XCTAssertEqual(mutationResult.snapshot.relativePath(for: draftsURL), "Drafts")
+        XCTAssertTrue(fileCoordinator.movedURLs.isEmpty)
+    }
+
+    @MainActor
     func testRenameFileUpdatesSnapshot() async throws {
         let workspaceURL = try makeTemporaryWorkspace()
         defer { removeItemIfPresent(at: workspaceURL) }
@@ -843,6 +873,35 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
         XCTAssertEqual(mutationResult.snapshot.relativePath(for: expectedURL), "Archive/Draft.md")
         XCTAssertEqual(fileCoordinator.movedURLs.first?.0, fileURL)
         XCTAssertEqual(fileCoordinator.movedURLs.first?.1, expectedURL)
+    }
+
+    @MainActor
+    func testMoveRootFileToWorkspaceRootIsHarmlessNoOp() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+        let fileURL = workspaceURL.appending(path: "Draft.md")
+        try Data("# Draft".utf8).write(to: fileURL)
+        let fileCoordinator = RecordingWorkspaceFileCoordinator()
+
+        let manager = makeLiveWorkspaceManager(
+            for: workspaceURL,
+            fileCoordinator: fileCoordinator
+        )
+        _ = await manager.selectWorkspace(at: workspaceURL)
+
+        let mutationResult = try await manager.moveItem(at: fileURL, toFolder: nil)
+
+        guard case let .renamedFile(oldURL, newURL, displayName, relativePath) = mutationResult.outcome else {
+            return XCTFail("Expected renamedFile no-op result.")
+        }
+
+        XCTAssertEqual(oldURL, fileURL)
+        XCTAssertEqual(newURL, fileURL)
+        XCTAssertEqual(displayName, "Draft.md")
+        XCTAssertEqual(relativePath, "Draft.md")
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "# Draft")
+        XCTAssertEqual(mutationResult.snapshot.relativePath(for: fileURL), "Draft.md")
+        XCTAssertTrue(fileCoordinator.movedURLs.isEmpty)
     }
 
     @MainActor

@@ -302,7 +302,7 @@ The current renderer is still fundamentally whole-document oriented. That is acc
 The current shipping editor now has one conservative local-work step before broader incremental rendering exists:
 
 - ordinary same-line inline edits can restyle the current line immediately,
-- line-break edits and edits near fenced-code / blockquote / setext-sensitive context still fall back to the deferred whole-document pass,
+- line-break edits and edits near fenced-code / blockquote / setext / horizontal-rule-sensitive context still fall back to the deferred whole-document pass,
 - document open, explicit theme changes, and recovery paths may still remain global work.
 
 The performance path should be staged:

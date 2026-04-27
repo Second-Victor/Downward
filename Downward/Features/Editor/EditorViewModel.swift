@@ -3,6 +3,9 @@ import SwiftUI
 
 @MainActor
 @Observable
+/// Editor-facing state for load, autosave, conflict UI, undo/redo commands, and observation tasks.
+/// Keep file truth in `AppCoordinator`/`PlainTextDocumentSession` and text rendering/layout in the
+/// `MarkdownEditorTextView` bridge before adding more editor model logic.
 final class EditorViewModel {
     private static let observationSuppressionInterval: Duration = .seconds(1)
 
@@ -21,18 +24,25 @@ final class EditorViewModel {
     private let editorAppearanceStore: EditorAppearanceStore
     private let themeStore: ThemeStore
     private var autosaveTask: Task<Void, Never>?
+    private var flushSaveTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
     private var conflictResolutionTask: Task<Void, Never>?
+    private var flushSaveTaskGeneration = 0
     private var loadGeneration = 0
     private var conflictResolutionGeneration = 0
     private var currentRouteURL: URL?
     private var editGeneration = 0
     private var saveInFlight = false
-    private var queuedSaveGeneration: Int?
+    private var queuedSaveRequest: PendingSaveRequest?
     private var visibleEditorURLs: Set<URL> = []
     private var documentObservationTask: Task<Void, Never>?
     private var observedDocumentIdentity: String?
     private var suppressObservationUntil: ContinuousClock.Instant?
+
+    private struct PendingSaveRequest: Equatable {
+        let generation: Int
+        let documentIdentity: String
+    }
 
     init(
         session: AppSession,
@@ -170,7 +180,7 @@ final class EditorViewModel {
     }
 
     func handleTextChange(_ text: String) {
-        guard currentRouteDocument != nil else {
+        guard let currentRouteDocument else {
             return
         }
 
@@ -181,7 +191,10 @@ final class EditorViewModel {
             return
         }
 
-        scheduleAutosave(for: editGeneration)
+        scheduleAutosave(
+            for: editGeneration,
+            documentIdentity: documentObservationIdentity(for: currentRouteDocument)
+        )
     }
 
     func handleAppear(for documentURL: URL) {
@@ -247,21 +260,17 @@ final class EditorViewModel {
             return
         }
 
-        Task {
-            await flushPendingSaveIfNeeded()
-        }
+        scheduleImmediateSaveFlush(for: documentURL)
     }
 
     func handleScenePhaseChange(_ phase: ScenePhase) {
         switch phase {
         case .inactive, .background:
-            guard document?.isDirty == true || saveInFlight || autosaveTask != nil else {
+            guard let document, document.isDirty || saveInFlight || autosaveTask != nil else {
                 return
             }
 
-            Task {
-                await flushPendingSaveIfNeeded()
-            }
+            scheduleImmediateSaveFlush(for: document)
         case .active:
             break
         @unknown default:
@@ -279,6 +288,7 @@ final class EditorViewModel {
 
     func preserveConflictEdits() {
         autosaveTask?.cancel()
+        flushSaveTask?.cancel()
         isShowingConflictResolution = false
         coordinator.preserveConflictEdits()
     }
@@ -326,6 +336,7 @@ final class EditorViewModel {
         }
 
         autosaveTask?.cancel()
+        flushSaveTask?.cancel()
         let generation = beginConflictResolutionTask()
         let documentSnapshot = currentRouteDocument
         conflictResolutionTask = Task {
@@ -359,6 +370,7 @@ final class EditorViewModel {
         }
 
         autosaveTask?.cancel()
+        flushSaveTask?.cancel()
         let generation = beginConflictResolutionTask()
 
         var pendingDocument = currentRouteDocument
@@ -391,7 +403,7 @@ final class EditorViewModel {
         }
     }
 
-    private func scheduleAutosave(for generation: Int) {
+    private func scheduleAutosave(for generation: Int, documentIdentity: String) {
         autosaveTask?.cancel()
         autosaveTask = Task {
             do {
@@ -404,11 +416,11 @@ final class EditorViewModel {
                 return
             }
 
-            await requestAutosave(for: generation)
+            await requestAutosave(for: generation, matching: documentIdentity)
         }
     }
 
-    private func requestAutosave(for generation: Int) async {
+    private func requestAutosave(for generation: Int, matching documentIdentity: String) async {
         guard Task.isCancelled == false else {
             return
         }
@@ -417,26 +429,78 @@ final class EditorViewModel {
             return
         }
 
-        if saveInFlight {
-            queuedSaveGeneration = generation
+        guard isCurrentDocumentIdentity(documentIdentity) else {
             return
         }
 
-        await startSave(for: generation)
+        if saveInFlight {
+            queuedSaveRequest = PendingSaveRequest(
+                generation: generation,
+                documentIdentity: documentIdentity
+            )
+            return
+        }
+
+        await startSave(for: generation, matching: documentIdentity)
     }
 
-    private func flushPendingSaveIfNeeded() async {
+    private func scheduleImmediateSaveFlush(for documentURL: URL) {
+        guard let document = session.openDocument, document.url == documentURL else {
+            return
+        }
+
+        scheduleImmediateSaveFlush(for: document)
+    }
+
+    /// Immediate save flushing is view-model-owned: disappearing/backgrounding views schedule it,
+    /// and the captured document identity prevents a later route change from saving another file.
+    private func scheduleImmediateSaveFlush(for document: OpenDocument) {
+        let request = PendingSaveRequest(
+            generation: editGeneration,
+            documentIdentity: documentObservationIdentity(for: document)
+        )
         autosaveTask?.cancel()
+
         if saveInFlight {
-            queuedSaveGeneration = editGeneration
+            queuedSaveRequest = request
             return
         }
 
-        await startSave(for: editGeneration)
+        flushSaveTask?.cancel()
+        flushSaveTaskGeneration += 1
+        let taskGeneration = flushSaveTaskGeneration
+        flushSaveTask = Task {
+            defer {
+                finishFlushSaveTaskIfCurrent(taskGeneration)
+            }
+
+            await flushPendingSaveIfNeeded(request)
+        }
     }
 
-    private func startSave(for generation: Int) async {
+    private func flushPendingSaveIfNeeded(_ request: PendingSaveRequest) async {
+        guard Task.isCancelled == false else {
+            return
+        }
+
+        guard isCurrentDocumentIdentity(request.documentIdentity) else {
+            return
+        }
+
+        if saveInFlight {
+            queuedSaveRequest = request
+            return
+        }
+
+        await startSave(for: request.generation, matching: request.documentIdentity)
+    }
+
+    private func startSave(for generation: Int, matching documentIdentity: String) async {
         guard var currentDocument = document else {
+            return
+        }
+
+        guard documentObservationIdentity(for: currentDocument) == documentIdentity else {
             return
         }
 
@@ -454,6 +518,7 @@ final class EditorViewModel {
         }
 
         saveInFlight = true
+        queuedSaveRequest = nil
         currentDocument.saveState = .saving
         session.openDocument = currentDocument
         let snapshot = currentDocument
@@ -469,13 +534,20 @@ final class EditorViewModel {
         )
 
         guard document?.conflictState.isConflicted == false else {
-            queuedSaveGeneration = nil
+            queuedSaveRequest = nil
             return
         }
 
-        if let queuedSaveGeneration, queuedSaveGeneration > generation {
-            self.queuedSaveGeneration = nil
-            await startSave(for: queuedSaveGeneration)
+        if let queuedSaveRequest,
+           queuedSaveRequest.generation > generation,
+           isCurrentDocumentIdentity(queuedSaveRequest.documentIdentity) {
+            self.queuedSaveRequest = nil
+            await startSave(
+                for: queuedSaveRequest.generation,
+                matching: queuedSaveRequest.documentIdentity
+            )
+        } else if queuedSaveRequest != nil {
+            queuedSaveRequest = nil
         }
     }
 
@@ -697,6 +769,14 @@ final class EditorViewModel {
         loadGeneration += 1
     }
 
+    private func finishFlushSaveTaskIfCurrent(_ generation: Int) {
+        guard generation == flushSaveTaskGeneration else {
+            return
+        }
+
+        flushSaveTask = nil
+    }
+
     private func beginConflictResolutionTask() -> Int {
         conflictResolutionTask?.cancel()
         conflictResolutionGeneration += 1
@@ -753,5 +833,13 @@ final class EditorViewModel {
 
     private func documentObservationIdentity(for document: OpenDocument) -> String {
         "\(document.workspaceRootURL.path)|\(document.relativePath)"
+    }
+
+    private func isCurrentDocumentIdentity(_ identity: String) -> Bool {
+        guard let document else {
+            return false
+        }
+
+        return documentObservationIdentity(for: document) == identity
     }
 }

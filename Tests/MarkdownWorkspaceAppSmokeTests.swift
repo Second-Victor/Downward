@@ -337,6 +337,78 @@ final class MarkdownWorkspaceAppSmokeTests: MarkdownWorkspaceAppTestCase {
     }
 
     @MainActor
+    func testBootstrapRestoresLastOpenJSONDocumentAsEditorDocument() async throws {
+        let workspaceURL = try makeTemporaryWorkspace(named: "RestoreJSONWorkspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+        let jsonText = #"{"lastOpen":"ordinary workspace JSON"}"#
+        let jsonURL = try createFile(named: "Theme.json", contents: jsonText, in: workspaceURL)
+        let snapshot = WorkspaceSnapshot(
+            rootURL: workspaceURL,
+            displayName: "Restore JSON Workspace",
+            rootNodes: [
+                .file(
+                    .init(
+                        url: jsonURL,
+                        displayName: "Theme.json",
+                        subtitle: "Root document"
+                    )
+                ),
+            ],
+            lastUpdated: PreviewSampleData.previewDate
+        )
+        let document = OpenDocument(
+            url: jsonURL,
+            workspaceRootURL: workspaceURL,
+            relativePath: "Theme.json",
+            displayName: "Theme.json",
+            text: jsonText,
+            loadedVersion: PreviewSampleData.cleanDocument.loadedVersion,
+            isDirty: false,
+            saveState: .idle,
+            conflictState: .none
+        )
+        let existingTheme = Self.makeTheme(name: "Existing Theme")
+        let themeStore = ThemeStore(fileURL: try makeTemporaryThemeURL())
+        await themeStore.waitForInitialLoad()
+        let didAddExistingTheme = await themeStore.add(existingTheme)
+        XCTAssertTrue(didAddExistingTheme)
+        let documentManager = RelativePathOnlyDocumentManager(
+            documentsByRelativePath: [document.relativePath: document]
+        )
+        let container = AppContainer(
+            logger: DebugLogger(),
+            bookmarkStore: StubBookmarkStore(),
+            sessionStore: StubSessionStore(
+                initialSession: RestorableDocumentSession(relativePath: document.relativePath)
+            ),
+            recentFilesStore: RecentFilesStore(initialItems: []),
+            editorAppearanceStore: EditorAppearanceStore(),
+            themeStore: themeStore,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: snapshot,
+                forcedRestoreResult: .ready(snapshot)
+            ),
+            documentManager: documentManager,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge()
+        )
+
+        await container.coordinator.bootstrapIfNeeded()
+
+        let openedRelativePaths = await documentManager.recordedOpenedRelativePaths()
+
+        XCTAssertEqual(container.session.launchState, .workspaceReady)
+        XCTAssertEqual(container.session.workspaceSnapshot, snapshot)
+        XCTAssertEqual(container.session.openDocument, document)
+        XCTAssertEqual(container.session.path, [.trustedEditor(jsonURL, document.relativePath)])
+        XCTAssertEqual(openedRelativePaths, [document.relativePath])
+        XCTAssertEqual(themeStore.themes, [existingTheme])
+        XCTAssertNil(themeStore.lastError)
+        XCTAssertNil(container.session.workspaceAlertError)
+    }
+
+    @MainActor
     func testRenameFolderContainingOpenDocumentUpdatesEditorStateAndRecents() async throws {
         let renamedFolderURL = PreviewSampleData.workspaceRootURL.appending(path: "Logbook")
         let renamedYearURL = renamedFolderURL.appending(path: "2026")
@@ -734,5 +806,29 @@ final class MarkdownWorkspaceAppSmokeTests: MarkdownWorkspaceAppTestCase {
         XCTAssertNil(session.workspaceAlertError)
         XCTAssertEqual(session.path, [])
         XCTAssertEqual(session.regularDetailSelection, .placeholder)
+    }
+
+    private func makeTemporaryThemeURL() throws -> URL {
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appending(path: "MarkdownWorkspaceSmokeThemeStore-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        return directoryURL.appending(path: "themes.json")
+    }
+
+    private static func makeTheme(id: UUID = UUID(), name: String) -> CustomTheme {
+        CustomTheme(
+            id: id,
+            name: name,
+            background: HexColor(hex: "#1E1E1E"),
+            text: HexColor(hex: "#D4D4D4"),
+            tint: HexColor(hex: "#569CD6"),
+            boldItalicMarker: HexColor(hex: "#72727F"),
+            strikethrough: HexColor(hex: "#808080"),
+            inlineCode: HexColor(hex: "#CE9178"),
+            codeBackground: HexColor(hex: "#2D2D2D"),
+            horizontalRule: HexColor(hex: "#404040"),
+            checkboxUnchecked: HexColor(hex: "#F44747"),
+            checkboxChecked: HexColor(hex: "#6A9955")
+        )
     }
 }

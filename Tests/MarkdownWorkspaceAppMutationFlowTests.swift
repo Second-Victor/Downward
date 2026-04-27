@@ -658,6 +658,118 @@ final class MarkdownWorkspaceAppMutationFlowTests: MarkdownWorkspaceAppTestCase 
     }
 
     @MainActor
+    func testRenameFolderUpdatesDescendantRecentEntryAndPreservesOtherWorkspaces() async {
+        let renamedFolderURL = PreviewSampleData.workspaceRootURL.appending(path: "Logbook")
+        let renamedRelativePath = "Logbook/2026/2026-04-13.md"
+        let renamedSnapshot = makeWorkspaceSnapshotRenamingJournalFolder(to: "Logbook")
+        let otherWorkspaceItem = RecentFileItem(
+            workspaceRootPath: "/preview/OtherWorkspace",
+            relativePath: "Elsewhere.md",
+            displayName: "Elsewhere.md",
+            lastOpenedAt: PreviewSampleData.previewDate.addingTimeInterval(-60)
+        )
+        let recentFilesStore = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceID: PreviewSampleData.nestedWorkspace.workspaceID,
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: PreviewSampleData.dirtyDocument.relativePath,
+                    displayName: PreviewSampleData.dirtyDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+                otherWorkspaceItem,
+            ]
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: renamedSnapshot,
+                renameOutcome: .renamedFolder(
+                    oldURL: PreviewSampleData.journalURL,
+                    newURL: renamedFolderURL,
+                    displayName: "Logbook",
+                    relativePath: "Logbook"
+                )
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            recentFilesStore: recentFilesStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.renameFile(at: PreviewSampleData.journalURL, to: "Logbook")
+
+        XCTAssertEqual(session.workspaceSnapshot, renamedSnapshot)
+        XCTAssertEqual(recentFilesStore.items.map(\.relativePath), [renamedRelativePath, "Elsewhere.md"])
+        XCTAssertEqual(recentFilesStore.items.map(\.displayName), ["2026-04-13.md", "Elsewhere.md"])
+        XCTAssertEqual(recentFilesStore.items.first?.workspaceID, PreviewSampleData.nestedWorkspace.workspaceID)
+        XCTAssertEqual(recentFilesStore.items.last?.workspaceRootPath, "/preview/OtherWorkspace")
+    }
+
+    @MainActor
+    func testMoveFolderUpdatesDescendantRecentEntryAndPreservesOtherWorkspaces() async {
+        let movedFolderURL = PreviewSampleData.archiveURL.appending(path: "Journal")
+        let movedRelativePath = "Archive/Journal/2026/2026-04-13.md"
+        let movedSnapshot = makeWorkspaceSnapshotMovingJournalFolder(to: movedFolderURL)
+        let otherWorkspaceItem = RecentFileItem(
+            workspaceRootPath: "/preview/OtherWorkspace",
+            relativePath: "Elsewhere.md",
+            displayName: "Elsewhere.md",
+            lastOpenedAt: PreviewSampleData.previewDate.addingTimeInterval(-60)
+        )
+        let recentFilesStore = RecentFilesStore(
+            initialItems: [
+                RecentFileItem(
+                    workspaceID: PreviewSampleData.nestedWorkspace.workspaceID,
+                    workspaceRootPath: PreviewSampleData.workspaceRootURL.path,
+                    relativePath: PreviewSampleData.dirtyDocument.relativePath,
+                    displayName: PreviewSampleData.dirtyDocument.displayName,
+                    lastOpenedAt: PreviewSampleData.previewDate
+                ),
+                otherWorkspaceItem,
+            ]
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: MutationTestingWorkspaceManager(
+                refreshSnapshot: movedSnapshot,
+                renameOutcome: .renamedFolder(
+                    oldURL: PreviewSampleData.journalURL,
+                    newURL: movedFolderURL,
+                    displayName: "Journal",
+                    relativePath: "Archive/Journal"
+                )
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            recentFilesStore: recentFilesStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        _ = await coordinator.moveItem(
+            at: PreviewSampleData.journalURL,
+            toFolder: PreviewSampleData.archiveURL
+        )
+
+        XCTAssertEqual(session.workspaceSnapshot, movedSnapshot)
+        XCTAssertEqual(recentFilesStore.items.map(\.relativePath), [movedRelativePath, "Elsewhere.md"])
+        XCTAssertEqual(recentFilesStore.items.map(\.displayName), ["2026-04-13.md", "Elsewhere.md"])
+        XCTAssertEqual(recentFilesStore.items.first?.workspaceID, PreviewSampleData.nestedWorkspace.workspaceID)
+        XCTAssertEqual(recentFilesStore.items.last?.workspaceRootPath, "/preview/OtherWorkspace")
+        XCTAssertEqual(movedSnapshot.fileURL(forRelativePath: movedRelativePath), movedFolderURL.appending(path: "2026/2026-04-13.md"))
+    }
+
+    @MainActor
     func testMoveFolderContainingOpenDocumentUpdatesEditorStateAndRecents() async throws {
         let movedFolderURL = PreviewSampleData.archiveURL.appending(path: "Journal")
         let movedYearURL = movedFolderURL.appending(path: "2026")

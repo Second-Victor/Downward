@@ -1,9 +1,9 @@
 import CryptoKit
 import Foundation
 
-/// Coordinates live reads and writes for the active editor document against the real workspace file.
-/// The current editor buffer is authoritative for autosave; coordinated reload/revalidation only
-/// interrupts when the path disappears or a coordinated read/write fails unrecoverably.
+/// Coordinates live reads, writes, revalidation, and observation for the one active document file.
+/// Keep editor presentation in `EditorViewModel` and UI bridge types; add document-version or
+/// file-observation helpers here before moving file-session logic into views.
 actor PlainTextDocumentSession {
     /// Some provider-backed locations do not emit reliable `NSFilePresenter` callbacks.
     /// Treat fallback polling as degraded detection, not steady-state observation: only emit a
@@ -42,6 +42,15 @@ actor PlainTextDocumentSession {
         case fallbackPollingOnly
         case inactive
     }
+
+#if DEBUG
+    struct ObservationLifecycleSnapshot: Equatable, Sendable {
+        let continuationCount: Int
+        let fallbackPollingActive: Bool
+        let filePresenterActive: Bool
+        let observationLeaseActive: Bool
+    }
+#endif
 
     private let workspaceRootURL: URL
     private var relativePath: String
@@ -285,6 +294,17 @@ actor PlainTextDocumentSession {
         resetObservationFallbackState()
     }
 
+#if DEBUG
+    func observationLifecycleSnapshot() -> ObservationLifecycleSnapshot {
+        ObservationLifecycleSnapshot(
+            continuationCount: changeContinuations.count,
+            fallbackPollingActive: observationFallbackTask != nil,
+            filePresenterActive: filePresenter != nil,
+            observationLeaseActive: observationLease != nil
+        )
+    }
+#endif
+
     private func ensureObservationStarted() throws {
         guard observationLease == nil else {
             return
@@ -394,6 +414,8 @@ actor PlainTextDocumentSession {
             return
         }
 
+        // Fallback polling is session-owned and exists only while at least one observation stream
+        // is alive; `removeChangeContinuation` tears it down when the final consumer terminates.
         let fallbackSchedule = observationFallbackSchedule
         observationFallbackTask = Task { [weak self] in
             await self?.primeObservationFallbackState()

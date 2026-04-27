@@ -832,6 +832,179 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testDeferredRerenderIsReplacedByNewerStructuralEdit() async {
+        let textBox = MutableBox("Draft")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        applyTextEdit("\nFirst", at: (textView.text as NSString).length, in: textView, coordinator: coordinator)
+        XCTAssertTrue(coordinator.hasPendingFullDocumentRerender)
+        XCTAssertTrue(coordinator.hasPendingDeferredRerender)
+
+        try? await Task.sleep(for: .milliseconds(70))
+        applyTextEdit("\nSecond", at: (textView.text as NSString).length, in: textView, coordinator: coordinator)
+
+        try? await Task.sleep(for: .milliseconds(80))
+        XCTAssertTrue(coordinator.hasPendingFullDocumentRerender)
+        XCTAssertTrue(coordinator.hasPendingDeferredRerender)
+        XCTAssertEqual(textView.text, "Draft\nFirst\nSecond")
+
+        try? await Task.sleep(for: MarkdownEditorTextView.Coordinator.deferredRerenderDelay)
+        XCTAssertFalse(coordinator.hasPendingFullDocumentRerender)
+        XCTAssertFalse(coordinator.hasPendingDeferredRerender)
+        XCTAssertEqual(textView.text, "Draft\nFirst\nSecond")
+    }
+
+    @MainActor
+    func testDeferredRerenderDoesNotApplyAfterDocumentIdentityChanges() async {
+        let documentA = URL(fileURLWithPath: "/tmp/DocumentA.md")
+        let documentB = URL(fileURLWithPath: "/tmp/DocumentB.md")
+        let textBox = MutableBox("Document A")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value, documentIdentity: documentA),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+        applyTextEdit("\nStructural A", at: (textView.text as NSString).length, in: textView, coordinator: coordinator)
+        XCTAssertTrue(coordinator.hasPendingDeferredRerender)
+
+        textBox.value = "Document B"
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value, documentIdentity: documentB),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        XCTAssertFalse(coordinator.hasPendingFullDocumentRerender)
+        XCTAssertFalse(coordinator.hasPendingDeferredRerender)
+
+        try? await Task.sleep(for: MarkdownEditorTextView.Coordinator.deferredRerenderDelay + .milliseconds(80))
+        XCTAssertEqual(textView.text, "Document B")
+        XCTAssertEqual(textView.attributedText.string, "Document B")
+        XCTAssertFalse(coordinator.hasPendingFullDocumentRerender)
+        XCTAssertFalse(coordinator.hasPendingDeferredRerender)
+    }
+
+    @MainActor
+    func testForceApplyingCurrentDocumentCancelsDeferredRerender() async {
+        let textBox = MutableBox("Draft")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let documentIdentity = URL(fileURLWithPath: "/tmp/CurrentDocument.md")
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value, documentIdentity: documentIdentity),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+        applyTextEdit("\nStructural", at: (textView.text as NSString).length, in: textView, coordinator: coordinator)
+        XCTAssertTrue(coordinator.hasPendingDeferredRerender)
+
+        textBox.value = textView.text
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value, documentIdentity: documentIdentity),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        XCTAssertFalse(coordinator.hasPendingFullDocumentRerender)
+        XCTAssertFalse(coordinator.hasPendingDeferredRerender)
+
+        try? await Task.sleep(for: MarkdownEditorTextView.Coordinator.deferredRerenderDelay + .milliseconds(80))
+        XCTAssertEqual(textView.text, "Draft\nStructural")
+        XCTAssertFalse(coordinator.hasPendingFullDocumentRerender)
+        XCTAssertFalse(coordinator.hasPendingDeferredRerender)
+    }
+
+#if DEBUG
+    @MainActor
+    func testViewportResetTaskIsReplacedWhenDocumentIdentityChanges() async {
+        let documentA = URL(fileURLWithPath: "/tmp/ViewportA.md")
+        let documentB = URL(fileURLWithPath: "/tmp/ViewportB.md")
+        let documentC = URL(fileURLWithPath: "/tmp/ViewportC.md")
+        let textBox = MutableBox("Document A")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: "Document A", documentIdentity: documentA),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+        textView.contentOffset = CGPoint(x: 0, y: 200)
+
+        textBox.value = "Document B"
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value, documentIdentity: documentB),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+        XCTAssertTrue(coordinator.hasPendingViewportReset)
+
+        textView.contentOffset = CGPoint(x: 0, y: 240)
+        textBox.value = "Document C"
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value, documentIdentity: documentC),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+        XCTAssertTrue(coordinator.hasPendingViewportReset)
+
+        try? await Task.sleep(for: .milliseconds(20))
+        XCTAssertFalse(coordinator.hasPendingViewportReset)
+        XCTAssertEqual(textView.text, "Document C")
+        XCTAssertTrue(coordinator.isNearDocumentStart(in: textView))
+    }
+#endif
+
+    @MainActor
+    private func applyTextEdit(
+        _ replacement: String,
+        at location: Int,
+        in textView: UITextView,
+        coordinator: MarkdownEditorTextView.Coordinator
+    ) {
+        let editRange = NSRange(location: location, length: 0)
+        XCTAssertTrue(coordinator.textView(textView, shouldChangeTextIn: editRange, replacementText: replacement))
+        textView.text = ((textView.text ?? "") as NSString).replacingCharacters(in: editRange, with: replacement)
+        textView.selectedRange = NSRange(location: location + (replacement as NSString).length, length: 0)
+        coordinator.textViewDidChange(textView)
+    }
+
+    @MainActor
     private func makeCoordinator(
         text: MutableBox<String>
     ) -> MarkdownEditorTextView.Coordinator {

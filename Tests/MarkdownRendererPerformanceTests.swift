@@ -9,8 +9,12 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
     // CI wall-clock thresholds are too noisy for UIKit/TextKit rendering. These tests enforce
     // the work budget instead: full-document events may touch the whole buffer, while ordinary
     // same-line typing in a large document must stay bounded to the edited line.
-    private enum Budget {
-        static let largeDocumentLineCount = 2_000
+    private enum RendererWorkBudget {
+        static let oneThousandLineDocument = 1_000
+        static let fiveThousandLineDocument = 5_000
+        static let twentyThousandLineDocument = 20_000
+        static let fiftyThousandLineDiagnosticDocument = 50_000
+        static let measuredDocumentLineCount = 2_000
         static let maximumCurrentLineRestyleCharacters = 512
     }
 
@@ -18,7 +22,7 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
     private let renderer = MarkdownStyledTextRenderer()
 
     func testLargeDocumentInitialRenderUsesFullDocumentBudget() {
-        let text = makeLargeMarkdownDocument(lineCount: Budget.largeDocumentLineCount)
+        let text = makeLargeMarkdownDocument(lineCount: RendererWorkBudget.measuredDocumentLineCount)
         let textBox = MutablePerformanceBox(text)
         let coordinator = makeCoordinator(text: textBox)
         let textView = PerformanceTextView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
@@ -39,88 +43,165 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
         )
     }
 
-    func testLargeDocumentSameLineTypingUsesCurrentLineBudget() {
-        let text = makeLargeMarkdownDocument(lineCount: Budget.largeDocumentLineCount)
-        let textBox = MutablePerformanceBox(text)
-        let coordinator = makeCoordinator(text: textBox)
-        let textView = PerformanceTextView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
-        let nsText = text as NSString
-        let lineRange = nsText.range(of: "Plain paragraph 1999")
-        let insertionLocation = NSMaxRange(lineRange)
-
-        coordinator.apply(
-            configuration: makeConfiguration(text: text, syntaxMode: .hiddenOutsideCurrentLine),
-            undoCommandToken: 0,
-            redoCommandToken: 0,
-            dismissKeyboardCommandToken: 0,
-            to: textView,
-            force: true
-        )
-        textView.selectedRange = NSRange(location: insertionLocation, length: 0)
-        coordinator.textViewDidChangeSelection(textView)
-
-        let insertion = " with **budgeted** styling"
-        XCTAssertTrue(
-            coordinator.textView(
-                textView,
-                shouldChangeTextIn: NSRange(location: insertionLocation, length: 0),
-                replacementText: insertion
+    func testRepresentativeDocumentSizesKeepSameLineTypingOnCurrentLineBudget() {
+        let scenarios: [(lineCount: Int, lineNeedle: String)] = [
+            (
+                RendererWorkBudget.oneThousandLineDocument,
+                "Plain paragraph 999"
+            ),
+            (
+                RendererWorkBudget.fiveThousandLineDocument,
+                "Plain paragraph 4999"
+            ),
+            (
+                RendererWorkBudget.twentyThousandLineDocument,
+                "Plain paragraph 19999"
             )
-        )
-        textView.text = nsText.replacingCharacters(in: NSRange(location: insertionLocation, length: 0), with: insertion)
-        textView.selectedRange = NSRange(location: insertionLocation + (insertion as NSString).length, length: 0)
+        ]
 
-        coordinator.textViewDidChange(textView)
-
-        guard case let .currentLine(characterCount)? = coordinator.lastRenderWork else {
-            return XCTFail("Expected same-line typing to use current-line restyle")
+        for scenario in scenarios {
+            assertSameLineEditUsesCurrentLineBudget(
+                lineCount: scenario.lineCount,
+                lineNeedle: scenario.lineNeedle,
+                insertion: " with **budgeted** styling"
+            )
         }
-        XCTAssertLessThanOrEqual(characterCount, Budget.maximumCurrentLineRestyleCharacters)
-        XCTAssertFalse(coordinator.hasPendingFullDocumentRerender)
-        XCTAssertFalse(coordinator.hasPendingDeferredRerender)
+    }
+
+    func testLargeDocumentInlineSameLineEditsStayOnCurrentLineBudget() {
+        let lineCount = RendererWorkBudget.fiveThousandLineDocument
+        let scenarios: [(lineNeedle: String, insertion: String)] = [
+            (
+                "- Bullet 4991 with **bold** and _italic_ text",
+                " plus __more__"
+            ),
+            (
+                "`inline code 4993` and ~~removed text~~",
+                " plus `token`"
+            ),
+            (
+                "Image and link paragraph 4998 with [link](https://example.com/4998) and ![Alt 4998](/assets/image-4998.png)",
+                " and [docs](https://example.com/docs)"
+            )
+        ]
+
+        for scenario in scenarios {
+            assertSameLineEditUsesCurrentLineBudget(
+                lineCount: lineCount,
+                lineNeedle: scenario.lineNeedle,
+                insertion: scenario.insertion
+            )
+        }
+    }
+
+    func testHiddenSyntaxSameLineEditRestylesOnlyRevealedCurrentLine() {
+        assertSameLineEditUsesCurrentLineBudget(
+            lineCount: RendererWorkBudget.fiveThousandLineDocument,
+            lineNeedle: "Plain paragraph 4999",
+            insertion: " with hidden markers **still local**",
+            syntaxMode: .hiddenOutsideCurrentLine
+        )
+    }
+
+    func testFiftyThousandLineBudgetIsDiagnosticOnlyForLineScanning() {
+        let text = makeLargeMarkdownDocument(lineCount: RendererWorkBudget.fiftyThousandLineDiagnosticDocument)
+        let scanner = MarkdownSyntaxScanner()
+
+        let lineRanges = scanner.lineRanges(in: text)
+
+        XCTAssertEqual(lineRanges.count, RendererWorkBudget.fiftyThousandLineDiagnosticDocument)
     }
 
     func testLargeDocumentLineBreakEditDefersFullDocumentRerender() {
-        let text = makeLargeMarkdownDocument(lineCount: Budget.largeDocumentLineCount)
-        let textBox = MutablePerformanceBox(text)
-        let coordinator = makeCoordinator(text: textBox)
-        let textView = PerformanceTextView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
-        let insertionLocation = (text as NSString).length
+        let text = makeStructuralMarkdownDocument()
+        let insertionLocation = NSMaxRange((text as NSString).range(of: "Plain structural paragraph"))
 
-        coordinator.apply(
-            configuration: makeConfiguration(text: text, syntaxMode: .hiddenOutsideCurrentLine),
-            undoCommandToken: 0,
-            redoCommandToken: 0,
-            dismissKeyboardCommandToken: 0,
-            to: textView,
-            force: true
+        assertStructuralEditDefersFullDocumentRerender(
+            text: text,
+            changedRange: NSRange(location: insertionLocation, length: 0),
+            replacement: "\n## Structural heading"
         )
-        textView.selectedRange = NSRange(location: insertionLocation, length: 0)
-        coordinator.textViewDidChangeSelection(textView)
+    }
 
-        let insertion = "\n## Structural heading"
-        XCTAssertTrue(
-            coordinator.textView(
-                textView,
-                shouldChangeTextIn: NSRange(location: insertionLocation, length: 0),
-                replacementText: insertion
-            )
+    func testFencedCodeDelimiterEditDefersFullDocumentRerender() {
+        let text = makeStructuralMarkdownDocument()
+        let insertionLocation = NSMaxRange((text as NSString).range(of: "```"))
+
+        assertStructuralEditDefersFullDocumentRerender(
+            text: text,
+            changedRange: NSRange(location: insertionLocation, length: 0),
+            replacement: " swift"
         )
-        textView.text = text + insertion
-        textView.selectedRange = NSRange(location: (textView.text as NSString).length, length: 0)
+    }
 
-        coordinator.textViewDidChange(textView)
+    func testFencedCodeContentEditDefersFullDocumentRerender() {
+        let text = makeStructuralMarkdownDocument()
+        let insertionLocation = NSMaxRange((text as NSString).range(of: "literal **code**"))
 
-        XCTAssertTrue(coordinator.hasPendingFullDocumentRerender)
-        XCTAssertTrue(coordinator.hasPendingDeferredRerender)
-        XCTAssertEqual(
-            coordinator.lastRenderWork,
-            .deferredFullDocumentRerenderScheduled(characterCount: (textView.text as NSString).length)
+        assertStructuralEditDefersFullDocumentRerender(
+            text: text,
+            changedRange: NSRange(location: insertionLocation, length: 0),
+            replacement: " still code"
+        )
+    }
+
+    func testBlockquoteMarkerLineEditDefersFullDocumentRerender() {
+        let text = makeStructuralMarkdownDocument()
+        let insertionLocation = NSMaxRange((text as NSString).range(of: "> Quoted line"))
+
+        assertStructuralEditDefersFullDocumentRerender(
+            text: text,
+            changedRange: NSRange(location: insertionLocation, length: 0),
+            replacement: " with continuation"
+        )
+    }
+
+    func testRemovingExistingBlockquoteMarkerDefersFullDocumentRerender() {
+        let text = makeStructuralMarkdownDocument()
+        let markerRange = (text as NSString).range(of: "> Quoted line")
+
+        assertStructuralEditDefersFullDocumentRerender(
+            text: text,
+            changedRange: NSRange(location: markerRange.location, length: 1),
+            replacement: ""
+        )
+    }
+
+    func testSetextUnderlineEditDefersFullDocumentRerender() {
+        let text = makeStructuralMarkdownDocument()
+        let underlineRange = (text as NSString).range(of: "---------------")
+
+        assertStructuralEditDefersFullDocumentRerender(
+            text: text,
+            changedRange: NSRange(location: underlineRange.location, length: 1),
+            replacement: "x"
+        )
+    }
+
+    func testLineBeforeSetextUnderlineEditDefersFullDocumentRerender() {
+        let text = makeStructuralMarkdownDocument()
+        let insertionLocation = NSMaxRange((text as NSString).range(of: "Setext Title"))
+
+        assertStructuralEditDefersFullDocumentRerender(
+            text: text,
+            changedRange: NSRange(location: insertionLocation, length: 0),
+            replacement: " Updated"
+        )
+    }
+
+    func testHorizontalRuleLikeLineEditDefersFullDocumentRerender() {
+        let text = makeStructuralMarkdownDocument()
+        let insertionLocation = NSMaxRange((text as NSString).range(of: "***"))
+
+        assertStructuralEditDefersFullDocumentRerender(
+            text: text,
+            changedRange: NSRange(location: insertionLocation, length: 0),
+            replacement: "*"
         )
     }
 
     func testLargeDocumentThemeSwitchUsesFullDocumentRestyleBudget() {
-        let text = makeLargeMarkdownDocument(lineCount: Budget.largeDocumentLineCount)
+        let text = makeLargeMarkdownDocument(lineCount: RendererWorkBudget.measuredDocumentLineCount)
         let textBox = MutablePerformanceBox(text)
         let coordinator = makeCoordinator(text: textBox)
         let textView = PerformanceTextView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
@@ -156,7 +237,7 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
     }
 
     func testMeasureLargeDocumentSameLineTypingLatency() {
-        let text = makeLargeMarkdownDocument(lineCount: Budget.largeDocumentLineCount)
+        let text = makeLargeMarkdownDocument(lineCount: RendererWorkBudget.measuredDocumentLineCount)
         let textBox = MutablePerformanceBox(text)
         let coordinator = makeCoordinator(text: textBox)
         let textView = PerformanceTextView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
@@ -206,7 +287,7 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
     }
 
     func testMeasureLargeDocumentPasteFullRenderLatency() {
-        let text = makeLargeMarkdownDocument(lineCount: Budget.largeDocumentLineCount)
+        let text = makeLargeMarkdownDocument(lineCount: RendererWorkBudget.measuredDocumentLineCount)
         let pastedText = text + "\n" + makeRepresentativeMarkdownPaste()
         let expectedLength = (pastedText as NSString).length
 
@@ -226,7 +307,7 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
     }
 
     func testMeasureLargeDocumentThemeSwitchRestyleLatency() {
-        let text = makeLargeMarkdownDocument(lineCount: Budget.largeDocumentLineCount)
+        let text = makeLargeMarkdownDocument(lineCount: RendererWorkBudget.measuredDocumentLineCount)
         let textBox = MutablePerformanceBox(text)
         let coordinator = makeCoordinator(text: textBox)
         let textView = PerformanceTextView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
@@ -266,6 +347,124 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
         let options = XCTMeasureOptions()
         options.iterationCount = 5
         return options
+    }
+
+    private func assertSameLineEditUsesCurrentLineBudget(
+        lineCount: Int,
+        lineNeedle: String,
+        insertion: String,
+        syntaxMode: MarkdownSyntaxMode = .hiddenOutsideCurrentLine,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let text = makeLargeMarkdownDocument(lineCount: lineCount)
+        let textBox = MutablePerformanceBox(text)
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = PerformanceTextView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let nsText = text as NSString
+        let lineRange = nsText.range(of: lineNeedle)
+        XCTAssertNotEqual(lineRange.location, NSNotFound, file: file, line: line)
+        let insertionLocation = NSMaxRange(lineRange)
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: text, syntaxMode: syntaxMode),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+        textView.selectedRange = NSRange(location: insertionLocation, length: 0)
+        coordinator.textViewDidChangeSelection(textView)
+
+        let editRange = NSRange(location: insertionLocation, length: 0)
+        XCTAssertTrue(
+            coordinator.textView(textView, shouldChangeTextIn: editRange, replacementText: insertion),
+            file: file,
+            line: line
+        )
+        let updatedText = nsText.replacingCharacters(in: editRange, with: insertion)
+        textView.text = updatedText
+        textView.selectedRange = NSRange(location: insertionLocation + (insertion as NSString).length, length: 0)
+
+        coordinator.textViewDidChange(textView)
+
+        guard case let .currentLine(characterCount)? = coordinator.lastRenderWork else {
+            return XCTFail("Expected same-line typing to use current-line restyle", file: file, line: line)
+        }
+        XCTAssertLessThanOrEqual(
+            characterCount,
+            RendererWorkBudget.maximumCurrentLineRestyleCharacters,
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(coordinator.hasPendingFullDocumentRerender, file: file, line: line)
+        XCTAssertFalse(coordinator.hasPendingDeferredRerender, file: file, line: line)
+        XCTAssertEqual(textBox.value, updatedText, file: file, line: line)
+        XCTAssertEqual(textView.text, updatedText, file: file, line: line)
+        XCTAssertEqual(
+            textView.selectedRange,
+            NSRange(location: insertionLocation + (insertion as NSString).length, length: 0),
+            file: file,
+            line: line
+        )
+    }
+
+    private func assertStructuralEditDefersFullDocumentRerender(
+        text: String,
+        changedRange: NSRange,
+        replacement: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let textBox = MutablePerformanceBox(text)
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = PerformanceTextView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let nsText = text as NSString
+        let safeChangedRange = NSRange(
+            location: min(changedRange.location, nsText.length),
+            length: min(changedRange.length, nsText.length - min(changedRange.location, nsText.length))
+        )
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: text, syntaxMode: .hiddenOutsideCurrentLine),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+        textView.selectedRange = NSRange(location: safeChangedRange.location, length: 0)
+        coordinator.textViewDidChangeSelection(textView)
+
+        XCTAssertTrue(
+            coordinator.textView(textView, shouldChangeTextIn: safeChangedRange, replacementText: replacement),
+            file: file,
+            line: line
+        )
+        let updatedText = nsText.replacingCharacters(in: safeChangedRange, with: replacement)
+        let updatedSelectionLocation = safeChangedRange.location + (replacement as NSString).length
+        textView.textStorage.replaceCharacters(in: safeChangedRange, with: replacement)
+        textView.selectedRange = NSRange(location: updatedSelectionLocation, length: 0)
+
+        coordinator.textViewDidChange(textView)
+
+        if case .currentLine? = coordinator.lastRenderWork {
+            XCTFail("Structural markdown edit should not use current-line restyle", file: file, line: line)
+        }
+        if case .fullDocument? = coordinator.lastRenderWork {
+            XCTFail("Structural markdown edit should not synchronously rerender the full document", file: file, line: line)
+        }
+        XCTAssertTrue(coordinator.hasPendingFullDocumentRerender, file: file, line: line)
+        XCTAssertTrue(coordinator.hasPendingDeferredRerender, file: file, line: line)
+        XCTAssertEqual(
+            coordinator.lastRenderWork,
+            .deferredFullDocumentRerenderScheduled(characterCount: (updatedText as NSString).length),
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(textBox.value, updatedText, file: file, line: line)
+        XCTAssertEqual(textView.text, updatedText, file: file, line: line)
     }
 
     private func makeCoordinator(
@@ -309,7 +508,7 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
             case 3:
                 return "`inline code \(index)` and ~~removed text~~"
             case 4:
-                return "![Alt \(index)](/assets/image-\(index).png)"
+                return "Plain paragraph \(index) before fenced code."
             case 5:
                 return "```"
             case 6:
@@ -317,12 +516,26 @@ final class MarkdownRendererPerformanceTests: XCTestCase {
             case 7:
                 return "```"
             case 8:
-                return "---"
+                return "Image and link paragraph \(index) with [link](https://example.com/\(index)) and ![Alt \(index)](/assets/image-\(index).png)"
             default:
                 return "Plain paragraph \(index) with enough words to resemble normal markdown editing."
             }
         }
         .joined(separator: "\n")
+    }
+
+    private func makeStructuralMarkdownDocument() -> String {
+        """
+        Plain structural paragraph
+        ```
+        literal **code**
+        ```
+        > Quoted line
+        Setext Title
+        ---------------
+        ***
+        Closing paragraph
+        """
     }
 
     private func makeRepresentativeMarkdownPaste() -> String {

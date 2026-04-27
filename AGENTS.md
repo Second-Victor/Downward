@@ -15,8 +15,11 @@ Use the repo docs in this order:
 
 1. `AGENTS.md` — guardrails, invariants, and contribution rules
 2. `ARCHITECTURE.md` — current system shape and ownership boundaries
-3. `TASKS.md` — active backlog, known pressure points, and current priorities
-4. `PLANS.md` — detailed technical checklists, performance plans, and code-review findings
+3. `PLANS.md` — active backlog, current priorities, and code-review findings
+4. `RELEASE_QA.md` — build, test, simulator, real-device, and Files-provider validation evidence
+5. `CODE_REVIEW.md` — review index and historical rationale only; active findings belong in `PLANS.md`
+
+Do not recreate a separate task backlog unless the planning model is intentionally changed again.
 
 Older steering docs were intentionally folded into these files.
 If a proposal conflicts with the docs, prefer:

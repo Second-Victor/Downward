@@ -16,12 +16,46 @@ final class ThemeEditorSettingsPageTests: XCTestCase {
     }
 
     @MainActor
+    func testDraftExportUsesDraftLabel() {
+        XCTAssertEqual(ThemeEditorDraftExport.buttonTitle, "Export Draft")
+    }
+
+    @MainActor
+    func testDraftExportedJSONCanBeImportedAgain() async throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appending(path: "draft-export-import-\(UUID().uuidString).json")
+        let theme = Self.makeTheme(id: UUID(), name: "Portable Draft", text: "#FEFEFE")
+        let document = ThemeEditorDraftExport.document(for: theme)
+        let decoded = try ThemeExchangeDocument(data: document.exportedData())
+        let store = ThemeStore(fileURL: fileURL)
+        await store.waitForInitialLoad()
+
+        let didImport = await store.importThemes(decoded.themes)
+
+        XCTAssertTrue(didImport)
+        XCTAssertEqual(store.themes, [theme])
+        XCTAssertNil(store.lastError)
+    }
+
+    @MainActor
     func testDraftExportFilenameUsesSanitizedThemeName() {
         XCTAssertEqual(
             ThemeEditorDraftExport.filename(for: "  My / Draft: Theme  "),
             "My---Draft--Theme.json"
         )
         XCTAssertEqual(ThemeEditorDraftExport.filename(for: "   "), "Theme.json")
+    }
+
+    @MainActor
+    func testDraftExportFilenameDoesNotKeepPathHostileCharacters() {
+        let filename = ThemeEditorDraftExport.filename(for: " ../Themes\\Draft:Bad*Name?\n ")
+        let basename = String(filename.dropLast(".json".count))
+        let illegalCharacters = CharacterSet(charactersIn: "/\\?%*|\"<>:")
+            .union(.newlines)
+            .union(.controlCharacters)
+
+        XCTAssertTrue(filename.hasSuffix(".json"))
+        XCTAssertNil(basename.rangeOfCharacter(from: illegalCharacters))
     }
 
     private static func makeTheme(id: UUID, name: String, text: String) -> CustomTheme {

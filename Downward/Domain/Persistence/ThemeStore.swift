@@ -4,6 +4,8 @@ import Observation
 @Observable
 @MainActor
 final class ThemeStore {
+    typealias PersistThemes = @Sendable ([CustomTheme], URL) async throws -> Void
+
     enum LoadState: Equatable {
         case loading
         case loaded
@@ -17,7 +19,15 @@ final class ThemeStore {
     private let fileURL: URL
     private let loadData: ThemePersistenceService.LoadData
     private let persistenceService: ThemePersistenceService
+    private let persistThemes: PersistThemes
     private var loadTask: Task<Void, Never>?
+    private var persistenceTask: Task<PersistenceResult, Never>?
+    private var persistenceGeneration = 0
+
+    private enum PersistenceResult: Sendable {
+        case success
+        case failure(String)
+    }
 
     private static let defaultFileURL: URL = {
         let appSupport = FileManager.default.urls(
@@ -32,19 +42,36 @@ final class ThemeStore {
     init(
         fileURL: URL? = nil,
         loadData: @escaping ThemePersistenceService.LoadData = { url in try Data(contentsOf: url) },
-        persistenceService: ThemePersistenceService = ThemePersistenceService()
+        persistenceService: ThemePersistenceService = ThemePersistenceService(),
+        persistThemes: PersistThemes? = nil
     ) {
         self.fileURL = fileURL ?? Self.defaultFileURL
         self.loadData = loadData
         self.persistenceService = persistenceService
-        self.loadTask = Task { [fileURL = self.fileURL, loadData, persistenceService] in
+        self.persistThemes = persistThemes ?? { themes, fileURL in
+            try await persistenceService.persistThemes(themes, to: fileURL)
+        }
+        self.loadTask = Task { [fileURL = self.fileURL, loadData, persistenceService, weak self] in
             let result = await persistenceService.loadThemes(from: fileURL, loadData: loadData)
+            guard Task.isCancelled == false else {
+                return
+            }
+
             await MainActor.run {
+                guard let self else {
+                    return
+                }
+
                 self.themes = result.themes
                 self.lastError = result.errorMessage
                 self.loadState = result.errorMessage == nil ? .loaded : .failed
             }
         }
+    }
+
+    isolated deinit {
+        loadTask?.cancel()
+        persistenceTask?.cancel()
     }
 
     @discardableResult
@@ -145,15 +172,38 @@ final class ThemeStore {
     @discardableResult
     private func persist(_ updatedThemes: [CustomTheme]) async -> Bool {
         await loadTask?.value
+        _ = await persistenceTask?.value
+
         let previousThemes = themes
         themes = updatedThemes
-        do {
-            try await persistenceService.persistThemes(updatedThemes, to: fileURL)
+
+        // Explicit theme mutations are store-owned user actions. Serialize writes so an earlier
+        // save/import/delete cannot finish later and roll back a newer successful mutation.
+        persistenceGeneration += 1
+        let generation = persistenceGeneration
+        let persistThemes = self.persistThemes
+        let fileURL = self.fileURL
+        persistenceTask = Task {
+            do {
+                try await persistThemes(updatedThemes, fileURL)
+                return .success
+            } catch {
+                return .failure("Could not save custom themes: \(error.localizedDescription)")
+            }
+        }
+
+        let result = await persistenceTask?.value ?? .success
+        if generation == persistenceGeneration {
+            persistenceTask = nil
+        }
+
+        switch result {
+        case .success:
             lastError = nil
             return true
-        } catch {
+        case let .failure(message):
             themes = previousThemes
-            lastError = "Could not save custom themes: \(error.localizedDescription)"
+            lastError = message
             return false
         }
     }

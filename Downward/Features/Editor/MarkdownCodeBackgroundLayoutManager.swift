@@ -10,6 +10,7 @@ extension NSAttributedString.Key {
     nonisolated static let markdownBlockquoteDepth = NSAttributedString.Key("Downward.MarkdownBlockquoteDepth")
     nonisolated static let markdownBlockquoteGroupID = NSAttributedString.Key("Downward.MarkdownBlockquoteGroupID")
     nonisolated static let markdownHorizontalRule = NSAttributedString.Key("Downward.MarkdownHorizontalRule")
+    nonisolated static let markdownSetextHeadingUnderline = NSAttributedString.Key("Downward.MarkdownSetextHeadingUnderline")
     nonisolated static let markdownSyntaxToken = NSAttributedString.Key("Downward.MarkdownSyntaxToken")
     nonisolated static let markdownHiddenSyntax = NSAttributedString.Key("Downward.MarkdownHiddenSyntax")
 }

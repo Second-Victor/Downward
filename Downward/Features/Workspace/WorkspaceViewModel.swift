@@ -64,6 +64,9 @@ struct WorkspaceMoveDestination: Identifiable, Equatable {
 
 @MainActor
 @Observable
+/// Browser-facing state for search, prompts, expansion, and row commands.
+/// Delegate file access and mutation decisions to `AppCoordinator`, `WorkspaceMutationPolicy`,
+/// `WorkspaceMutationService`, or `WorkspaceSearchEngine` instead of growing view logic here.
 final class WorkspaceViewModel {
     let session: AppSession
     var searchQuery = "" {
@@ -112,6 +115,11 @@ final class WorkspaceViewModel {
         self.recentFilesStore = recentFilesStore
         self.searcher = searcher
         observeSearchSnapshotChanges()
+    }
+
+    isolated deinit {
+        loadTask?.cancel()
+        fileOperationTask?.cancel()
     }
 
     var workspaceTitle: String {
@@ -654,6 +662,10 @@ final class WorkspaceViewModel {
                 return
             }
 
+            guard generation == fileOperationGeneration else {
+                return
+            }
+
             syncExpandedFoldersToCurrentSnapshot()
             refreshSearchResultsIfNeeded()
         }
@@ -1035,6 +1047,8 @@ final class WorkspaceViewModel {
         withObservationTracking {
             _ = session.workspaceSnapshot
         } onChange: { [weak self] in
+            // Observation only gives a synchronous callback; this weak, one-shot hop refreshes
+            // derived search state and then re-registers without retaining the view model.
             Task { @MainActor [weak self] in
                 self?.refreshSearchResultsIfNeeded()
                 self?.observeSearchSnapshotChanges()

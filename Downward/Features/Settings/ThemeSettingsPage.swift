@@ -37,6 +37,8 @@ struct ThemeSettingsPage: View {
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
+                            // Explicit theme mutations are ThemeStore-owned and serialized there;
+                            // do not cancel user-requested persistence with view lifetime changes.
                             Task {
                                 let didDelete = await themeStore.delete(id: customTheme.id)
                                 editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedThemeWasDeleted(
@@ -95,6 +97,8 @@ struct ThemeSettingsPage: View {
             isPresented: $isImportingTheme,
             allowedContentTypes: [.json]
         ) { result in
+            // Import is an explicit user action. The file read can outlive this view, while
+            // ThemeStore owns duplicate/import serialization and user-readable errors.
             Task {
                 await handleImport(result: result)
             }
@@ -120,9 +124,27 @@ struct ThemeSettingsPage: View {
     }
 
     private func handleImport(result: Result<URL, Error>) async {
+        await ThemeSettingsImportHandler.handle(
+            result: result,
+            themeStore: themeStore
+        ) { url in
+            try await themeImportService.loadThemes(from: url)
+        }
+    }
+}
+
+enum ThemeSettingsImportHandler {
+    typealias LoadThemes = @Sendable (URL) async throws -> [CustomTheme]
+
+    @MainActor
+    static func handle(
+        result: Result<URL, Error>,
+        themeStore: ThemeStore,
+        loadThemes: LoadThemes
+    ) async {
         do {
             let url = try result.get()
-            let themes = try await themeImportService.loadThemes(from: url)
+            let themes = try await loadThemes(url)
             _ = await themeStore.importThemes(themes)
         } catch {
             guard isUserCancelled(error) == false else {
@@ -132,7 +154,7 @@ struct ThemeSettingsPage: View {
         }
     }
 
-    private func isUserCancelled(_ error: Error) -> Bool {
+    private static func isUserCancelled(_ error: Error) -> Bool {
         let nsError = error as NSError
         return nsError.domain == NSCocoaErrorDomain && nsError.code == CocoaError.userCancelled.rawValue
     }

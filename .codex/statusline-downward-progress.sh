@@ -24,7 +24,6 @@ summarize_checkboxes() {
     ' "$file"
 }
 
-tasks="$(summarize_checkboxes TASKS "$root/TASKS.md")"
 plans="$(summarize_checkboxes PLANS "$root/PLANS.md")"
 
-printf "Downward %s | %s\n" "$tasks" "$plans"
+printf "Downward %s\n" "$plans"

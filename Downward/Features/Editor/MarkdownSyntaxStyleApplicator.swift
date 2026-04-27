@@ -69,6 +69,7 @@ struct MarkdownSyntaxStyleApplicator {
             value: resolvedTheme.syntaxMarkerText,
             range: underlineRange
         )
+        attributed.addAttribute(.markdownSetextHeadingUnderline, value: true, range: underlineRange)
         applySyntaxVisibility(underlineRange, rule: .followsMode, in: attributed)
     }
 

@@ -505,6 +505,70 @@ final class EditorAutosaveTests: XCTestCase {
     }
 
     @MainActor
+    func testRepeatedDisappearAndBackgroundFlushSchedulingSavesOnce() async throws {
+        let documentManager = RecordingDocumentManager(saveDelay: .milliseconds(10))
+        let system = makeEditorSystem(
+            documentManager: documentManager,
+            autosaveDelay: .seconds(5)
+        )
+
+        system.viewModel.handleTextChange("Single immediate flush")
+        system.viewModel.handleDisappear(for: PreviewSampleData.cleanDocument.url)
+        system.viewModel.handleScenePhaseChange(.background)
+
+        try await Task.sleep(for: .milliseconds(80))
+
+        let savedTexts = await documentManager.savedTexts
+
+        XCTAssertEqual(savedTexts, ["Single immediate flush"])
+        XCTAssertFalse(system.session.openDocument?.isDirty ?? true)
+    }
+
+    @MainActor
+    func testDisappearFlushCancelDoesNotAllowDuplicateAutosaveAfterOriginalDelay() async throws {
+        let documentManager = RecordingDocumentManager(saveDelay: .milliseconds(10))
+        let system = makeEditorSystem(
+            documentManager: documentManager,
+            autosaveDelay: .milliseconds(120)
+        )
+
+        system.viewModel.handleTextChange("Disappear flush")
+        system.viewModel.handleDisappear(for: PreviewSampleData.cleanDocument.url)
+        try await Task.sleep(for: .milliseconds(220))
+
+        let savedTexts = await documentManager.savedTexts
+
+        XCTAssertEqual(savedTexts, ["Disappear flush"])
+        XCTAssertFalse(system.session.openDocument?.isDirty ?? true)
+    }
+
+    @MainActor
+    func testImmediateFlushDoesNotSaveDifferentDocumentAfterRouteChange() async throws {
+        let documentManager = RecordingDocumentManager(saveDelay: .milliseconds(10))
+        let system = makeEditorSystem(
+            documentManager: documentManager,
+            autosaveDelay: .seconds(5)
+        )
+        let replacementDocument = makeAlternateDocument(
+            text: "Replacement dirty text",
+            isDirty: true
+        )
+
+        system.viewModel.handleTextChange("Original dirty text")
+        system.viewModel.handleScenePhaseChange(.background)
+        system.session.openDocument = replacementDocument
+        system.session.path = [.editor(replacementDocument.url)]
+
+        try await Task.sleep(for: .milliseconds(80))
+
+        let savedTexts = await documentManager.savedTexts
+
+        XCTAssertTrue(savedTexts.isEmpty)
+        XCTAssertEqual(system.session.openDocument?.text, "Replacement dirty text")
+        XCTAssertTrue(system.session.openDocument?.isDirty ?? false)
+    }
+
+    @MainActor
     func testForegroundRevalidationDoesNotConflictAfterMergedSaveAcknowledgement() async throws {
         let initialDocument = makeVersionedDocument(versionIndex: 0, text: PreviewSampleData.cleanDocument.text)
         let documentManager = VersionTrackingDocumentManager(
@@ -600,6 +664,21 @@ final class EditorAutosaveTests: XCTestCase {
         document.saveState = .idle
         document.conflictState = .none
         return document
+    }
+
+    @MainActor
+    private func makeAlternateDocument(text: String, isDirty: Bool) -> OpenDocument {
+        OpenDocument(
+            url: PreviewSampleData.archiveURL.appending(path: "Other.md"),
+            workspaceRootURL: PreviewSampleData.workspaceRootURL,
+            relativePath: "Archive/Other.md",
+            displayName: "Other.md",
+            text: text,
+            loadedVersion: PreviewSampleData.cleanDocument.loadedVersion,
+            isDirty: isDirty,
+            saveState: isDirty ? .unsaved : .idle,
+            conflictState: .none
+        )
     }
 
     private func makeLiveDocumentFixture(

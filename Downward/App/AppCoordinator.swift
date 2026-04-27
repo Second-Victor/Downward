@@ -2,6 +2,9 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// App-level orchestration for workspace selection, navigation, restore, and mutation outcomes.
+/// Prefer `WorkspaceNavigationPolicy`, `WorkspaceSessionPolicy`, `WorkspaceMutationPolicy`, or
+/// `WorkspaceMutationService` before adding more coordinator logic.
 @MainActor
 final class AppCoordinator {
     let session: AppSession
@@ -220,7 +223,19 @@ final class AppCoordinator {
                         using: snapshot,
                         relativePath: staleRecentFileOpen.relativePath
                     )
+                    session.applyNavigationState(
+                        WorkspaceNavigationPolicy.removingEditorPresentation(
+                            from: session.navigationState,
+                            workspaceRootURL: snapshot.rootURL,
+                            matchingRelativePath: staleRecentFileOpen.relativePath,
+                            matchingURL: url
+                        )
+                    )
                 }
+                if session.pendingEditorPresentation?.relativePath == staleRecentFileOpen.relativePath {
+                    session.pendingEditorPresentation = nil
+                }
+                session.workspaceAlertError = staleRecentFileOpen.error
                 return .failure(staleRecentFileOpen.error)
             }
 

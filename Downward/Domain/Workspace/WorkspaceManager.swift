@@ -31,7 +31,9 @@ enum WorkspaceMutationOutcome: Equatable, Sendable {
     case deletedFolder(url: URL, displayName: String)
 }
 
-/// Owns workspace selection and restore boundaries while keeping raw bookmark work out of views.
+/// Owns workspace access, refresh, and filesystem mutation boundaries for the selected folder.
+/// Keep UI routing in coordinator/view-model policies, and add focused validation or coordination
+/// helpers here before pushing file I/O into views.
 protocol WorkspaceManager: Sendable {
     func restoreWorkspace() async -> WorkspaceRestoreResult
     func selectWorkspace(at url: URL) async -> WorkspaceRestoreResult

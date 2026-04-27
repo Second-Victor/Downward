@@ -827,6 +827,167 @@ final class DocumentManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testFallbackObservationStopsWhenStreamTerminates() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        _ = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Observed.md",
+            contents: "# Entry\n\nStable text."
+        )
+        let recorder = FallbackObservationRecorder()
+        let session = PlainTextDocumentSession(
+            relativePath: "Observed.md",
+            workspaceRootURL: workspaceURL,
+            securityScopedAccess: FakeDocumentSecurityAccessHandler(),
+            filePresenterEnabled: false,
+            observationFallbackPolicy: .always,
+            observationFallbackSchedule: .init(intervals: [.milliseconds(20)]),
+            onFallbackPoll: {
+                Task {
+                    await recorder.recordPoll()
+                }
+            }
+        )
+
+        let stream = try await session.observeChanges()
+        let observationTask = Task {
+            for await _ in stream {
+                await recorder.recordEvent()
+            }
+        }
+
+        try await waitUntil(timeout: .milliseconds(160)) {
+            let snapshot = await session.observationLifecycleSnapshot()
+            let pollCount = await recorder.pollCount
+            return snapshot.continuationCount == 1
+                && snapshot.fallbackPollingActive
+                && snapshot.observationLeaseActive
+                && pollCount > 0
+        }
+
+        observationTask.cancel()
+        try await waitUntil(timeout: .milliseconds(200)) {
+            let snapshot = await session.observationLifecycleSnapshot()
+            return snapshot.continuationCount == 0
+                && snapshot.fallbackPollingActive == false
+                && snapshot.observationLeaseActive == false
+        }
+
+        let pollCountAfterTermination = await recorder.pollCount
+        try await Task.sleep(for: .milliseconds(80))
+        let finalPollCount = await recorder.pollCount
+        XCTAssertLessThanOrEqual(finalPollCount, pollCountAfterTermination + 1)
+    }
+
+    @MainActor
+    func testMultipleObservationStreamsShareFallbackPollingLifecycle() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        _ = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Observed.md",
+            contents: "# Entry\n\nStable text."
+        )
+        let session = PlainTextDocumentSession(
+            relativePath: "Observed.md",
+            workspaceRootURL: workspaceURL,
+            securityScopedAccess: FakeDocumentSecurityAccessHandler(),
+            filePresenterEnabled: false,
+            observationFallbackPolicy: .always,
+            observationFallbackSchedule: .init(intervals: [.milliseconds(20)])
+        )
+
+        let firstStream = try await session.observeChanges()
+        let firstTask = Task {
+            for await _ in firstStream {}
+        }
+        let secondStream = try await session.observeChanges()
+        let secondTask = Task {
+            for await _ in secondStream {}
+        }
+
+        try await waitUntil(timeout: .milliseconds(160)) {
+            let snapshot = await session.observationLifecycleSnapshot()
+            return snapshot.continuationCount == 2
+                && snapshot.fallbackPollingActive
+                && snapshot.observationLeaseActive
+        }
+
+        firstTask.cancel()
+        try await waitUntil(timeout: .milliseconds(200)) {
+            let snapshot = await session.observationLifecycleSnapshot()
+            return snapshot.continuationCount == 1
+                && snapshot.fallbackPollingActive
+                && snapshot.observationLeaseActive
+        }
+
+        secondTask.cancel()
+        try await waitUntil(timeout: .milliseconds(200)) {
+            let snapshot = await session.observationLifecycleSnapshot()
+            return snapshot.continuationCount == 0
+                && snapshot.fallbackPollingActive == false
+                && snapshot.observationLeaseActive == false
+        }
+    }
+
+    @MainActor
+    func testFallbackObservationEmitsOnlyWhenFileMetadataChanges() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let fileURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "Observed.md",
+            contents: "# Entry\n\nOriginal text."
+        )
+        let recorder = FallbackObservationRecorder()
+        let session = PlainTextDocumentSession(
+            relativePath: "Observed.md",
+            workspaceRootURL: workspaceURL,
+            securityScopedAccess: FakeDocumentSecurityAccessHandler(),
+            filePresenterEnabled: false,
+            observationFallbackPolicy: .always,
+            observationFallbackSchedule: .init(intervals: [.milliseconds(20)]),
+            onFallbackPoll: {
+                Task {
+                    await recorder.recordPoll()
+                }
+            }
+        )
+
+        let stream = try await session.observeChanges()
+        let observationTask = Task {
+            for await _ in stream {
+                await recorder.recordEvent()
+            }
+        }
+
+        try await waitUntil(timeout: .milliseconds(160)) {
+            await recorder.pollCount >= 2
+        }
+        let unchangedEventCount = await recorder.eventCount
+        XCTAssertEqual(unchangedEventCount, 0)
+
+        try """
+        # Entry
+
+        Changed elsewhere with clearly different size.
+        """.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        try await waitUntil(timeout: .milliseconds(400)) {
+            await recorder.eventCount == 1
+        }
+        try await Task.sleep(for: .milliseconds(80))
+        let changedEventCount = await recorder.eventCount
+        XCTAssertEqual(changedEventCount, 1)
+
+        observationTask.cancel()
+    }
+
+    @MainActor
     func testPrimaryObservationDoesNotStartFallbackPollingWhenPresenterObservationIsEnabled() async throws {
         let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
         defer { removeItemIfPresent(at: workspaceURL) }

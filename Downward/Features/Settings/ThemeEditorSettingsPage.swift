@@ -122,7 +122,7 @@ struct ThemeEditorSettingsPage: View {
         .toolbar {
             if editing != nil {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Export Draft", systemImage: "square.and.arrow.up") {
+                    Button(ThemeEditorDraftExport.buttonTitle, systemImage: "square.and.arrow.up") {
                         exportTheme()
                     }
                 }
@@ -130,6 +130,8 @@ struct ThemeEditorSettingsPage: View {
 
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
+                    // Saves are explicit ThemeStore-owned mutations; `isSaving` prevents duplicate
+                    // taps while the store serializes persistence.
                     Task {
                         await saveTheme()
                     }
@@ -283,6 +285,8 @@ struct ThemeEditorSettingsPage: View {
 }
 
 enum ThemeEditorDraftExport {
+    static let buttonTitle = "Export Draft"
+
     static func document(for theme: CustomTheme) -> ThemeExchangeDocument {
         ThemeExchangeDocument(theme: theme)
     }
@@ -290,6 +294,8 @@ enum ThemeEditorDraftExport {
     static func filename(for themeName: String) -> String {
         let trimmed = themeName.trimmingCharacters(in: .whitespacesAndNewlines)
         let invalidCharacters = CharacterSet(charactersIn: "/\\?%*|\"<>:")
+            .union(.newlines)
+            .union(.controlCharacters)
         let cleaned = trimmed
             .components(separatedBy: invalidCharacters)
             .joined(separator: "-")

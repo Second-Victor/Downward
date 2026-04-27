@@ -531,10 +531,12 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         let underlineRange = nsString.range(of: "---------------")
         let titleFont = rendered.attribute(.font, at: titleRange.location, effectiveRange: nil) as? UIFont
         let underlineIsHidden = rendered.attribute(.markdownHiddenSyntax, at: underlineRange.location, effectiveRange: nil) as? Bool
+        let underlineIsMarked = rendered.attribute(.markdownSetextHeadingUnderline, at: underlineRange.location, effectiveRange: nil) as? Bool
 
         XCTAssertGreaterThan(titleFont?.pointSize ?? 0, baseFont.pointSize)
         XCTAssertTrue(titleFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
         XCTAssertEqual(underlineIsHidden, true)
+        XCTAssertEqual(underlineIsMarked, true)
     }
 
     @MainActor
