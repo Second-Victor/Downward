@@ -718,6 +718,41 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testEditorChromeStyleControlsKeyboardAndAccessoryAppearance() {
+        let actionTarget = AccessoryActionTarget()
+        let textView = TrackingUndoTextView()
+        let accessoryView = KeyboardAccessoryToolbarView(
+            target: actionTarget,
+            undoAction: #selector(AccessoryActionTarget.performAction),
+            redoAction: #selector(AccessoryActionTarget.performAction),
+            dismissAction: #selector(AccessoryActionTarget.performAction),
+            resolvedTheme: .default
+        )
+        textView.keyboardAccessoryToolbarView = accessoryView
+
+        textView.applyEditorChromeInterfaceStyle(.dark)
+
+        XCTAssertEqual(textView.overrideUserInterfaceStyle, .dark)
+        XCTAssertEqual(textView.keyboardAppearance, .dark)
+        XCTAssertEqual(accessoryView.overrideUserInterfaceStyle, .dark)
+        XCTAssertEqual(accessoryView.toolbar.overrideUserInterfaceStyle, .dark)
+
+        textView.applyEditorChromeInterfaceStyle(.light)
+
+        XCTAssertEqual(textView.overrideUserInterfaceStyle, .light)
+        XCTAssertEqual(textView.keyboardAppearance, .light)
+        XCTAssertEqual(accessoryView.overrideUserInterfaceStyle, .light)
+        XCTAssertEqual(accessoryView.toolbar.overrideUserInterfaceStyle, .light)
+
+        textView.applyEditorChromeInterfaceStyle(.unspecified)
+
+        XCTAssertEqual(textView.overrideUserInterfaceStyle, .unspecified)
+        XCTAssertEqual(textView.keyboardAppearance, .default)
+        XCTAssertEqual(accessoryView.overrideUserInterfaceStyle, .unspecified)
+        XCTAssertEqual(accessoryView.toolbar.overrideUserInterfaceStyle, .unspecified)
+    }
+
+    @MainActor
     func testKeyboardAccessoryKeepsUIKitHostBackgroundUntouched() {
         let actionTarget = AccessoryActionTarget()
         let accessoryView = KeyboardAccessoryToolbarView(

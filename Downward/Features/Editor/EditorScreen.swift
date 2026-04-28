@@ -76,6 +76,7 @@ struct EditorScreen: View {
                     topViewportInset: topViewportInset,
                     font: viewModel.editorUIFont,
                     resolvedTheme: resolvedTheme,
+                    chromeColorScheme: editorChromeColorScheme,
                     syntaxMode: viewModel.markdownSyntaxMode,
                     showLineNumbers: viewModel.effectiveShowLineNumbers,
                     lineNumberOpacity: viewModel.lineNumberOpacity,

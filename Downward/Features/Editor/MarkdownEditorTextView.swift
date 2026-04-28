@@ -8,6 +8,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     let topViewportInset: CGFloat
     let font: UIFont
     let resolvedTheme: ResolvedEditorTheme
+    let chromeColorScheme: ColorScheme?
     let syntaxMode: MarkdownSyntaxMode
     let showLineNumbers: Bool
     let lineNumberOpacity: Double
@@ -19,6 +20,44 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     let dismissKeyboardCommandToken: Int
     let onEditorFocusChange: @MainActor (Bool) -> Void
     let onUndoRedoAvailabilityChange: @MainActor (Bool, Bool) -> Void
+
+    init(
+        text: Binding<String>,
+        documentIdentity: URL,
+        topViewportInset: CGFloat,
+        font: UIFont,
+        resolvedTheme: ResolvedEditorTheme,
+        chromeColorScheme: ColorScheme? = nil,
+        syntaxMode: MarkdownSyntaxMode,
+        showLineNumbers: Bool,
+        lineNumberOpacity: Double,
+        largerHeadingText: Bool,
+        tapToToggleTasks: Bool,
+        isEditable: Bool,
+        undoCommandToken: Int,
+        redoCommandToken: Int,
+        dismissKeyboardCommandToken: Int,
+        onEditorFocusChange: @escaping @MainActor (Bool) -> Void,
+        onUndoRedoAvailabilityChange: @escaping @MainActor (Bool, Bool) -> Void
+    ) {
+        _text = text
+        self.documentIdentity = documentIdentity
+        self.topViewportInset = topViewportInset
+        self.font = font
+        self.resolvedTheme = resolvedTheme
+        self.chromeColorScheme = chromeColorScheme
+        self.syntaxMode = syntaxMode
+        self.showLineNumbers = showLineNumbers
+        self.lineNumberOpacity = lineNumberOpacity
+        self.largerHeadingText = largerHeadingText
+        self.tapToToggleTasks = tapToToggleTasks
+        self.isEditable = isEditable
+        self.undoCommandToken = undoCommandToken
+        self.redoCommandToken = redoCommandToken
+        self.dismissKeyboardCommandToken = dismissKeyboardCommandToken
+        self.onEditorFocusChange = onEditorFocusChange
+        self.onUndoRedoAvailabilityChange = onUndoRedoAvailabilityChange
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -71,6 +110,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 documentIdentity: documentIdentity,
                 font: font,
                 resolvedTheme: resolvedTheme,
+                chromeColorScheme: chromeColorScheme,
                 syntaxMode: syntaxMode,
                 showLineNumbers: showLineNumbers,
                 lineNumberOpacity: lineNumberOpacity,
@@ -110,6 +150,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 documentIdentity: documentIdentity,
                 font: font,
                 resolvedTheme: resolvedTheme,
+                chromeColorScheme: chromeColorScheme,
                 syntaxMode: syntaxMode,
                 showLineNumbers: showLineNumbers,
                 lineNumberOpacity: lineNumberOpacity,
@@ -132,6 +173,7 @@ extension MarkdownEditorTextView {
         let documentIdentity: URL
         let font: UIFont
         let resolvedTheme: ResolvedEditorTheme
+        let chromeColorScheme: ColorScheme?
         let syntaxMode: MarkdownSyntaxMode
         let showLineNumbers: Bool
         let lineNumberOpacity: Double
@@ -144,6 +186,7 @@ extension MarkdownEditorTextView {
             documentIdentity: URL,
             font: UIFont,
             resolvedTheme: ResolvedEditorTheme = .default,
+            chromeColorScheme: ColorScheme? = nil,
             syntaxMode: MarkdownSyntaxMode,
             showLineNumbers: Bool = false,
             lineNumberOpacity: Double = EditorAppearancePreferences.defaultLineNumberOpacity,
@@ -155,6 +198,7 @@ extension MarkdownEditorTextView {
             self.documentIdentity = documentIdentity
             self.font = font
             self.resolvedTheme = resolvedTheme
+            self.chromeColorScheme = chromeColorScheme
             self.syntaxMode = syntaxMode
             self.showLineNumbers = showLineNumbers
             self.lineNumberOpacity = lineNumberOpacity

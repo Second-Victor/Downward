@@ -141,6 +141,24 @@ class EditorChromeAwareTextView: UITextView {
         lineNumberGutterView.setNeedsDisplay()
     }
 
+    func applyEditorChromeInterfaceStyle(_ style: UIUserInterfaceStyle) {
+        let previousStyle = overrideUserInterfaceStyle
+        let previousKeyboardAppearance = keyboardAppearance
+
+        overrideUserInterfaceStyle = style
+        keyboardAppearance = style.editorKeyboardAppearance
+        keyboardAccessoryToolbarView?.applyChromeInterfaceStyle(style)
+
+        guard
+            isFirstResponder,
+            previousStyle != overrideUserInterfaceStyle || previousKeyboardAppearance != keyboardAppearance
+        else {
+            return
+        }
+
+        reloadInputViews()
+    }
+
     func shouldHideLineNumber(for _: NSRange) -> Bool {
         false
     }
@@ -168,4 +186,19 @@ class EditorChromeAwareTextView: UITextView {
         notePlainTextMutation()
     }
 
+}
+
+private extension UIUserInterfaceStyle {
+    var editorKeyboardAppearance: UIKeyboardAppearance {
+        switch self {
+        case .dark:
+            .dark
+        case .light:
+            .light
+        case .unspecified:
+            .default
+        @unknown default:
+            .default
+        }
+    }
 }

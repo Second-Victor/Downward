@@ -90,6 +90,7 @@ extension MarkdownEditorTextView {
             textView.accessibilityLabel = "Document Text"
             textView.accessibilityHint = "Edits the current text document."
             applyResolvedTheme(configuration.resolvedTheme, to: textView)
+            applyChromeColorScheme(configuration.chromeColorScheme, to: textView)
             updateTypingAttributes(for: textView, font: configuration.font, resolvedTheme: configuration.resolvedTheme)
 
             if let textView = textView as? EditorChromeAwareTextView {
@@ -146,6 +147,7 @@ extension MarkdownEditorTextView {
                     documentIdentity: configuration.documentIdentity,
                     font: configuration.font,
                     resolvedTheme: configuration.resolvedTheme,
+                    chromeColorScheme: configuration.chromeColorScheme,
                     syntaxMode: configuration.syntaxMode,
                     showLineNumbers: configuration.showLineNumbers,
                     lineNumberOpacity: configuration.lineNumberOpacity,
@@ -220,6 +222,14 @@ extension MarkdownEditorTextView {
             }
         }
 
+        private func applyChromeColorScheme(_ colorScheme: ColorScheme?, to textView: UITextView) {
+            guard let textView = textView as? EditorChromeAwareTextView else {
+                return
+            }
+
+            textView.applyEditorChromeInterfaceStyle(colorScheme.editorUserInterfaceStyle)
+        }
+
         private func updateTypingAttributes(
             for textView: UITextView,
             font: UIFont,
@@ -292,6 +302,7 @@ extension MarkdownEditorTextView {
                 documentIdentity: configuration.documentIdentity,
                 font: configuration.font,
                 resolvedTheme: configuration.resolvedTheme,
+                chromeColorScheme: configuration.chromeColorScheme,
                 syntaxMode: configuration.syntaxMode,
                 showLineNumbers: configuration.showLineNumbers,
                 lineNumberOpacity: configuration.lineNumberOpacity,
@@ -359,6 +370,7 @@ extension MarkdownEditorTextView {
                 documentIdentity: configuration.documentIdentity,
                 font: configuration.font,
                 resolvedTheme: configuration.resolvedTheme,
+                chromeColorScheme: configuration.chromeColorScheme,
                 syntaxMode: configuration.syntaxMode,
                 showLineNumbers: configuration.showLineNumbers,
                 lineNumberOpacity: configuration.lineNumberOpacity,
@@ -879,6 +891,7 @@ extension MarkdownEditorTextView {
                         documentIdentity: latestConfiguration.documentIdentity,
                         font: latestConfiguration.font,
                         resolvedTheme: latestConfiguration.resolvedTheme,
+                        chromeColorScheme: latestConfiguration.chromeColorScheme,
                         syntaxMode: latestConfiguration.syntaxMode,
                         showLineNumbers: latestConfiguration.showLineNumbers,
                         lineNumberOpacity: latestConfiguration.lineNumberOpacity,
@@ -1248,6 +1261,7 @@ extension MarkdownEditorTextView {
             }
 
             textView.keyboardAccessoryToolbarView?.applyResolvedTheme(resolvedTheme)
+            textView.keyboardAccessoryToolbarView?.applyChromeInterfaceStyle(textView.overrideUserInterfaceStyle)
 
             updateKeyboardAccessoryState(for: textView)
         }
@@ -1660,6 +1674,24 @@ extension MarkdownEditorTextView {
 private extension String {
     var containsLineBreak: Bool {
         contains("\n") || contains("\r")
+    }
+}
+
+private extension Optional where Wrapped == ColorScheme {
+    var editorUserInterfaceStyle: UIUserInterfaceStyle {
+        switch self {
+        case .none:
+            .unspecified
+        case let .some(colorScheme):
+            switch colorScheme {
+            case .dark:
+                .dark
+            case .light:
+                .light
+            @unknown default:
+                .unspecified
+            }
+        }
     }
 }
 

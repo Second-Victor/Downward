@@ -80,7 +80,7 @@ struct ThemeSettingsPage: View {
 
             Section {
                 Toggle(
-                    "Match Menus to Theme",
+                    "Match Editor Menus to Theme",
                     isOn: Binding(
                         get: { editorAppearanceStore.matchSystemChromeToTheme },
                         set: { editorAppearanceStore.setMatchSystemChromeToTheme($0) }

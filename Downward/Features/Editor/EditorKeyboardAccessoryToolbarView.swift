@@ -116,4 +116,9 @@ final class KeyboardAccessoryToolbarView: UIView {
         // keeps the accessory visually consistent with the status bar / nav bar buttons.
         toolbar.tintColor = resolvedTheme.accent
     }
+
+    func applyChromeInterfaceStyle(_ style: UIUserInterfaceStyle) {
+        overrideUserInterfaceStyle = style
+        toolbar.overrideUserInterfaceStyle = style
+    }
 }
