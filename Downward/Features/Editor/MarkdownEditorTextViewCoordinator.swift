@@ -392,6 +392,14 @@ extension MarkdownEditorTextView {
             }
         }
 
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            guard let textView = scrollView as? EditorChromeAwareTextView else {
+                return
+            }
+
+            textView.setNeedsLineNumberDisplay()
+        }
+
         func textViewDidBeginEditing(_ textView: UITextView) {
             if let textView = textView as? EditorChromeAwareTextView {
                 activeTextView = textView

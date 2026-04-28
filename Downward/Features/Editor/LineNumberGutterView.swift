@@ -13,18 +13,25 @@ final class LineNumberGutterView: UIView {
     private(set) var lastVisitedLogicalLineCount = 0
     private(set) var lastDrawnLineNumbers: [Int] = []
     private(set) var lastDrawnLineNumberLabels: [String] = []
+    /// Content-coordinate rects. Keeping debug rects in content coordinates makes
+    /// scroll-position tests catch line drift without coupling them to the viewport layer.
     private(set) var lastDrawnLineNumberRects: [Int: CGRect] = [:]
     private(set) var lastHighlightColor: UIColor?
     private(set) var lastHighlightedLineNumbers: [Int] = []
     private(set) var lastHighlightedLineNumberRects: [Int: CGRect] = [:]
     private(set) var lastDrawingLineNumberOpacity: Double?
+    private(set) var lastInvalidatedDisplayRect: CGRect?
 #endif
 
     init(textView: EditorChromeAwareTextView) {
         self.textView = textView
         super.init(frame: .zero)
         isUserInteractionEnabled = false
+        // Keep the gutter as a small viewport-sized layer. A content-height layer can
+        // grow to tens or hundreds of thousands of points for large files, which makes
+        // Core Animation backing-store reuse unreliable after fast bottom-to-top jumps.
         isOpaque = true
+        clearsContextBeforeDrawing = true
         isHidden = true
         contentMode = .redraw
     }
@@ -39,7 +46,7 @@ final class LineNumberGutterView: UIView {
         cachedTheme = nil
         cachedFontSize = nil
         cachedOpacity = nil
-        setNeedsDisplay()
+        setNeedsVisibleDisplay()
     }
 
     static func width(lineCount: Int, fontSize: CGFloat) -> CGFloat {
@@ -65,13 +72,24 @@ final class LineNumberGutterView: UIView {
             gutterWidth = newGutterWidth
         }
         textView.updateLineNumberTextInset(gutterWidth: gutterWidth)
-
-        let contentHeight = max(textView.contentSize.height, textView.bounds.height)
-        // The gutter is drawn in text-view content coordinates. Do not offset the gutter by
-        // contentOffset; scrolling is handled by the text view clipping the content-aligned gutter.
-        frame = CGRect(x: 0, y: 0, width: gutterWidth, height: contentHeight)
+        updateVisibleViewportFrame(for: textView)
         backgroundColor = textView.resolvedTheme.editorBackground
-        setNeedsDisplay()
+        setNeedsVisibleDisplay()
+    }
+
+    func setNeedsVisibleDisplay() {
+        guard let textView else {
+            setNeedsDisplay()
+            return
+        }
+
+        updateVisibleViewportFrame(for: textView)
+#if DEBUG
+        lastInvalidatedDisplayRect = visibleContentRect(for: textView)
+#endif
+        // The view itself is only as tall as the viewport, so repainting all of it is
+        // cheap and avoids stale/black tiles after huge scroll jumps.
+        setNeedsDisplay(bounds)
     }
 
     override func draw(_ rect: CGRect) {
@@ -83,7 +101,7 @@ final class LineNumberGutterView: UIView {
         }
 
         context.setFillColor(textView.resolvedTheme.editorBackground.cgColor)
-        context.fill(rect)
+        context.fill(bounds)
 
 #if DEBUG
         lastVisitedLogicalLineCount = 0
@@ -103,18 +121,20 @@ final class LineNumberGutterView: UIView {
         let glyphCount = layoutManager.numberOfGlyphs
         let topInset = textView.textContainerInset.top
         let (font, attributes) = drawingAttributes()
+        let visibleRect = visibleContentRect(for: textView)
+        let viewportOriginY = visibleRect.minY
 #if DEBUG
         lastDrawingLineNumberOpacity = textView.lineNumberOpacity
 #endif
 
         guard fullLength > 0, glyphCount > 0 else {
-            let drawRect = CGRect(
+            let contentDrawRect = CGRect(
                 x: 0,
                 y: topInset,
                 width: gutterWidth - EditorTextViewLayout.lineNumberGutterTrailingPadding,
                 height: font.lineHeight
             )
-            if visibleContentRect(for: textView).intersects(drawRect), textView.shouldHideLineNumber(for: NSRange(location: 0, length: 0)) == false {
+            if visibleRect.intersects(contentDrawRect), textView.shouldHideLineNumber(for: NSRange(location: 0, length: 0)) == false {
                 drawSelectionHighlightIfNeeded(
                     for: 1,
                     lineRange: NSRange(location: 0, length: 0),
@@ -125,22 +145,25 @@ final class LineNumberGutterView: UIView {
                         height: font.lineHeight
                     ),
                     topInset: topInset,
+                    viewportOriginY: viewportOriginY,
                     in: context,
                     fullLength: fullLength
                 )
                 let label = Self.displayLabel(for: 1)
-                (label as NSString).draw(in: drawRect, withAttributes: attributes)
+                (label as NSString).draw(
+                    in: localDrawRect(forContentRect: contentDrawRect, viewportOriginY: viewportOriginY),
+                    withAttributes: attributes
+                )
 #if DEBUG
                 lastVisitedLogicalLineCount = 1
                 lastDrawnLineNumbers = [1]
                 lastDrawnLineNumberLabels = [label]
-                lastDrawnLineNumberRects = [1: drawRect]
+                lastDrawnLineNumberRects = [1: contentDrawRect]
 #endif
             }
             return
         }
 
-        let visibleRect = visibleContentRect(for: textView)
         let visibleTextContainerRect = CGRect(
             x: 0,
             y: max(0, visibleRect.minY - topInset),
@@ -182,14 +205,14 @@ final class LineNumberGutterView: UIView {
                 break
             }
 
-            guard let drawRect = lineNumberDrawRect(
+            guard let contentDrawRect = lineNumberDrawRect(
                 fragmentRect: fragmentRect,
                 topInset: topInset,
                 numberFontLineHeight: font.lineHeight
             ) else {
                 break
             }
-            if drawRect.minY > visibleRect.maxY {
+            if contentDrawRect.minY > visibleRect.maxY {
                 break
             }
 
@@ -198,22 +221,26 @@ final class LineNumberGutterView: UIView {
             lastVisitedLogicalLineCount += 1
 #endif
 
-            if drawRect.maxY >= visibleRect.minY,
+            if contentDrawRect.maxY >= visibleRect.minY,
                textView.shouldHideLineNumber(for: lineRange) == false {
                 drawSelectionHighlightIfNeeded(
                     for: lineNumber,
                     lineRange: lineRange,
                     lineFragmentRect: fragmentRect,
                     topInset: topInset,
+                    viewportOriginY: viewportOriginY,
                     in: context,
                     fullLength: fullLength
                 )
                 let label = Self.displayLabel(for: lineNumber)
-                (label as NSString).draw(in: drawRect, withAttributes: attributes)
+                (label as NSString).draw(
+                    in: localDrawRect(forContentRect: contentDrawRect, viewportOriginY: viewportOriginY),
+                    withAttributes: attributes
+                )
 #if DEBUG
                 lastDrawnLineNumbers.append(lineNumber)
                 lastDrawnLineNumberLabels.append(label)
-                lastDrawnLineNumberRects[lineNumber] = drawRect
+                lastDrawnLineNumberRects[lineNumber] = contentDrawRect
 #endif
             }
 
@@ -223,6 +250,25 @@ final class LineNumberGutterView: UIView {
             charIndex = NSMaxRange(lineRange)
             lineNumber += 1
         }
+    }
+
+    private func updateVisibleViewportFrame(for textView: EditorChromeAwareTextView) {
+        let viewportRect = visibleContentRect(for: textView)
+        let desiredFrame = CGRect(
+            x: max(0, textView.contentOffset.x),
+            y: viewportRect.minY,
+            width: gutterWidth,
+            height: max(1, viewportRect.height)
+        )
+
+        guard frame.isApproximatelyEqual(to: desiredFrame) == false else {
+            return
+        }
+        frame = desiredFrame
+    }
+
+    private func localDrawRect(forContentRect contentRect: CGRect, viewportOriginY: CGFloat) -> CGRect {
+        contentRect.offsetBy(dx: 0, dy: -viewportOriginY)
     }
 
     private func lineFragmentRect(
@@ -389,6 +435,7 @@ final class LineNumberGutterView: UIView {
         lineRange: NSRange,
         lineFragmentRect: CGRect,
         topInset: CGFloat,
+        viewportOriginY: CGFloat,
         in context: CGContext,
         fullLength: Int
     ) {
@@ -401,12 +448,13 @@ final class LineNumberGutterView: UIView {
             return
         }
 
-        let highlightRect = CGRect(
+        let contentHighlightRect = CGRect(
             x: 2,
             y: lineFragmentRect.minY + topInset + 1,
             width: max(0, gutterWidth - 4),
             height: max(0, lineFragmentRect.height - 2)
         )
+        let highlightRect = localDrawRect(forContentRect: contentHighlightRect, viewportOriginY: viewportOriginY)
         guard highlightRect.isEmpty == false else {
             return
         }
@@ -425,7 +473,7 @@ final class LineNumberGutterView: UIView {
 #if DEBUG
         lastHighlightColor = highlightColor
         lastHighlightedLineNumbers.append(lineNumber)
-        lastHighlightedLineNumberRects[lineNumber] = highlightRect
+        lastHighlightedLineNumberRects[lineNumber] = contentHighlightRect
 #endif
     }
 
@@ -472,7 +520,7 @@ final class LineNumberGutterView: UIView {
             x: 0,
             y: max(0, textView.contentOffset.y),
             width: textView.bounds.width,
-            height: textView.bounds.height
+            height: max(1, textView.bounds.height)
         )
     }
 
@@ -522,6 +570,13 @@ private extension CGRect {
         }
 
         return minY > previousFragmentRect.minY + 0.5
+    }
+
+    func isApproximatelyEqual(to other: CGRect, tolerance: CGFloat = 0.5) -> Bool {
+        abs(origin.x - other.origin.x) <= tolerance &&
+            abs(origin.y - other.origin.y) <= tolerance &&
+            abs(size.width - other.size.width) <= tolerance &&
+            abs(size.height - other.size.height) <= tolerance
     }
 }
 

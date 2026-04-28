@@ -138,7 +138,7 @@ class EditorChromeAwareTextView: UITextView {
             return
         }
 
-        lineNumberGutterView.setNeedsDisplay()
+        lineNumberGutterView.setNeedsVisibleDisplay()
     }
 
     func applyEditorChromeInterfaceStyle(_ style: UIUserInterfaceStyle) {

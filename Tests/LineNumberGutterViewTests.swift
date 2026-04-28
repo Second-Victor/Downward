@@ -263,7 +263,7 @@ final class LineNumberGutterViewTests: XCTestCase {
     }
 
     @MainActor
-    func testGutterUsesContentCoordinatesWhenTextViewScrolls() {
+    func testGutterUsesViewportSizedLayerWhenTextViewScrolls() {
         let text = (1...120).map { "Line \($0)" }.joined(separator: "\n")
         let textView = makeTextView(text: text)
         textView.layoutManager.ensureLayout(for: textView.textContainer)
@@ -271,11 +271,9 @@ final class LineNumberGutterViewTests: XCTestCase {
         textView.contentOffset = CGPoint(x: 0, y: 900)
         drawGutter(in: textView)
 
-        XCTAssertEqual(textView.lineNumberGutter?.frame.origin.y, 0)
-        XCTAssertGreaterThanOrEqual(
-            textView.lineNumberGutter?.bounds.height ?? 0,
-            max(textView.contentSize.height, textView.bounds.height) - 0.5
-        )
+        XCTAssertEqual(textView.lineNumberGutter?.frame.origin.y ?? -1, textView.contentOffset.y, accuracy: 0.5)
+        XCTAssertEqual(textView.lineNumberGutter?.bounds.height ?? 0, textView.bounds.height, accuracy: 0.5)
+        XCTAssertLessThan(textView.lineNumberGutter?.bounds.height ?? .greatestFiniteMagnitude, textView.contentSize.height)
 #if DEBUG
         let visibleRect = CGRect(
             x: 0,
@@ -289,6 +287,43 @@ final class LineNumberGutterViewTests: XCTestCase {
                 rect.maxY >= visibleRect.minY && rect.minY <= visibleRect.maxY
             } ?? false
         )
+#endif
+    }
+
+    @MainActor
+    func testGutterInvalidatesViewportRectWhenScrolled() throws {
+        let text = (1...2_000).map { "Line \($0)" }.joined(separator: "\n")
+        let textView = makeTextView(text: text)
+        textView.layoutManager.ensureLayout(for: textView.textContainer)
+        textView.contentOffset = CGPoint(x: 0, y: 12_000)
+
+        textView.lineNumberGutter?.updateGutter()
+
+#if DEBUG
+        let invalidatedRect = try XCTUnwrap(textView.lineNumberGutter?.lastInvalidatedDisplayRect)
+        XCTAssertEqual(invalidatedRect.minY, textView.contentOffset.y, accuracy: 0.5)
+        XCTAssertEqual(invalidatedRect.height, textView.bounds.height, accuracy: 0.5)
+        XCTAssertEqual(textView.lineNumberGutter?.frame.origin.y ?? -1, textView.contentOffset.y, accuracy: 0.5)
+        XCTAssertEqual(textView.lineNumberGutter?.bounds.height ?? 0, textView.bounds.height, accuracy: 0.5)
+#endif
+    }
+
+    @MainActor
+    func testScrollDrivenGutterInvalidationTracksFastJumpBackToTop() throws {
+        let text = (1...2_000).map { "Line \($0)" }.joined(separator: "\n")
+        let textView = makeTextView(text: text)
+        textView.layoutManager.ensureLayout(for: textView.textContainer)
+
+        textView.contentOffset = CGPoint(x: 0, y: 12_000)
+        textView.setNeedsLineNumberDisplay()
+        textView.contentOffset = .zero
+        textView.setNeedsLineNumberDisplay()
+
+#if DEBUG
+        let invalidatedRect = try XCTUnwrap(textView.lineNumberGutter?.lastInvalidatedDisplayRect)
+        XCTAssertEqual(invalidatedRect.minY, 0, accuracy: 0.5)
+        XCTAssertEqual(invalidatedRect.height, textView.bounds.height, accuracy: 0.5)
+        XCTAssertEqual(textView.lineNumberGutter?.frame.origin.y ?? -1, 0, accuracy: 0.5)
 #endif
     }
 
