@@ -92,6 +92,10 @@ final class EditorAppearanceStore {
         effectivePreferences.tapToToggleTasks
     }
 
+    var createMarkdownTitleFromFilename: Bool {
+        effectivePreferences.createMarkdownTitleFromFilename
+    }
+
     var selectedThemeID: String {
         effectivePreferences.selectedThemeID
     }
@@ -198,6 +202,15 @@ final class EditorAppearanceStore {
         persist()
     }
 
+    func setCreateMarkdownTitleFromFilename(_ isEnabled: Bool) {
+        guard preferences.createMarkdownTitleFromFilename != isEnabled else {
+            return
+        }
+
+        preferences.createMarkdownTitleFromFilename = isEnabled
+        persist()
+    }
+
     func setSelectedThemeID(_ id: String) {
         guard preferences.selectedThemeID != id else {
             return
@@ -263,6 +276,7 @@ final class EditorAppearanceStore {
             largerHeadingText: preferences.largerHeadingText,
             colorFormattedText: preferences.colorFormattedText,
             tapToToggleTasks: preferences.tapToToggleTasks,
+            createMarkdownTitleFromFilename: preferences.createMarkdownTitleFromFilename,
             selectedThemeID: preferences.selectedThemeID,
             matchSystemChromeToTheme: preferences.matchSystemChromeToTheme
         )

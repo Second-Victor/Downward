@@ -11,6 +11,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
     var largerHeadingText: Bool
     var colorFormattedText: Bool
     var tapToToggleTasks: Bool
+    var createMarkdownTitleFromFilename: Bool
     var selectedThemeID: String
     var matchSystemChromeToTheme: Bool
 
@@ -23,6 +24,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         largerHeadingText: Bool = false,
         colorFormattedText: Bool = true,
         tapToToggleTasks: Bool = true,
+        createMarkdownTitleFromFilename: Bool = false,
         selectedThemeID: String = EditorTheme.adaptive.id,
         matchSystemChromeToTheme: Bool = true
     ) {
@@ -34,6 +36,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         self.largerHeadingText = largerHeadingText
         self.colorFormattedText = colorFormattedText
         self.tapToToggleTasks = tapToToggleTasks
+        self.createMarkdownTitleFromFilename = createMarkdownTitleFromFilename
         self.selectedThemeID = selectedThemeID
         self.matchSystemChromeToTheme = matchSystemChromeToTheme
     }
@@ -53,6 +56,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         case largerHeadingText
         case colorFormattedText
         case tapToToggleTasks
+        case createMarkdownTitleFromFilename
         case selectedThemeID
         case matchSystemChromeToTheme
     }
@@ -85,6 +89,10 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
             Bool.self,
             forKey: .tapToToggleTasks
         ) ?? true
+        createMarkdownTitleFromFilename = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .createMarkdownTitleFromFilename
+        ) ?? false
         selectedThemeID = try container.decodeIfPresent(
             String.self,
             forKey: .selectedThemeID
@@ -105,6 +113,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         try container.encode(largerHeadingText, forKey: .largerHeadingText)
         try container.encode(colorFormattedText, forKey: .colorFormattedText)
         try container.encode(tapToToggleTasks, forKey: .tapToToggleTasks)
+        try container.encode(createMarkdownTitleFromFilename, forKey: .createMarkdownTitleFromFilename)
         try container.encode(selectedThemeID, forKey: .selectedThemeID)
         try container.encode(matchSystemChromeToTheme, forKey: .matchSystemChromeToTheme)
     }

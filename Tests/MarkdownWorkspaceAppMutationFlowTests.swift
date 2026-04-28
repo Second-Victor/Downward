@@ -380,6 +380,75 @@ final class MarkdownWorkspaceAppMutationFlowTests: MarkdownWorkspaceAppTestCase 
     }
 
     @MainActor
+    func testCreateFileUsesMarkdownTitleInitialContentWhenSettingIsEnabled() async {
+        let createdFileURL = PreviewSampleData.workspaceRootURL.appending(path: "random.md")
+        let createdSnapshot = makeWorkspaceSnapshotAppendingRootFile(
+            .file(.init(url: createdFileURL, displayName: "random.md", subtitle: "Root document"))
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        let editorAppearanceStore = EditorAppearanceStore(initialPreferences: .default)
+        editorAppearanceStore.setCreateMarkdownTitleFromFilename(true)
+        let workspaceManager = SequencedRefreshWorkspaceManager(
+            refreshResponses: [],
+            fallbackSnapshot: createdSnapshot
+        )
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: workspaceManager,
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            editorAppearanceStore: editorAppearanceStore,
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        let createResult = await coordinator.createFile(named: "random.md", in: nil)
+
+        guard case .success = createResult else {
+            return XCTFail("Expected create mutation to succeed.")
+        }
+
+        let recordedInitialContents = await workspaceManager.recordedCreatedFileInitialContents()
+        XCTAssertEqual(recordedInitialContents, [.markdownTitleFromFilename])
+    }
+
+    @MainActor
+    func testCreateFileUsesEmptyInitialContentWhenMarkdownTitleSettingIsDisabled() async {
+        let createdFileURL = PreviewSampleData.workspaceRootURL.appending(path: "random.md")
+        let createdSnapshot = makeWorkspaceSnapshotAppendingRootFile(
+            .file(.init(url: createdFileURL, displayName: "random.md", subtitle: "Root document"))
+        )
+        let session = AppSession()
+        session.launchState = .workspaceReady
+        session.workspaceSnapshot = PreviewSampleData.nestedWorkspace
+        let workspaceManager = SequencedRefreshWorkspaceManager(
+            refreshResponses: [],
+            fallbackSnapshot: createdSnapshot
+        )
+
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: workspaceManager,
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        let createResult = await coordinator.createFile(named: "random.md", in: nil)
+
+        guard case .success = createResult else {
+            return XCTFail("Expected create mutation to succeed.")
+        }
+
+        let recordedInitialContents = await workspaceManager.recordedCreatedFileInitialContents()
+        XCTAssertEqual(recordedInitialContents, [.empty])
+    }
+
+    @MainActor
     func testRefreshRaceWithCreateFolderAppliesOnlyWinningMutationSnapshot() async {
         let createdFolderURL = PreviewSampleData.workspaceRootURL.appending(path: "Archive")
         let createdSnapshot = makeWorkspaceSnapshotAppendingRootFile(

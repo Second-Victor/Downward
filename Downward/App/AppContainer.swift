@@ -48,6 +48,7 @@ final class AppContainer {
             session: session,
             workspaceManager: workspaceManager,
             documentManager: documentManager,
+            editorAppearanceStore: editorAppearanceStore,
             sessionStore: sessionStore,
             recentFilesStore: recentFilesStore,
             errorReporter: errorReporter,

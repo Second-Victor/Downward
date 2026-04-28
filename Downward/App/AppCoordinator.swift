@@ -12,6 +12,7 @@ final class AppCoordinator {
     private let workspaceManager: any WorkspaceManager
     private let documentManager: any DocumentManager
     private let workspaceMutationService: WorkspaceMutationService
+    private let editorAppearanceStore: EditorAppearanceStore
     private let sessionStore: any SessionStore
     private let recentFilesStore: RecentFilesStore
     private let errorReporter: any ErrorReporter
@@ -33,6 +34,7 @@ final class AppCoordinator {
         session: AppSession,
         workspaceManager: any WorkspaceManager,
         documentManager: any DocumentManager,
+        editorAppearanceStore: EditorAppearanceStore = EditorAppearanceStore(initialPreferences: .default),
         sessionStore: any SessionStore = StubSessionStore(),
         recentFilesStore: RecentFilesStore = RecentFilesStore(initialItems: []),
         errorReporter: any ErrorReporter,
@@ -43,6 +45,7 @@ final class AppCoordinator {
         self.workspaceManager = workspaceManager
         self.documentManager = documentManager
         self.workspaceMutationService = WorkspaceMutationService(workspaceManager: workspaceManager)
+        self.editorAppearanceStore = editorAppearanceStore
         self.sessionStore = sessionStore
         self.recentFilesStore = recentFilesStore
         self.errorReporter = errorReporter
@@ -106,7 +109,8 @@ final class AppCoordinator {
         return await runWorkspaceMutation(
             workspaceMutationService.createFile(
                 named: proposedName,
-                in: folderURL
+                in: folderURL,
+                initialContent: createdFileInitialContent()
             )
         )
     }
@@ -198,6 +202,14 @@ final class AppCoordinator {
                 targetKind: targetKind
             )
         )
+    }
+
+    private func createdFileInitialContent() -> WorkspaceCreatedFileInitialContent {
+        guard editorAppearanceStore.createMarkdownTitleFromFilename else {
+            return .empty
+        }
+
+        return .markdownTitleFromFilename
     }
 
     func loadDocument(at url: URL) async -> Result<OpenDocument, UserFacingError> {

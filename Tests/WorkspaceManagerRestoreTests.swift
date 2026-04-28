@@ -474,6 +474,71 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
     }
 
     @MainActor
+    func testCreateMarkdownFileCanStartWithTitleFromCreatedFilename() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let manager = makeLiveWorkspaceManager(for: workspaceURL)
+        _ = await manager.selectWorkspace(at: workspaceURL)
+
+        let mutationResult = try await manager.createFile(
+            named: "random.md",
+            in: nil,
+            initialContent: .markdownTitleFromFilename
+        )
+
+        guard case let .createdFile(url, _) = mutationResult.outcome else {
+            return XCTFail("Expected createdFile result.")
+        }
+
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "# random\n\n")
+    }
+
+    @MainActor
+    func testCreateMarkdownTitleUsesUniqueCreatedFilename() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+        try Data("# Existing".utf8).write(to: workspaceURL.appending(path: "Notes.md"))
+
+        let manager = makeLiveWorkspaceManager(for: workspaceURL)
+        _ = await manager.selectWorkspace(at: workspaceURL)
+
+        let mutationResult = try await manager.createFile(
+            named: "Notes.md",
+            in: nil,
+            initialContent: .markdownTitleFromFilename
+        )
+
+        guard case let .createdFile(url, _) = mutationResult.outcome else {
+            return XCTFail("Expected createdFile result.")
+        }
+
+        XCTAssertEqual(url.lastPathComponent, "Notes 2.md")
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "# Notes 2\n\n")
+    }
+
+    @MainActor
+    func testMarkdownTitleInitialContentLeavesNonMarkdownFilesEmpty() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let manager = makeLiveWorkspaceManager(for: workspaceURL)
+        _ = await manager.selectWorkspace(at: workspaceURL)
+
+        let mutationResult = try await manager.createFile(
+            named: "App.swift",
+            in: nil,
+            initialContent: .markdownTitleFromFilename
+        )
+
+        guard case let .createdFile(url, _) = mutationResult.outcome else {
+            return XCTFail("Expected createdFile result.")
+        }
+
+        XCTAssertEqual(try Data(contentsOf: url), Data())
+    }
+
+    @MainActor
     func testCreateFileAcceptsSupportedSourceExtension() async throws {
         let workspaceURL = try makeTemporaryWorkspace()
         defer { removeItemIfPresent(at: workspaceURL) }
@@ -1074,7 +1139,7 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
     @MainActor
     private func makeLiveWorkspaceManager(
         for workspaceURL: URL,
-        fileCoordinator: any WorkspaceFileCoordinating
+        fileCoordinator: any WorkspaceFileCoordinating = RecordingWorkspaceFileCoordinator()
     ) -> LiveWorkspaceManager {
         LiveWorkspaceManager(
             bookmarkStore: StubBookmarkStore(),

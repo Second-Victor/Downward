@@ -18,6 +18,13 @@ struct MarkdownSettingsPage: View {
         )
     }
 
+    private var createMarkdownTitleBinding: Binding<Bool> {
+        Binding(
+            get: { editorAppearanceStore.createMarkdownTitleFromFilename },
+            set: { editorAppearanceStore.setCreateMarkdownTitleFromFilename($0) }
+        )
+    }
+
     private var hideMarkdownFormattingBinding: Binding<Bool> {
         Binding(
             get: { editorAppearanceStore.markdownSyntaxMode == .hiddenOutsideCurrentLine },
@@ -58,6 +65,16 @@ struct MarkdownSettingsPage: View {
                 )
             } footer: {
                 Text("Tap a task checkbox to mark it as done or undone.")
+                    .settingsFooterStyle()
+            }
+
+            Section {
+                Toggle(
+                    "Create Title from Filename",
+                    isOn: createMarkdownTitleBinding
+                )
+            } footer: {
+                Text("Start new markdown files with a heading based on the file name.")
                     .settingsFooterStyle()
             }
         }

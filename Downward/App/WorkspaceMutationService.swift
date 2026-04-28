@@ -16,13 +16,18 @@ struct WorkspaceMutationService {
 
     func createFile(
         named proposedName: String,
-        in folderURL: URL?
+        in folderURL: URL?,
+        initialContent: WorkspaceCreatedFileInitialContent = .empty
     ) -> WorkspaceMutationOperation {
         WorkspaceMutationOperation(
             errorContext: "Creating file",
             fallbackError: WorkspaceMutationErrorPresenter.createFileFallbackError(named: proposedName)
         ) {
-            try await workspaceManager.createFile(named: proposedName, in: folderURL)
+            try await workspaceManager.createFile(
+                named: proposedName,
+                in: folderURL,
+                initialContent: initialContent
+            )
         }
     }
 

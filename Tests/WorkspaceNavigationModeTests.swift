@@ -702,7 +702,11 @@ private actor ViewModelRenameTestingWorkspaceManager: WorkspaceManager {
         refreshSnapshot
     }
 
-    func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+    func createFile(
+        named proposedName: String,
+        in folderURL: URL?,
+        initialContent: WorkspaceCreatedFileInitialContent
+    ) async throws -> WorkspaceMutationResult {
         WorkspaceMutationResult(
             snapshot: refreshSnapshot,
             outcome: .createdFile(
@@ -770,7 +774,11 @@ private actor DelayedViewModelMutationWorkspaceManager: WorkspaceManager {
         refreshSnapshot
     }
 
-    func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+    func createFile(
+        named proposedName: String,
+        in folderURL: URL?,
+        initialContent: WorkspaceCreatedFileInitialContent
+    ) async throws -> WorkspaceMutationResult {
         try await Task.sleep(for: createFileDelay)
         return WorkspaceMutationResult(
             snapshot: refreshSnapshot,

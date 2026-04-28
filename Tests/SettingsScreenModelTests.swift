@@ -84,10 +84,12 @@ final class SettingsScreenModelTests: XCTestCase {
         store.setMarkdownSyntaxMode(.hiddenOutsideCurrentLine)
         store.setColorFormattedText(false)
         store.setTapToToggleTasks(false)
+        store.setCreateMarkdownTitleFromFilename(true)
 
         XCTAssertEqual(store.markdownSyntaxMode, .hiddenOutsideCurrentLine)
         XCTAssertEqual(store.colorFormattedText, false)
         XCTAssertFalse(store.tapToToggleTasks)
+        XCTAssertTrue(store.createMarkdownTitleFromFilename)
     }
 
     @MainActor

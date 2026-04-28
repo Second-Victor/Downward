@@ -477,6 +477,7 @@ actor SequencedRefreshWorkspaceManager: WorkspaceManager {
     private let createFolderResponse: SequencedWorkspaceMutationResponse?
     private let renameResponse: SequencedWorkspaceMutationResponse?
     private let deleteResponse: SequencedWorkspaceMutationResponse?
+    private var createdFileInitialContents: [WorkspaceCreatedFileInitialContent] = []
 
     init(
         refreshResponses: [SequencedWorkspaceRefreshResponse],
@@ -512,7 +513,12 @@ actor SequencedRefreshWorkspaceManager: WorkspaceManager {
         }
     }
 
-    func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+    func createFile(
+        named proposedName: String,
+        in folderURL: URL?,
+        initialContent: WorkspaceCreatedFileInitialContent
+    ) async throws -> WorkspaceMutationResult {
+        createdFileInitialContents.append(initialContent)
         if let createResponse {
             try await Task.sleep(for: createResponse.delay)
             return createResponse.result
@@ -524,6 +530,10 @@ actor SequencedRefreshWorkspaceManager: WorkspaceManager {
                 displayName: proposedName
             )
         )
+    }
+
+    func recordedCreatedFileInitialContents() -> [WorkspaceCreatedFileInitialContent] {
+        createdFileInitialContents
     }
 
     func createFolder(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
@@ -624,7 +634,11 @@ actor MutationTestingWorkspaceManager: WorkspaceManager {
         return refreshSnapshot
     }
 
-    func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+    func createFile(
+        named proposedName: String,
+        in folderURL: URL?,
+        initialContent: WorkspaceCreatedFileInitialContent
+    ) async throws -> WorkspaceMutationResult {
         WorkspaceMutationResult(
             snapshot: refreshSnapshot,
             outcome: .createdFile(

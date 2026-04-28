@@ -12,6 +12,38 @@ struct WorkspaceMutationResult: Equatable, Sendable {
     let outcome: WorkspaceMutationOutcome
 }
 
+enum WorkspaceCreatedFileInitialContent: Equatable, Sendable {
+    case empty
+    case markdownTitleFromFilename
+
+    nonisolated func data(forCreatedFileAt url: URL) -> Data {
+        switch self {
+        case .empty:
+            return Data()
+        case .markdownTitleFromFilename:
+            guard Self.isMarkdownDocument(url) else {
+                return Data()
+            }
+
+            let title = url.deletingPathExtension().lastPathComponent
+            guard title.isEmpty == false else {
+                return Data()
+            }
+
+            return Data("# \(title)\n\n".utf8)
+        }
+    }
+
+    private nonisolated static func isMarkdownDocument(_ url: URL) -> Bool {
+        switch url.pathExtension.lowercased() {
+        case SupportedFileType.markdown.rawValue, SupportedFileType.markdownText.rawValue:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
 enum WorkspaceMutationOutcome: Equatable, Sendable {
     case createdFile(url: URL, displayName: String)
     case createdFolder(url: URL, displayName: String)
@@ -38,12 +70,22 @@ protocol WorkspaceManager: Sendable {
     func restoreWorkspace() async -> WorkspaceRestoreResult
     func selectWorkspace(at url: URL) async -> WorkspaceRestoreResult
     func refreshCurrentWorkspace() async throws -> WorkspaceSnapshot
-    func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult
+    func createFile(
+        named proposedName: String,
+        in folderURL: URL?,
+        initialContent: WorkspaceCreatedFileInitialContent
+    ) async throws -> WorkspaceMutationResult
     func createFolder(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult
     func renameFile(at url: URL, to proposedName: String) async throws -> WorkspaceMutationResult
     func moveItem(at url: URL, toFolder destinationFolderURL: URL?) async throws -> WorkspaceMutationResult
     func deleteFile(at url: URL) async throws -> WorkspaceMutationResult
     func clearWorkspaceSelection() async throws
+}
+
+extension WorkspaceManager {
+    func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+        try await createFile(named: proposedName, in: folderURL, initialContent: .empty)
+    }
 }
 
 protocol WorkspaceFileCoordinating: Sendable {
@@ -201,7 +243,11 @@ actor LiveWorkspaceManager: WorkspaceManager {
         throw AppError.missingWorkspaceSelection
     }
 
-    func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+    func createFile(
+        named proposedName: String,
+        in folderURL: URL?,
+        initialContent: WorkspaceCreatedFileInitialContent = .empty
+    ) async throws -> WorkspaceMutationResult {
         let workspaceContext = try await currentWorkspaceContext()
         let fileCoordinator = self.fileCoordinator
 
@@ -219,7 +265,9 @@ actor LiveWorkspaceManager: WorkspaceManager {
 
             do {
                 try fileCoordinator.coordinateCreation(at: destinationURL) { coordinatedURL in
-                    try Data().write(to: coordinatedURL, options: .withoutOverwriting)
+                    try initialContent
+                        .data(forCreatedFileAt: destinationURL)
+                        .write(to: coordinatedURL, options: .withoutOverwriting)
                 }
             } catch {
                 throw AppError.fileOperationFailed(
@@ -1417,7 +1465,11 @@ actor StubWorkspaceManager: WorkspaceManager {
         readySnapshot
     }
 
-    func createFile(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+    func createFile(
+        named proposedName: String,
+        in folderURL: URL?,
+        initialContent: WorkspaceCreatedFileInitialContent = .empty
+    ) async throws -> WorkspaceMutationResult {
         let displayName = proposedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "Untitled.md"
             : proposedName
