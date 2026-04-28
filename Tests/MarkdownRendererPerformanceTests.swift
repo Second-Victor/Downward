@@ -593,6 +593,10 @@ private final class PerformanceTextView: EditorChromeAwareTextView {
     override var undoManager: UndoManager? {
         performanceUndoManager
     }
+
+    override var isFirstResponder: Bool {
+        true
+    }
 }
 
 private final class MutablePerformanceBox<Value> {

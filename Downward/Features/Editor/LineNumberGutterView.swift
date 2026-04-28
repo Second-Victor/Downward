@@ -67,6 +67,8 @@ final class LineNumberGutterView: UIView {
         textView.updateLineNumberTextInset(gutterWidth: gutterWidth)
 
         let contentHeight = max(textView.contentSize.height, textView.bounds.height)
+        // The gutter is drawn in text-view content coordinates. Do not offset the gutter by
+        // contentOffset; scrolling is handled by the text view clipping the content-aligned gutter.
         frame = CGRect(x: 0, y: 0, width: gutterWidth, height: contentHeight)
         backgroundColor = textView.resolvedTheme.editorBackground
         setNeedsDisplay()

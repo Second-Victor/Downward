@@ -4,6 +4,7 @@ final class KeyboardAccessoryToolbarView: UIView {
     static let bottomSpacing: CGFloat = 8
 
     let toolbar = UIToolbar()
+    let formatButton: UIBarButtonItem
     let undoButton: UIBarButtonItem
     let redoButton: UIBarButtonItem
     let dismissButton: UIBarButtonItem
@@ -16,10 +17,19 @@ final class KeyboardAccessoryToolbarView: UIView {
         redoAction: Selector,
         dismissAction: Selector,
         resolvedTheme: ResolvedEditorTheme,
+        formatMenu: UIMenu = UIMenu(children: []),
         showsDismissButton: Bool = UIDevice.current.userInterfaceIdiom != .pad
     ) {
         self.resolvedTheme = resolvedTheme
         self.showsDismissButton = showsDismissButton
+        formatButton = UIBarButtonItem(
+            title: "Aa",
+            image: nil,
+            primaryAction: nil,
+            menu: formatMenu
+        )
+        formatButton.accessibilityLabel = "Format"
+
         undoButton = UIBarButtonItem(
             image: UIImage(systemName: "arrow.uturn.backward"),
             style: .plain,
@@ -56,9 +66,11 @@ final class KeyboardAccessoryToolbarView: UIView {
 
         addSubview(toolbar)
         toolbar.autoresizingMask = [.flexibleWidth]
+        let commandSpacer = UIBarButtonItem(systemItem: .fixedSpace)
+        commandSpacer.width = 8
         toolbar.items = showsDismissButton
-            ? [undoButton, redoButton, .flexibleSpace(), dismissButton]
-            : [undoButton, redoButton, .flexibleSpace()]
+            ? [formatButton, .flexibleSpace(), undoButton, redoButton, commandSpacer, dismissButton]
+            : [formatButton, .flexibleSpace(), undoButton, redoButton]
 
         applyResolvedTheme(resolvedTheme)
     }
@@ -81,6 +93,12 @@ final class KeyboardAccessoryToolbarView: UIView {
         super.layoutSubviews()
         let toolbarHeight = toolbar.sizeThatFits(CGSize(width: bounds.width, height: UIView.noIntrinsicMetric)).height
         toolbar.frame = CGRect(x: 0, y: 0, width: bounds.width, height: toolbarHeight)
+    }
+
+    func updateFormatMenu(_ formatMenu: UIMenu) {
+        // Kept as the narrow replacement point for future dynamic format menus. The coordinator
+        // currently builds the menu once so accessory state refreshes do not churn UIKit menu items.
+        formatButton.menu = formatMenu
     }
 
     func update(canUndo: Bool, canRedo: Bool, canDismiss: Bool) {

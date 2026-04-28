@@ -6,6 +6,61 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 
 ## Latest QA run
 
+- Date: 2026-04-28
+- Branch/commit at start of run: `main` / working tree after `3434f2c`
+- Xcode: Xcode 26.4 (17E192)
+- Host environment: macOS 26.4.1 reported by XCTest result bundle
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`, OS build `23E244`)
+- Commands run:
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ProgrammaticEditorUndo -resultBundlePath /tmp/Downward-ProgrammaticEditorUndo.xcresult -only-testing:DownwardTests/EditorUndoRedoTests -only-testing:DownwardTests/TaskListContinuationPlanTests -only-testing:DownwardTests/MarkdownFormattingPlanTests -only-testing:DownwardTests/LineNumberGutterViewTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-ProgrammaticEditorUndo.xcresult --format json`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ProgrammaticEditorUndo2 -resultBundlePath /tmp/Downward-ProgrammaticEditorUndo2.xcresult -only-testing:DownwardTests/EditorUndoRedoTests -only-testing:DownwardTests/TaskListContinuationPlanTests -only-testing:DownwardTests/MarkdownFormattingPlanTests -only-testing:DownwardTests/LineNumberGutterViewTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-ProgrammaticEditorUndo2.xcresult --format json`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ProgrammaticEditorUndoFull -resultBundlePath /tmp/Downward-ProgrammaticEditorUndoFull.xcresult -parallel-testing-enabled NO`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-ProgrammaticEditorUndoFull.xcresult --format json`
+- Result:
+  - Initial focused programmatic editor undo run failed: 98 passed, 0 skipped, 2 failed. The failures were the new semantic heading zero-length cursor tests; the implementation preserved a cursor at line start instead of moving it after the new heading marker.
+  - Final focused editor/formatting/task-continuation/line-number run passed: 100 passed, 0 skipped, 0 failed.
+  - Final full serial simulator suite passed: 496 total, 494 passed, 2 skipped, 0 failed. Four tests collected performance metrics.
+  - The 2 skipped tests are the existing platform-gated case-only rename checks.
+- Notes/failures:
+  - The cursor failure was fixed by having the formatting plan map a cursor at the heading body start to the new heading marker boundary.
+  - `xcodebuild test` emitted recurring simulator/TextKit/AppIntents diagnostic noise, but final focused and full serial runs completed successfully.
+  - No manual real-device, Files-provider, keyboard-interaction, line-number, hidden-syntax, or visual editor QA was performed in this pass.
+
+## Previous QA runs
+
+- Date: 2026-04-28
+- Branch/commit at start of run: `main` / working tree after `3434f2c`
+- Xcode: Xcode 26.4 (17E192)
+- Host environment: macOS 26.4.1 reported by XCTest result bundle
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`, OS build `23E244`)
+- Commands run:
+  - `xcodebuild -list -project Downward.xcodeproj`
+  - `xcodebuild -showdestinations -project Downward.xcodeproj -scheme Downward`
+  - `swiftc -typecheck -module-cache-path /tmp/DownwardSwiftModuleCache Downward/Features/Editor/MarkdownFormattingPlan.swift`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-FormatterStabilization4 -resultBundlePath /tmp/Downward-FormatterStabilization4.xcresult -only-testing:DownwardTests/MarkdownFormattingPlanTests -only-testing:DownwardTests/EditorUndoRedoTests -only-testing:DownwardTests/LineNumberGutterViewTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-FormatterStabilization4.xcresult --format json`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-FormatterFull -resultBundlePath /tmp/Downward-FormatterFull.xcresult`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-FormatterFull.xcresult --format json`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-RendererPerfCheck2 -resultBundlePath /tmp/Downward-RendererPerfCheck2.xcresult -only-testing:DownwardTests/MarkdownRendererPerformanceTests`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-FormatterFullSerial2 -resultBundlePath /tmp/Downward-FormatterFullSerial2.xcresult -parallel-testing-enabled NO`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-FormatterFullSerial2.xcresult --format json`
+- Result:
+  - `xcodebuild -list` completed and confirmed the `Downward` scheme.
+  - Sandboxed destination discovery showed placeholder destinations because CoreSimulator access was denied; rerunning the same destination command with approved simulator access showed the iPhone 17 Pro iOS 26.4 simulator used for tests.
+  - Focused formatter/editor/gutter tests passed on iPhone 17 Pro simulator: 84 passed, 0 skipped, 0 failed.
+  - An initial full parallel simulator run failed: 481 passed, 2 skipped, 4 failed. The failed tests were `MarkdownRendererPerformanceTests` diagnostics that needed the test text view to report focus before asserting current-line revealed restyling.
+  - Focused renderer diagnostics passed after the harness fix: 17 passed, 0 skipped, 0 failed.
+  - Final full serial simulator suite passed: 487 total, 485 passed, 2 skipped, 0 failed. Four tests collected performance metrics.
+- Notes/failures:
+  - The skipped tests in the final full suite are the existing platform-gated case-only rename checks.
+  - Intermediate failures while adding formatter tests included Swift 6 default actor-isolation annotations and CRLF parsing that initially treated `\r\n` as one Swift `Character`; both were fixed before the final runs.
+  - `xcodebuild test` emitted recurring simulator/TextKit/AppIntents diagnostic noise, including CoreSimulator clone launch messages in the failed parallel run, but the final serial full run completed successfully.
+  - No manual real-device, Files-provider, keyboard-interaction, line-number, hidden-syntax, or visual editor QA was performed in this pass.
+
 - Date: 2026-04-27
 - Branch/commit at start of run: `main` / working tree after `dca6d73`
 - Xcode: Xcode 26.4 (17E192)
@@ -38,8 +93,6 @@ This file is the release/runtime QA checklist for Downward. It records command-l
   - The scroll regression shown in the provided screen recording was fixed by updating the gutter display when `UITextView.contentOffset` changes without moving the gutter frame out of content coordinates.
   - `xcodebuild test` emitted `IDERunDestination: Supported platforms for the buildables in the current scheme is empty.`, but the final targeted run completed successfully.
   - No manual real-device, Files-provider, keyboard-interaction, line-number, or larger-heading visual QA was performed in this pass.
-
-## Previous QA runs
 
 - Date: 2026-04-27
 - Branch/commit at start of run: `main` / working tree after `b35bdb3`

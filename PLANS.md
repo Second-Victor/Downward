@@ -15,11 +15,11 @@ Related docs:
 
 ## Review snapshot
 
-Date: 2026-04-26
-Scope: static architecture/code review of the uploaded project archive.
-Build/test status for this pass: `xcodebuild -list`, iPhone simulator build, iPad simulator build, the full iPhone simulator XCTest suite, and focused iPhone/iPad app-hosted smoke/restore/mutation suites passed. See `RELEASE_QA.md` for exact commands and counts.
+Date: 2026-04-28
+Scope: stabilization pass for `CODE_REVIEW_2026-04-28.md`, focused on editor formatter extraction, undo/redo integration, line-ending preservation, semantic heading/task formatting, and narrow editor accessory cleanup.
+Build/test status for this pass: `xcodebuild -list`, simulator destination discovery, focused formatter/editor/gutter tests, focused renderer diagnostics, and the full iPhone 17 Pro simulator XCTest suite passed. See `RELEASE_QA.md` for exact commands and counts.
 
-Previous command-line simulator evidence remains in `RELEASE_QA.md`, but the 2026-04-26 run is the current automated evidence for this source state.
+Previous command-line simulator evidence remains in `RELEASE_QA.md`, but the 2026-04-28 run is the current automated evidence for this source state.
 
 ## Current direction
 
@@ -116,6 +116,117 @@ Automated tests cover many risky flows, but the remaining release risk is mostly
 
 - [ ] `RELEASE_QA.md` contains a current manual QA run.
 - [ ] Any failures are added back into this file as P0 or P1 findings.
+
+---
+
+## P1 — Verify formatter undo/redo integration
+
+### Finding
+
+Markdown formatter actions need proof that they participate in the UIKit undo stack and keep accessory undo/redo state coherent.
+
+### Checklist
+
+- [x] Route formatter mutations through one coordinator helper that clamps ranges, registers undo, restores selection, refreshes editor state, and publishes undo/redo availability.
+- [x] Add regression coverage for bold, link insertion, task prefix insertion, heading prefix insertion, and toggling existing inline formatting off.
+- [x] Verify undo and redo text, selection, and accessory state where testable.
+
+### Done when
+
+- [x] `EditorUndoRedoTests` covers formatter undo and redo behavior directly.
+
+---
+
+## P1 — Programmatic editor mutations participate in undo/redo
+
+### Finding
+
+Task-list continuation and tap-to-toggle task checkbox edits bypass UIKit's default text edit path, so they need the same undo/redo guarantees as toolbar formatter commands.
+
+### Checklist
+
+- [x] Route task-list continuation through the shared programmatic text replacement helper.
+- [x] Route task checkbox toggles through the shared programmatic text replacement helper.
+- [x] Keep task checkbox presentation attributes restored after toggle, undo, and redo.
+- [x] Audit remaining direct text-storage mutations and keep initial/configuration and presentation-only paths undo-free.
+- [x] Return semantic line-format cursor information from the formatting plan layer for zero-length heading/task selections.
+
+### Done when
+
+- [x] Task continuation, generated-task removal, and task checkbox toggles are covered by integration undo/redo tests.
+- [x] Semantic heading/task line-format selections are covered by focused coordinator and plan tests.
+
+---
+
+## P1 — Extract markdown formatting plans
+
+### Finding
+
+Pure markdown formatting transformations should live outside `MarkdownEditorTextViewCoordinator` so the coordinator can stay focused on UIKit application, selection, undo/redo, and restyling.
+
+### Checklist
+
+- [x] Add `MarkdownFormattingPlan.swift` for inline format, line prefix, heading, task, link, image, and URL-classification planning.
+- [x] Move pure string-transformation coverage into `MarkdownFormattingPlanTests`.
+- [x] Keep the coordinator responsible for applying plans to `UITextView`.
+
+### Done when
+
+- [x] Formatter planning has focused pure tests and no longer lives at the bottom of the coordinator file.
+
+---
+
+## P1 — Preserve CRLF in line-prefix formatting
+
+### Finding
+
+Line-prefix formatter planning must not normalize existing newline style when applying or removing prefixes.
+
+### Checklist
+
+- [x] Parse selected text into line segments that preserve `\n`, `\r\n`, and `\r` separators.
+- [x] Cover applying and removing prefixes for LF, CRLF, CR, and trailing CRLF selections.
+
+### Done when
+
+- [x] `MarkdownFormattingPlanTests` confirms line-ending preservation for the reviewed cases.
+
+---
+
+## P1 — Improve semantic heading/task formatting
+
+### Finding
+
+Header and task commands should avoid stacking markdown markers on lines that are already headings or tasks.
+
+### Checklist
+
+- [x] Treat heading formatting as “set heading level” for each selected non-empty line.
+- [x] Treat task formatting as a toggle for all-task selections and a normalization/prefix operation for mixed selections without stacking markers.
+- [x] Cover normal, unchecked, checked, partial, star-task, ordered-task, and multi-line task cases.
+
+### Done when
+
+- [x] Existing headings and tasks no longer produce stacked markdown when formatted through the plan layer.
+
+---
+
+## P1 — Real-device QA for line numbers + hidden syntax
+
+### Finding
+
+Simulator and pure layout tests protect line-number behavior, but final release confidence still needs a real-device visual pass for the editor gutter and hidden syntax together.
+
+### Checklist
+
+- [ ] Verify line numbers with hidden syntax on a real iPhone.
+- [ ] Verify line numbers with hidden syntax on a real iPad.
+- [ ] Verify keyboard/accessory presentation does not shift the first visible line unexpectedly.
+- [ ] Record device, OS version, Files provider, and result in `RELEASE_QA.md`.
+
+### Done when
+
+- [ ] Real-device line-number and hidden-syntax results are recorded, or failures are promoted to active P0/P1 findings.
 
 ---
 

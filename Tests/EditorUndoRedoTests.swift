@@ -66,7 +66,11 @@ final class EditorUndoRedoTests: XCTestCase {
         XCTAssertNotNil(textView.keyboardAccessoryToolbarView)
         XCTAssertClear(accessoryView.backgroundColor)
         XCTAssertFalse(accessoryView.isOpaque)
-        XCTAssertEqual(accessoryView.toolbar.items?.count, 4)
+        XCTAssertEqual(accessoryView.toolbar.items?.count, 6)
+        XCTAssertTrue(accessoryView.toolbar.items?.first === textView.formatAccessoryItem)
+        XCTAssertTrue(accessoryView.toolbar.items?[2] === textView.undoAccessoryItem)
+        XCTAssertTrue(accessoryView.toolbar.items?[3] === textView.redoAccessoryItem)
+        XCTAssertTrue(accessoryView.toolbar.items?.last === textView.dismissAccessoryItem)
         XCTAssertFalse(textView.undoAccessoryItem?.isEnabled ?? true)
         XCTAssertFalse(textView.redoAccessoryItem?.isEnabled ?? true)
         XCTAssertFalse(textView.dismissAccessoryItem?.isEnabled ?? true)
@@ -289,6 +293,31 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorTaskContinuationParticipatesInUndoRedo() {
+        let (textBox, coordinator, textView) = makeFormatterUndoSystem(text: "- [ ] Task")
+        let originalSelection = NSRange(location: (textBox.value as NSString).length, length: 0)
+        textView.selectedRange = originalSelection
+
+        let handled = coordinator.textView(
+            textView,
+            shouldChangeTextIn: originalSelection,
+            replacementText: "\n"
+        )
+
+        XCTAssertFalse(handled)
+        XCTAssertEqual(textBox.value, "- [ ] Task\n- [ ] ")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: (textBox.value as NSString).length, length: 0))
+        assertFormatterUndoRedo(
+            textBox: textBox,
+            textView: textView,
+            undoText: "- [ ] Task",
+            undoSelection: originalSelection,
+            redoText: "- [ ] Task\n- [ ] ",
+            redoSelection: NSRange(location: ("- [ ] Task\n- [ ] " as NSString).length, length: 0)
+        )
+    }
+
+    @MainActor
     func testCoordinatorContinuesNumberedTaskListWithNextNumber() {
         let textBox = MutableBox("1. [x] Done")
         let coordinator = makeCoordinator(text: textBox)
@@ -310,6 +339,31 @@ final class EditorUndoRedoTests: XCTestCase {
 
         XCTAssertFalse(handled)
         XCTAssertEqual(textBox.value, "1. [x] Done\n2. [ ] ")
+    }
+
+    @MainActor
+    func testCoordinatorNumberedTaskContinuationParticipatesInUndoRedo() {
+        let (textBox, coordinator, textView) = makeFormatterUndoSystem(text: "1. [x] Done")
+        let originalSelection = NSRange(location: (textBox.value as NSString).length, length: 0)
+        textView.selectedRange = originalSelection
+
+        let handled = coordinator.textView(
+            textView,
+            shouldChangeTextIn: originalSelection,
+            replacementText: "\n"
+        )
+
+        XCTAssertFalse(handled)
+        XCTAssertEqual(textBox.value, "1. [x] Done\n2. [ ] ")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: (textBox.value as NSString).length, length: 0))
+        assertFormatterUndoRedo(
+            textBox: textBox,
+            textView: textView,
+            undoText: "1. [x] Done",
+            undoSelection: originalSelection,
+            redoText: "1. [x] Done\n2. [ ] ",
+            redoSelection: NSRange(location: ("1. [x] Done\n2. [ ] " as NSString).length, length: 0)
+        )
     }
 
     @MainActor
@@ -335,6 +389,31 @@ final class EditorUndoRedoTests: XCTestCase {
         XCTAssertFalse(handled)
         XCTAssertEqual(textBox.value, "- [ ] Task\n")
         XCTAssertEqual(textView.selectedRange.location, (textBox.value as NSString).length)
+    }
+
+    @MainActor
+    func testCoordinatorGeneratedTaskRemovalParticipatesInUndoRedo() {
+        let (textBox, coordinator, textView) = makeFormatterUndoSystem(text: "- [ ] Task\n- [ ] ")
+        let originalSelection = NSRange(location: (textBox.value as NSString).length, length: 0)
+        textView.selectedRange = originalSelection
+
+        let handled = coordinator.textView(
+            textView,
+            shouldChangeTextIn: originalSelection,
+            replacementText: "\n"
+        )
+
+        XCTAssertFalse(handled)
+        XCTAssertEqual(textBox.value, "- [ ] Task\n")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: (textBox.value as NSString).length, length: 0))
+        assertFormatterUndoRedo(
+            textBox: textBox,
+            textView: textView,
+            undoText: "- [ ] Task\n- [ ] ",
+            undoSelection: originalSelection,
+            redoText: "- [ ] Task\n",
+            redoSelection: NSRange(location: ("- [ ] Task\n" as NSString).length, length: 0)
+        )
     }
 
     @MainActor
@@ -594,6 +673,27 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testKeyboardAccessoryPlacesFormatButtonLeftAndEditingButtonsRight() {
+        let actionTarget = AccessoryActionTarget()
+        let accessoryView = KeyboardAccessoryToolbarView(
+            target: actionTarget,
+            undoAction: #selector(AccessoryActionTarget.performAction),
+            redoAction: #selector(AccessoryActionTarget.performAction),
+            dismissAction: #selector(AccessoryActionTarget.performAction),
+            resolvedTheme: .default
+        )
+
+        let items = accessoryView.toolbar.items ?? []
+
+        XCTAssertEqual(items.count, 6)
+        XCTAssertTrue(items.first === accessoryView.formatButton)
+        XCTAssertTrue(items[2] === accessoryView.undoButton)
+        XCTAssertTrue(items[3] === accessoryView.redoButton)
+        XCTAssertEqual(items[4].width, 8)
+        XCTAssertTrue(items.last === accessoryView.dismissButton)
+    }
+
+    @MainActor
     func testKeyboardAccessoryCanHideDismissButtonForIPad() {
         let actionTarget = AccessoryActionTarget()
         let accessoryView = KeyboardAccessoryToolbarView(
@@ -607,7 +707,9 @@ final class EditorUndoRedoTests: XCTestCase {
 
         accessoryView.update(canUndo: true, canRedo: true, canDismiss: true)
 
-        XCTAssertEqual(accessoryView.toolbar.items?.count, 3)
+        XCTAssertEqual(accessoryView.toolbar.items?.count, 4)
+        XCTAssertTrue(accessoryView.toolbar.items?.first === accessoryView.formatButton)
+        XCTAssertTrue(accessoryView.toolbar.items?.last === accessoryView.redoButton)
         XCTAssertFalse(accessoryView.toolbar.items?.contains(accessoryView.dismissButton) ?? true)
         XCTAssertFalse(accessoryView.dismissButton.isEnabled)
     }
@@ -902,11 +1004,311 @@ final class EditorUndoRedoTests: XCTestCase {
 
         XCTAssertNotNil(textView.inputAccessoryView)
         XCTAssertTrue(accessoryView === textView.keyboardAccessoryToolbarView)
-        XCTAssertEqual(textView.keyboardAccessoryToolbarView?.toolbar.items?.count, 4)
+        XCTAssertEqual(textView.keyboardAccessoryToolbarView?.toolbar.items?.count, 6)
+        XCTAssertNotNil(textView.formatAccessoryItem?.menu)
         XCTAssertEqual(textView.undoAccessoryItem?.isEnabled, true)
         XCTAssertEqual(textView.redoAccessoryItem?.isEnabled, false)
         XCTAssertEqual(textView.dismissAccessoryItem?.isEnabled, true)
         XCTAssertEqual(textView.reloadInputViewsCallCount, 1)
+    }
+
+    @MainActor
+    func testCoordinatorDoesNotRebuildFormatMenuDuringAccessoryRefresh() throws {
+        let textBox = MutableBox("Draft")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+
+        coordinator.configureKeyboardAccessory(for: textView, resolvedTheme: .default)
+        let initialMenu = try XCTUnwrap(textView.formatAccessoryItem?.menu)
+
+        coordinator.configureKeyboardAccessory(for: textView, resolvedTheme: .default)
+
+        XCTAssertTrue(textView.formatAccessoryItem?.menu === initialMenu)
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryBoldWrapsSelectedText() {
+        let textBox = MutableBox("Hello world")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.selectedRange = NSRange(location: 6, length: 5)
+        coordinator.applyInlineMarkdownFormatForTesting(marker: "**", in: textView)
+
+        XCTAssertEqual(textBox.value, "Hello **world**")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 8, length: 5))
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryInlineFormatTogglesWrappedSelectionOff() {
+        let textBox = MutableBox("Hello **world**")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.selectedRange = NSRange(location: 8, length: 5)
+        coordinator.applyInlineMarkdownFormatForTesting(marker: "**", in: textView)
+
+        XCTAssertEqual(textBox.value, "Hello world")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 6, length: 5))
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryItalicWithEmptySelectionPlacesCursorInsideMarkers() {
+        let textBox = MutableBox("Hello ")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.selectedRange = NSRange(location: 6, length: 0)
+        coordinator.applyInlineMarkdownFormatForTesting(marker: "*", in: textView)
+
+        XCTAssertEqual(textBox.value, "Hello **")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 7, length: 0))
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryTaskPrefixesCurrentLine() {
+        let textBox = MutableBox("one\ntwo")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.selectedRange = NSRange(location: 4, length: 0)
+        coordinator.applyLineMarkdownPrefixForTesting("- [ ] ", in: textView)
+
+        XCTAssertEqual(textBox.value, "one\n- [ ] two")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 10, length: 0))
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryHeaderPrefixesSelectedLines() {
+        let textBox = MutableBox("one\ntwo")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.selectedRange = NSRange(location: 0, length: 7)
+        coordinator.applyLineMarkdownPrefixForTesting("### ", in: textView)
+
+        XCTAssertEqual(textBox.value, "### one\n### two")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 0, length: 15))
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryInsertsLinkForSelectedURL() {
+        let textBox = MutableBox("https://example.com")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.selectedRange = NSRange(location: 0, length: (textBox.value as NSString).length)
+        coordinator.insertMarkdownLinkForTesting(in: textView)
+
+        XCTAssertEqual(textBox.value, "[link](https://example.com)")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 1, length: 4))
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryBoldParticipatesInUndoRedo() {
+        let (textBox, coordinator, textView) = makeFormatterUndoSystem(text: "Hello world")
+
+        textView.selectedRange = NSRange(location: 6, length: 5)
+        coordinator.applyInlineMarkdownFormatForTesting(marker: "**", in: textView)
+
+        XCTAssertEqual(textBox.value, "Hello **world**")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 8, length: 5))
+        assertFormatterUndoRedo(
+            textBox: textBox,
+            textView: textView,
+            undoText: "Hello world",
+            undoSelection: NSRange(location: 6, length: 5),
+            redoText: "Hello **world**",
+            redoSelection: NSRange(location: 8, length: 5)
+        )
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryLinkInsertionParticipatesInUndoRedo() {
+        let (textBox, coordinator, textView) = makeFormatterUndoSystem(text: "Hello ")
+
+        textView.selectedRange = NSRange(location: 6, length: 0)
+        coordinator.insertMarkdownLinkForTesting(in: textView)
+
+        XCTAssertEqual(textBox.value, "Hello [text](https://)")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 7, length: 4))
+        assertFormatterUndoRedo(
+            textBox: textBox,
+            textView: textView,
+            undoText: "Hello ",
+            undoSelection: NSRange(location: 6, length: 0),
+            redoText: "Hello [text](https://)",
+            redoSelection: NSRange(location: 7, length: 4)
+        )
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryTaskPrefixParticipatesInUndoRedo() {
+        let (textBox, coordinator, textView) = makeFormatterUndoSystem(text: "one\ntwo")
+
+        textView.selectedRange = NSRange(location: 4, length: 0)
+        coordinator.applyLineMarkdownPrefixForTesting("- [ ] ", in: textView)
+
+        XCTAssertEqual(textBox.value, "one\n- [ ] two")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 10, length: 0))
+        assertFormatterUndoRedo(
+            textBox: textBox,
+            textView: textView,
+            undoText: "one\ntwo",
+            undoSelection: NSRange(location: 4, length: 0),
+            redoText: "one\n- [ ] two",
+            redoSelection: NSRange(location: 10, length: 0)
+        )
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryHeadingPrefixParticipatesInUndoRedo() {
+        let (textBox, coordinator, textView) = makeFormatterUndoSystem(text: "one\ntwo")
+
+        textView.selectedRange = NSRange(location: 0, length: 7)
+        coordinator.applyLineMarkdownPrefixForTesting("### ", in: textView)
+
+        XCTAssertEqual(textBox.value, "### one\n### two")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 0, length: 15))
+        assertFormatterUndoRedo(
+            textBox: textBox,
+            textView: textView,
+            undoText: "one\ntwo",
+            undoSelection: NSRange(location: 0, length: 7),
+            redoText: "### one\n### two",
+            redoSelection: NSRange(location: 0, length: 15)
+        )
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryInlineFormatToggleOffParticipatesInUndoRedo() {
+        let (textBox, coordinator, textView) = makeFormatterUndoSystem(text: "Hello **world**")
+
+        textView.selectedRange = NSRange(location: 8, length: 5)
+        coordinator.applyInlineMarkdownFormatForTesting(marker: "**", in: textView)
+
+        XCTAssertEqual(textBox.value, "Hello world")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 6, length: 5))
+        assertFormatterUndoRedo(
+            textBox: textBox,
+            textView: textView,
+            undoText: "Hello **world**",
+            undoSelection: NSRange(location: 8, length: 5),
+            redoText: "Hello world",
+            redoSelection: NSRange(location: 6, length: 5)
+        )
+    }
+
+    @MainActor
+    func testCoordinatorTaskCheckboxUncheckedToggleParticipatesInUndoRedo() {
+        assertTaskCheckboxToggleUndoRedo(
+            initialText: "- [ ] Task",
+            checkboxText: "[ ]",
+            toggledText: "- [x] Task",
+            initialColor: ResolvedEditorTheme.default.checkboxUnchecked,
+            toggledColor: ResolvedEditorTheme.default.checkboxChecked
+        )
+    }
+
+    @MainActor
+    func testCoordinatorTaskCheckboxCheckedToggleParticipatesInUndoRedo() {
+        assertTaskCheckboxToggleUndoRedo(
+            initialText: "- [x] Done",
+            checkboxText: "[x]",
+            toggledText: "- [ ] Done",
+            initialColor: ResolvedEditorTheme.default.checkboxChecked,
+            toggledColor: ResolvedEditorTheme.default.checkboxUnchecked
+        )
+    }
+
+    @MainActor
+    func testCoordinatorTaskCheckboxPartialToggleParticipatesInUndoRedo() {
+        assertTaskCheckboxToggleUndoRedo(
+            initialText: "- [/] Partial",
+            checkboxText: "[/]",
+            toggledText: "- [x] Partial",
+            initialColor: ResolvedEditorTheme.default.checkboxChecked,
+            toggledColor: ResolvedEditorTheme.default.checkboxChecked
+        )
+    }
+
+    @MainActor
+    func testCoordinatorSemanticLinePrefixKeepsZeroLengthSelectionReasonable() {
+        let cases: [(text: String, prefix: String, expectedText: String, expectedSelection: NSRange)] = [
+            ("## Title", "### ", "### Title", NSRange(location: 4, length: 0)),
+            ("### Title", "# ", "# Title", NSRange(location: 2, length: 0)),
+            ("- [ ] Task", "- [ ] ", "Task", NSRange(location: 0, length: 0)),
+            ("- [x] Done", "- [ ] ", "Done", NSRange(location: 0, length: 0)),
+            ("1. [ ] Ordered", "- [ ] ", "Ordered", NSRange(location: 0, length: 0))
+        ]
+
+        for testCase in cases {
+            let textBox = MutableBox(testCase.text)
+            let coordinator = makeCoordinator(text: textBox)
+            let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+            coordinator.apply(
+                configuration: makeConfiguration(text: textBox.value),
+                undoCommandToken: 0,
+                redoCommandToken: 0,
+                dismissKeyboardCommandToken: 0,
+                to: textView,
+                force: true
+            )
+
+            textView.selectedRange = NSRange(location: 0, length: 0)
+            coordinator.applyLineMarkdownPrefixForTesting(testCase.prefix, in: textView)
+
+            XCTAssertEqual(textBox.value, testCase.expectedText)
+            XCTAssertEqual(textView.selectedRange, testCase.expectedSelection)
+        }
     }
 
     @MainActor
@@ -1328,6 +1730,108 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    private func makeFormatterUndoSystem(
+        text: String
+    ) -> (MutableBox<String>, MarkdownEditorTextView.Coordinator, FormatterUndoTextView) {
+        let textBox = MutableBox(text)
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = FormatterUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+        return (textBox, coordinator, textView)
+    }
+
+    @MainActor
+    private func assertFormatterUndoRedo(
+        textBox: MutableBox<String>,
+        textView: FormatterUndoTextView,
+        undoText: String,
+        undoSelection: NSRange,
+        redoText: String,
+        redoSelection: NSRange,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(textView.formatterUndoManager.canUndo, file: file, line: line)
+        XCTAssertEqual(textView.undoAccessoryItem?.isEnabled, true, file: file, line: line)
+
+        textView.formatterUndoManager.undo()
+
+        XCTAssertEqual(textBox.value, undoText, file: file, line: line)
+        XCTAssertEqual(textView.selectedRange, undoSelection, file: file, line: line)
+        XCTAssertTrue(textView.formatterUndoManager.canRedo, file: file, line: line)
+        XCTAssertEqual(textView.redoAccessoryItem?.isEnabled, true, file: file, line: line)
+
+        textView.formatterUndoManager.redo()
+
+        XCTAssertEqual(textBox.value, redoText, file: file, line: line)
+        XCTAssertEqual(textView.selectedRange, redoSelection, file: file, line: line)
+        XCTAssertTrue(textView.formatterUndoManager.canUndo, file: file, line: line)
+        XCTAssertEqual(textView.undoAccessoryItem?.isEnabled, true, file: file, line: line)
+    }
+
+    @MainActor
+    private func assertTaskCheckboxToggleUndoRedo(
+        initialText: String,
+        checkboxText: String,
+        toggledText: String,
+        initialColor: UIColor,
+        toggledColor: UIColor,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let (textBox, coordinator, textView) = makeFormatterUndoSystem(text: initialText)
+        let initialCheckboxRange = (initialText as NSString).range(of: checkboxText)
+        let preservedSelection = NSRange(location: (initialText as NSString).length, length: 0)
+        textView.selectedRange = preservedSelection
+
+        coordinator.toggleTaskCheckboxForTesting(in: initialCheckboxRange, textView: textView)
+
+        XCTAssertEqual(textBox.value, toggledText, file: file, line: line)
+        XCTAssertEqual(textView.selectedRange, preservedSelection, file: file, line: line)
+        XCTAssertSameResolvedColor(
+            textView.textStorage.attribute(.foregroundColor, at: initialCheckboxRange.location, effectiveRange: nil) as? UIColor,
+            toggledColor,
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(textView.formatterUndoManager.canUndo, file: file, line: line)
+        XCTAssertEqual(textView.undoAccessoryItem?.isEnabled, true, file: file, line: line)
+
+        textView.formatterUndoManager.undo()
+
+        XCTAssertEqual(textBox.value, initialText, file: file, line: line)
+        XCTAssertEqual(textView.selectedRange, preservedSelection, file: file, line: line)
+        XCTAssertSameResolvedColor(
+            textView.textStorage.attribute(.foregroundColor, at: initialCheckboxRange.location, effectiveRange: nil) as? UIColor,
+            initialColor,
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(textView.formatterUndoManager.canRedo, file: file, line: line)
+        XCTAssertEqual(textView.redoAccessoryItem?.isEnabled, true, file: file, line: line)
+
+        textView.formatterUndoManager.redo()
+
+        XCTAssertEqual(textBox.value, toggledText, file: file, line: line)
+        XCTAssertEqual(textView.selectedRange, preservedSelection, file: file, line: line)
+        XCTAssertSameResolvedColor(
+            textView.textStorage.attribute(.foregroundColor, at: initialCheckboxRange.location, effectiveRange: nil) as? UIColor,
+            toggledColor,
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(textView.formatterUndoManager.canUndo, file: file, line: line)
+        XCTAssertEqual(textView.undoAccessoryItem?.isEnabled, true, file: file, line: line)
+    }
+
+    @MainActor
     private func makeConfiguration(text: String) -> MarkdownEditorTextView.Configuration {
         makeConfiguration(text: text, documentIdentity: PreviewSampleData.cleanDocument.url)
     }
@@ -1464,6 +1968,14 @@ private final class TrackingUndoTextView: EditorChromeAwareTextView {
     override func reloadInputViews() {
         reloadInputViewsCallCount += 1
         super.reloadInputViews()
+    }
+}
+
+private final class FormatterUndoTextView: EditorChromeAwareTextView {
+    let formatterUndoManager = UndoManager()
+
+    override var undoManager: UndoManager? {
+        formatterUndoManager
     }
 }
 

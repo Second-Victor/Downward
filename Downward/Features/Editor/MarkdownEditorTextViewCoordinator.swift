@@ -258,20 +258,14 @@ extension MarkdownEditorTextView {
             _ plan: TaskListContinuationPlan,
             in textView: UITextView
         ) {
-            let replacementRange = safeRange(
-                plan.replacementRange,
-                forTextLength: textView.textStorage.length
-            )
-            pendingTextMutationContext = TextMutationContext(
-                changedRangeBeforeEdit: replacementRange,
+            applyProgrammaticTextReplacement(
+                plan.replacement,
+                in: plan.replacementRange,
+                selectionAfter: plan.selectionAfter,
+                textView: textView,
+                actionName: "Continue Task List",
                 touchedLineBreaks: true
             )
-            textView.textStorage.replaceCharacters(in: replacementRange, with: plan.replacement)
-            textView.selectedRange = safeRange(
-                plan.selectionAfter,
-                forTextLength: textView.textStorage.length
-            )
-            textViewDidChange(textView)
         }
 
         func textViewDidChange(_ textView: UITextView) {
@@ -1066,20 +1060,18 @@ extension MarkdownEditorTextView {
             }
 
             let selectedRange = textView.selectedRange
-            pendingTextMutationContext = TextMutationContext(
-                changedRangeBeforeEdit: NSRange(location: stateLocation, length: 1),
-                touchedLineBreaks: false
-            )
-            textView.textStorage.replaceCharacters(
+            applyProgrammaticTextReplacement(
+                replacement,
                 in: NSRange(location: stateLocation, length: 1),
-                with: replacement
+                selectionAfter: selectedRange,
+                textView: textView,
+                actionName: "Toggle Task",
+                touchedLineBreaks: false,
+                afterMutation: { [weak self] textView in
+                    self?.applyTaskCheckboxPresentation(in: safeCheckboxRange, textView: textView)
+                }
             )
-            applyTaskCheckboxPresentation(in: safeCheckboxRange, textView: textView)
-            textView.selectedRange = safeRange(selectedRange, forTextLength: textView.textStorage.length)
             taskToggleFeedback.impactOccurred()
-            textViewDidChange(textView)
-            publishUndoRedoAvailability(for: textView)
-            updateKeyboardAccessoryState(for: textView)
         }
 
         private func applyTaskCheckboxPresentation(in checkboxRange: NSRange, textView: UITextView) {
@@ -1211,6 +1203,22 @@ extension MarkdownEditorTextView {
         func toggleTaskCheckboxForTesting(in checkboxRange: NSRange, textView: UITextView) {
             toggleTaskCheckbox(in: checkboxRange, textView: textView)
         }
+
+        func applyInlineMarkdownFormatForTesting(marker: String, in textView: UITextView) {
+            applyInlineMarkdownFormat(marker: marker, in: textView)
+        }
+
+        func applyLineMarkdownPrefixForTesting(_ prefix: String, in textView: UITextView) {
+            applyLineMarkdownPrefix(prefix, in: textView)
+        }
+
+        func insertMarkdownLinkForTesting(in textView: UITextView) {
+            insertMarkdownLink(in: textView)
+        }
+
+        func insertMarkdownImageForTesting(in textView: UITextView) {
+            insertMarkdownImage(in: textView)
+        }
 #endif
 
         func configureKeyboardAccessory(for textView: EditorChromeAwareTextView, resolvedTheme: ResolvedEditorTheme) {
@@ -1220,9 +1228,11 @@ extension MarkdownEditorTextView {
                     undoAction: #selector(handleAccessoryUndo),
                     redoAction: #selector(handleAccessoryRedo),
                     dismissAction: #selector(handleAccessoryDismissKeyboard),
-                    resolvedTheme: resolvedTheme
+                    resolvedTheme: resolvedTheme,
+                    formatMenu: makeFormattingMenu()
                 )
                 textView.keyboardAccessoryToolbarView = accessoryView
+                textView.formatAccessoryItem = accessoryView.formatButton
                 textView.undoAccessoryItem = accessoryView.undoButton
                 textView.redoAccessoryItem = accessoryView.redoButton
                 textView.dismissAccessoryItem = accessoryView.dismissButton
@@ -1240,6 +1250,43 @@ extension MarkdownEditorTextView {
             textView.keyboardAccessoryToolbarView?.applyResolvedTheme(resolvedTheme)
 
             updateKeyboardAccessoryState(for: textView)
+        }
+
+        private func makeFormattingMenu() -> UIMenu {
+            // UIKit presents nested keyboard menus from the anchor upward; keep the prototype's
+            // order by listing the top visual item last inside each menu.
+            UIMenu(children: [
+                UIAction(title: "Image", image: UIImage(systemName: "photo")) { [weak self] _ in
+                    self?.insertMarkdownImage()
+                },
+                UIAction(title: "Link", image: UIImage(systemName: "link")) { [weak self] _ in
+                    self?.insertMarkdownLink()
+                },
+                UIAction(title: "Code", image: UIImage(systemName: "chevron.left.forwardslash.chevron.right")) { [weak self] _ in
+                    self?.applyInlineMarkdownFormat(marker: "`")
+                },
+                UIAction(title: "Task", image: UIImage(systemName: "checklist")) { [weak self] _ in
+                    self?.applyLineMarkdownPrefix("- [ ] ")
+                },
+                UIAction(title: "Strikethrough", image: UIImage(systemName: "strikethrough")) { [weak self] _ in
+                    self?.applyInlineMarkdownFormat(marker: "~~")
+                },
+                UIAction(title: "Italic", image: UIImage(systemName: "italic")) { [weak self] _ in
+                    self?.applyInlineMarkdownFormat(marker: "*")
+                },
+                UIAction(title: "Bold", image: UIImage(systemName: "bold")) { [weak self] _ in
+                    self?.applyInlineMarkdownFormat(marker: "**")
+                },
+                UIMenu(
+                    title: "Header",
+                    image: UIImage(systemName: "textformat.size"),
+                    children: (1...6).reversed().map { level in
+                        UIAction(title: "H\(level)", image: UIImage(systemName: "\(level).square")) { [weak self] _ in
+                            self?.applyLineMarkdownPrefix(String(repeating: "#", count: level) + " ")
+                        }
+                    }
+                ),
+            ])
         }
 
         private func updateKeyboardAccessoryState(for textView: UITextView) {
@@ -1291,6 +1338,272 @@ extension MarkdownEditorTextView {
             }
             publishUndoRedoAvailability(for: textView)
             updateKeyboardAccessoryState(for: textView)
+        }
+
+        private func applyInlineMarkdownFormat(marker: String) {
+            guard let textView = activeTextView else {
+                return
+            }
+
+            applyInlineMarkdownFormat(marker: marker, in: textView)
+        }
+
+        private func applyInlineMarkdownFormat(marker: String, in textView: UITextView) {
+            guard
+                textView.isEditable,
+                let currentText = textView.text as NSString?
+            else {
+                return
+            }
+
+            let selectedRange = safeRange(textView.selectedRange, forTextLength: currentText.length)
+            let markerLength = (marker as NSString).length
+
+            if selectedRange.length > 0,
+               selectedRange.location >= markerLength,
+               selectedRange.location + selectedRange.length + markerLength <= currentText.length {
+                let before = currentText.substring(
+                    with: NSRange(location: selectedRange.location - markerLength, length: markerLength)
+                )
+                let after = currentText.substring(
+                    with: NSRange(location: NSMaxRange(selectedRange), length: markerLength)
+                )
+                if before == marker, after == marker {
+                    let expandedRange = NSRange(
+                        location: selectedRange.location - markerLength,
+                        length: selectedRange.length + markerLength * 2
+                    )
+                    let content = currentText.substring(with: selectedRange)
+                    applyProgrammaticTextReplacement(
+                        content,
+                        in: expandedRange,
+                        selectionAfter: NSRange(
+                            location: selectedRange.location - markerLength,
+                            length: selectedRange.length
+                        ),
+                        textView: textView,
+                        actionName: "Markdown Format"
+                    )
+                    return
+                }
+            }
+
+            let selectedText = currentText.substring(with: selectedRange)
+            let plan = MarkdownInlineFormatPlan.make(marker: marker, selectedText: selectedText)
+            applyProgrammaticTextReplacement(
+                plan.replacement,
+                in: selectedRange,
+                selectionAfter: NSRange(
+                    location: selectedRange.location + plan.selectedRangeInReplacement.location,
+                    length: plan.selectedRangeInReplacement.length
+                ),
+                textView: textView,
+                actionName: "Markdown Format"
+            )
+        }
+
+        private func applyLineMarkdownPrefix(_ prefix: String) {
+            guard let textView = activeTextView else {
+                return
+            }
+
+            applyLineMarkdownPrefix(prefix, in: textView)
+        }
+
+        private func applyLineMarkdownPrefix(_ prefix: String, in textView: UITextView) {
+            guard
+                textView.isEditable,
+                let currentText = textView.text as NSString?
+            else {
+                return
+            }
+
+            let selectedRange = safeRange(textView.selectedRange, forTextLength: currentText.length)
+            let targetRange = expandedLineRange(in: currentText, for: selectedRange)
+            let selectedRangeInTarget = NSRange(
+                location: max(0, selectedRange.location - targetRange.location),
+                length: selectedRange.length
+            )
+            let selectedText = currentText.substring(with: targetRange)
+            let plan = MarkdownLinePrefixPlan.make(
+                prefix: prefix,
+                selectedText: selectedText,
+                selectedRangeInSelectedText: selectedRangeInTarget
+            )
+            let prefixLength = (prefix as NSString).length
+            let replacementLength = (plan.replacement as NSString).length
+            let selectionAfter: NSRange
+
+            if selectedRange.length == 0 {
+                if let selectedRangeInReplacement = plan.selectedRangeInReplacement {
+                    selectionAfter = NSRange(
+                        location: targetRange.location + selectedRangeInReplacement.location,
+                        length: selectedRangeInReplacement.length
+                    )
+                } else {
+                    selectionAfter = NSRange(
+                        location: min(targetRange.location + prefixLength, targetRange.location + replacementLength),
+                        length: 0
+                    )
+                }
+            } else {
+                selectionAfter = NSRange(location: targetRange.location, length: replacementLength)
+            }
+
+            applyProgrammaticTextReplacement(
+                plan.replacement,
+                in: targetRange,
+                selectionAfter: selectionAfter,
+                textView: textView,
+                actionName: "Markdown Format"
+            )
+        }
+
+        private func insertMarkdownLink() {
+            guard let textView = activeTextView else {
+                return
+            }
+
+            insertMarkdownLink(in: textView)
+        }
+
+        private func insertMarkdownLink(in textView: UITextView) {
+            guard
+                textView.isEditable,
+                let currentText = textView.text as NSString?
+            else {
+                return
+            }
+
+            let selectedRange = safeRange(textView.selectedRange, forTextLength: currentText.length)
+            let selectedText = currentText.substring(with: selectedRange)
+            let plan = MarkdownLinkInsertionPlan.make(forSelectedText: selectedText)
+            applyProgrammaticTextReplacement(
+                plan.replacement,
+                in: selectedRange,
+                selectionAfter: NSRange(
+                    location: selectedRange.location + plan.selectedRangeInReplacement.location,
+                    length: plan.selectedRangeInReplacement.length
+                ),
+                textView: textView,
+                actionName: "Markdown Format"
+            )
+        }
+
+        private func insertMarkdownImage() {
+            guard let textView = activeTextView else {
+                return
+            }
+
+            insertMarkdownImage(in: textView)
+        }
+
+        private func insertMarkdownImage(in textView: UITextView) {
+            guard
+                textView.isEditable,
+                let currentText = textView.text as NSString?
+            else {
+                return
+            }
+
+            let selectedRange = safeRange(textView.selectedRange, forTextLength: currentText.length)
+            let selectedText = currentText.substring(with: selectedRange)
+            let plan = MarkdownImageInsertionPlan.make(forSelectedText: selectedText)
+            applyProgrammaticTextReplacement(
+                plan.replacement,
+                in: selectedRange,
+                selectionAfter: NSRange(
+                    location: selectedRange.location + plan.selectedRangeInReplacement.location,
+                    length: plan.selectedRangeInReplacement.length
+                ),
+                textView: textView,
+                actionName: "Markdown Format"
+            )
+        }
+
+        private func applyProgrammaticTextReplacement(
+            _ replacement: String,
+            in range: NSRange,
+            selectionAfter: NSRange,
+            textView: UITextView,
+            actionName: String,
+            registersUndo: Bool = true,
+            touchedLineBreaks: Bool? = nil,
+            afterMutation: ((UITextView) -> Void)? = nil
+        ) {
+            guard let currentText = textView.text as NSString? else {
+                return
+            }
+
+            let safeReplacementRange = safeRange(range, forTextLength: currentText.length)
+            let originalText = currentText.substring(with: safeReplacementRange)
+            let originalSelection = safeRange(textView.selectedRange, forTextLength: currentText.length)
+            let replacementLength = (replacement as NSString).length
+            let undoReplacementRange = NSRange(location: safeReplacementRange.location, length: replacementLength)
+            let safeSelectionAfter = safeRange(
+                selectionAfter,
+                forTextLength: currentText.length - safeReplacementRange.length + replacementLength
+            )
+            guard currentText.substring(with: safeReplacementRange) != replacement
+                || originalSelection != safeSelectionAfter
+            else {
+                return
+            }
+
+            if registersUndo, let undoManager = textView.undoManager {
+                undoManager.registerUndo(withTarget: self) { target in
+                    target.applyProgrammaticTextReplacement(
+                        originalText,
+                        in: undoReplacementRange,
+                        selectionAfter: originalSelection,
+                        textView: textView,
+                        actionName: actionName,
+                        touchedLineBreaks: touchedLineBreaks,
+                        afterMutation: afterMutation
+                    )
+                }
+                undoManager.setActionName(actionName)
+            }
+
+            let removedText = currentText.substring(with: safeReplacementRange)
+            pendingTextMutationContext = TextMutationContext(
+                changedRangeBeforeEdit: safeReplacementRange,
+                touchedLineBreaks: touchedLineBreaks
+                    ?? (replacement.containsLineBreak || removedText.containsLineBreak)
+            )
+            textView.textStorage.replaceCharacters(in: safeReplacementRange, with: replacement)
+            afterMutation?(textView)
+            textView.selectedRange = safeSelectionAfter
+            textViewDidChange(textView)
+            textViewDidChangeSelection(textView)
+            publishUndoRedoAvailability(for: textView)
+            updateKeyboardAccessoryState(for: textView)
+        }
+
+        private func expandedLineRange(in text: NSString, for selectedRange: NSRange) -> NSRange {
+            guard text.length > 0 else {
+                return NSRange(location: 0, length: 0)
+            }
+
+            if selectedRange.length == 0,
+               selectedRange.location == text.length,
+               text.character(at: text.length - 1) == 0x0A {
+                return NSRange(location: text.length, length: 0)
+            }
+
+            let safeLocation = min(selectedRange.location, max(text.length - 1, 0))
+            let startLine = text.lineRange(for: NSRange(location: safeLocation, length: 0))
+
+            if selectedRange.length == 0 {
+                return startLine
+            }
+
+            let endLocation = min(NSMaxRange(selectedRange) - 1, text.length - 1)
+            let endLine = text.lineRange(for: NSRange(location: endLocation, length: 0))
+            return NSRange(
+                location: startLine.location,
+                length: NSMaxRange(endLine) - startLine.location
+            )
         }
 
         private func safeSelectedRange(

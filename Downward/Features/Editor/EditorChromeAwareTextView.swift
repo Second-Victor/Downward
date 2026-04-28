@@ -2,6 +2,7 @@ import UIKit
 
 class EditorChromeAwareTextView: UITextView {
     var keyboardAccessoryToolbarView: KeyboardAccessoryToolbarView?
+    var formatAccessoryItem: UIBarButtonItem?
     var undoAccessoryItem: UIBarButtonItem?
     var redoAccessoryItem: UIBarButtonItem?
     var dismissAccessoryItem: UIBarButtonItem?
