@@ -122,6 +122,7 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
         XCTAssertEqual(rendered.attribute(.foregroundColor, at: quoteMarkerRange.location, effectiveRange: nil) as? UIColor, customTheme.subtleSyntaxMarkerText)
         XCTAssertEqual(rendered.attribute(.foregroundColor, at: quoteTextRange.location, effectiveRange: nil) as? UIColor, customTheme.blockquoteText)
         XCTAssertEqual(rendered.attribute(.foregroundColor, at: linkRange.location, effectiveRange: nil) as? UIColor, customTheme.linkText)
+        XCTAssertEqual(rendered.attribute(.markdownLinkDestination, at: linkRange.location, effectiveRange: nil) as? URL, URL(string: "https://example.com"))
         XCTAssertEqual(rendered.attribute(.foregroundColor, at: imageAltRange.location, effectiveRange: nil) as? UIColor, customTheme.imageAltText)
         XCTAssertEqual(
             rendered.attribute(.markdownCodeBackgroundKind, at: codeRange.location, effectiveRange: nil) as? Int,

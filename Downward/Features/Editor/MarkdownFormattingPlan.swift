@@ -466,6 +466,20 @@ nonisolated enum MarkdownFormattingURLClassifier {
     }
 }
 
+nonisolated enum MarkdownExternalLinkURL {
+    static func url(forMarkdownDestination destination: String) -> URL? {
+        guard let safeDestination = MarkdownFormattingURLClassifier.markdownDestination(for: destination) else {
+            return nil
+        }
+
+        if safeDestination.lowercased().hasPrefix("www.") {
+            return URL(string: "https://\(safeDestination)")
+        }
+
+        return URL(string: safeDestination)
+    }
+}
+
 nonisolated struct MarkdownLineSegment: Equatable {
     var content: String
     var lineEnding: String

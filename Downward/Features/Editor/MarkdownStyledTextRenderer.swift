@@ -487,6 +487,8 @@ struct MarkdownStyledTextRenderer {
 
             let titleRange = match.range(at: 1)
             let urlRange = match.range(at: 2)
+            let rawDestination = text.substring(with: urlRange)
+            let destinationURL = MarkdownExternalLinkURL.url(forMarkdownDestination: rawDestination)
             let hiddenRanges = [
                 NSRange(location: fullMatch.location, length: 1),
                 NSRange(location: NSMaxRange(titleRange), length: 2),
@@ -495,6 +497,7 @@ struct MarkdownStyledTextRenderer {
             ]
             styleApplicator.applyLink(
                 titleRange: titleRange,
+                destinationURL: destinationURL,
                 hiddenRanges: hiddenRanges,
                 in: attributed
             )

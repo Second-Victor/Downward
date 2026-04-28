@@ -178,6 +178,13 @@ final class MarkdownFormattingPlanTests: XCTestCase {
         XCTAssertNil(MarkdownFormattingURLClassifier.markdownDestination(for: "file:///private/tmp/example"))
     }
 
+    func testExternalLinkURLConvertsMarkdownDestinationsToSystemOpenableURLs() {
+        XCTAssertEqual(MarkdownExternalLinkURL.url(forMarkdownDestination: "https://example.com"), URL(string: "https://example.com"))
+        XCTAssertEqual(MarkdownExternalLinkURL.url(forMarkdownDestination: "www.example.com"), URL(string: "https://www.example.com"))
+        XCTAssertEqual(MarkdownExternalLinkURL.url(forMarkdownDestination: "test@example.com"), URL(string: "mailto:test@example.com"))
+        XCTAssertNil(MarkdownExternalLinkURL.url(forMarkdownDestination: "notes.md"))
+    }
+
     private func lineEndings(in text: String) -> [String] {
         var endings: [String] = []
         var index = text.startIndex

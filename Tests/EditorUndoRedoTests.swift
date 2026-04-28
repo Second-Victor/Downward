@@ -268,6 +268,94 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorResolvesMarkdownLinkTapOnVisibleTitle() throws {
+        let textBox = MutableBox("[Site](https://example.com)")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.textContainerInset = UIEdgeInsets(
+            top: EditorTextViewLayout.contentTopInset,
+            left: EditorTextViewLayout.horizontalInset,
+            bottom: EditorTextViewLayout.bottomInset,
+            right: EditorTextViewLayout.horizontalInset
+        )
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let titleRange = (textBox.value as NSString).range(of: "Site")
+        let tapPoint = try XCTUnwrap(pointForCharacterRange(titleRange, in: textView))
+
+        XCTAssertEqual(
+            coordinator.resolvedMarkdownLinkDestinationForTesting(at: tapPoint, in: textView),
+            URL(string: "https://example.com")
+        )
+    }
+
+    @MainActor
+    func testCoordinatorOpensMarkdownLinkUsingInjectedSystemOpener() throws {
+        let textBox = MutableBox("[Site](www.example.com)")
+        var openedURL: URL?
+        let coordinator = makeCoordinator(text: textBox) { url in
+            openedURL = url
+        }
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.textContainerInset = UIEdgeInsets(
+            top: EditorTextViewLayout.contentTopInset,
+            left: EditorTextViewLayout.horizontalInset,
+            bottom: EditorTextViewLayout.bottomInset,
+            right: EditorTextViewLayout.horizontalInset
+        )
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let titleRange = (textBox.value as NSString).range(of: "Site")
+        let tapPoint = try XCTUnwrap(pointForCharacterRange(titleRange, in: textView))
+        coordinator.openMarkdownLinkForTesting(at: tapPoint, in: textView)
+
+        XCTAssertEqual(openedURL, URL(string: "https://www.example.com"))
+    }
+
+    @MainActor
+    func testCoordinatorDoesNotOpenRelativeMarkdownLinkInBrowser() throws {
+        let textBox = MutableBox("[Local](notes.md)")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.textContainerInset = UIEdgeInsets(
+            top: EditorTextViewLayout.contentTopInset,
+            left: EditorTextViewLayout.horizontalInset,
+            bottom: EditorTextViewLayout.bottomInset,
+            right: EditorTextViewLayout.horizontalInset
+        )
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let titleRange = (textBox.value as NSString).range(of: "Local")
+        let tapPoint = try XCTUnwrap(pointForCharacterRange(titleRange, in: textView))
+
+        XCTAssertNil(coordinator.resolvedMarkdownLinkDestinationForTesting(at: tapPoint, in: textView))
+    }
+
+    @MainActor
     func testCoordinatorContinuesTaskListWhenReturnIsPressedAtEnd() {
         let textBox = MutableBox("- [ ] Task")
         let coordinator = makeCoordinator(text: textBox)
@@ -1829,7 +1917,8 @@ final class EditorUndoRedoTests: XCTestCase {
 
     @MainActor
     private func makeCoordinator(
-        text: MutableBox<String>
+        text: MutableBox<String>,
+        openExternalURL: @escaping @MainActor (URL) -> Void = { _ in }
     ) -> MarkdownEditorTextView.Coordinator {
         let textBinding = Binding(
             get: { text.value },
@@ -1838,7 +1927,8 @@ final class EditorUndoRedoTests: XCTestCase {
         return MarkdownEditorTextView.Coordinator(
             text: textBinding,
             onEditorFocusChange: { _ in },
-            onUndoRedoAvailabilityChange: { _, _ in }
+            onUndoRedoAvailabilityChange: { _, _ in },
+            openExternalURL: openExternalURL
         )
     }
 

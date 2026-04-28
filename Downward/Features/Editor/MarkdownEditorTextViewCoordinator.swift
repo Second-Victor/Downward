@@ -44,6 +44,9 @@ extension MarkdownEditorTextView {
         private var viewportResetGeneration = 0
         private weak var taskToggleTapGesture: UITapGestureRecognizer?
         private var pendingTaskToggleRange: NSRange?
+        private weak var linkTapGesture: UITapGestureRecognizer?
+        private var pendingLinkDestination: URL?
+        private let openExternalURL: @MainActor (URL) -> Void
         private let taskToggleFeedback = UIImpactFeedbackGenerator(style: .light)
 
         var hasPendingDeferredRerender: Bool {
@@ -61,11 +64,15 @@ extension MarkdownEditorTextView {
         init(
             text: Binding<String>,
             onEditorFocusChange: @escaping @MainActor (Bool) -> Void,
-            onUndoRedoAvailabilityChange: @escaping @MainActor (Bool, Bool) -> Void
+            onUndoRedoAvailabilityChange: @escaping @MainActor (Bool, Bool) -> Void,
+            openExternalURL: @escaping @MainActor (URL) -> Void = { url in
+                UIApplication.shared.open(url)
+            }
         ) {
             _text = text
             self.onEditorFocusChange = onEditorFocusChange
             self.onUndoRedoAvailabilityChange = onUndoRedoAvailabilityChange
+            self.openExternalURL = openExternalURL
         }
 
         deinit {
@@ -102,6 +109,7 @@ extension MarkdownEditorTextView {
                     font: configuration.font
                 )
                 configureTaskToggleGesture(for: textView, isEnabled: configuration.tapToToggleTasks)
+                configureLinkOpeningGesture(for: textView)
                 configureKeyboardAccessory(for: textView, resolvedTheme: configuration.resolvedTheme)
                 keyboardGeometryController.attach(
                     to: textView,
@@ -994,7 +1002,37 @@ extension MarkdownEditorTextView {
             gesture.isEnabled = true
         }
 
+        private func configureLinkOpeningGesture(for textView: EditorChromeAwareTextView) {
+            if let existingGesture = linkTapGesture, existingGesture.view !== textView {
+                existingGesture.view?.removeGestureRecognizer(existingGesture)
+                linkTapGesture = nil
+            }
+
+            let gesture: UITapGestureRecognizer
+            if let existingGesture = linkTapGesture {
+                gesture = existingGesture
+            } else {
+                gesture = UITapGestureRecognizer(target: self, action: #selector(handleMarkdownLinkTap(_:)))
+                gesture.delegate = self
+                gesture.cancelsTouchesInView = true
+                textView.addGestureRecognizer(gesture)
+                linkTapGesture = gesture
+            }
+            gesture.isEnabled = true
+        }
+
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            if
+                gestureRecognizer === linkTapGesture,
+                let textView = gestureRecognizer.view as? UITextView
+            {
+                pendingLinkDestination = resolvedMarkdownLinkDestination(
+                    at: gestureRecognizer.location(in: textView),
+                    in: textView
+                )
+                return pendingLinkDestination != nil
+            }
+
             guard
                 gestureRecognizer === taskToggleTapGesture,
                 let textView = gestureRecognizer.view as? UITextView
@@ -1005,6 +1043,27 @@ extension MarkdownEditorTextView {
             let point = gestureRecognizer.location(in: textView)
             pendingTaskToggleRange = resolvedTaskCheckboxRange(at: point, in: textView)
             return pendingTaskToggleRange != nil
+        }
+
+        @objc
+        private func handleMarkdownLinkTap(_ gesture: UITapGestureRecognizer) {
+            guard
+                gesture.state == .ended,
+                let textView = gesture.view as? UITextView
+            else {
+                pendingLinkDestination = nil
+                return
+            }
+
+            let destination = pendingLinkDestination
+                ?? resolvedMarkdownLinkDestination(at: gesture.location(in: textView), in: textView)
+            pendingLinkDestination = nil
+
+            guard let destination else {
+                return
+            }
+
+            openExternalURL(destination)
         }
 
         @objc
@@ -1026,6 +1085,41 @@ extension MarkdownEditorTextView {
             }
 
             toggleTaskCheckbox(in: checkboxRange, textView: textView)
+        }
+
+        private func resolvedMarkdownLinkDestination(
+            at point: CGPoint,
+            in textView: UITextView
+        ) -> URL? {
+            guard textView.textStorage.length > 0 else {
+                return nil
+            }
+
+            let textContainerPoint = CGPoint(
+                x: point.x - textView.textContainerInset.left,
+                y: point.y - textView.textContainerInset.top
+            )
+            var fraction: CGFloat = 0
+            let rawCharacterIndex = textView.layoutManager.characterIndex(
+                for: textContainerPoint,
+                in: textView.textContainer,
+                fractionOfDistanceBetweenInsertionPoints: &fraction
+            )
+            let characterIndex = min(max(rawCharacterIndex, 0), textView.textStorage.length - 1)
+            var linkRange = NSRange(location: NSNotFound, length: 0)
+            guard
+                let destination = textView.textStorage.attribute(
+                    .markdownLinkDestination,
+                    at: characterIndex,
+                    longestEffectiveRange: &linkRange,
+                    in: NSRange(location: 0, length: textView.textStorage.length)
+                ) as? URL,
+                pointHitsCharacterRange(linkRange, at: textContainerPoint, in: textView)
+            else {
+                return nil
+            }
+
+            return destination
         }
 
         private func resolvedTaskCheckboxRange(
@@ -1223,6 +1317,18 @@ extension MarkdownEditorTextView {
 
         func toggleTaskCheckboxForTesting(in checkboxRange: NSRange, textView: UITextView) {
             toggleTaskCheckbox(in: checkboxRange, textView: textView)
+        }
+
+        func resolvedMarkdownLinkDestinationForTesting(at point: CGPoint, in textView: UITextView) -> URL? {
+            resolvedMarkdownLinkDestination(at: point, in: textView)
+        }
+
+        func openMarkdownLinkForTesting(at point: CGPoint, in textView: UITextView) {
+            guard let destination = resolvedMarkdownLinkDestination(at: point, in: textView) else {
+                return
+            }
+
+            openExternalURL(destination)
         }
 
         func applyInlineMarkdownFormatForTesting(marker: String, in textView: UITextView) {

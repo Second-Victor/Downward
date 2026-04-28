@@ -123,6 +123,7 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
 
         visibleApplicator.applyLink(
             titleRange: linkTitleRange,
+            destinationURL: URL(string: "https://example.com")!,
             hiddenRanges: [
                 NSRange(location: linkFullRange.location, length: 1),
                 NSRange(location: NSMaxRange(linkTitleRange), length: 2),
@@ -149,6 +150,7 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
         XCTAssertEqual(attributed.string, text)
         XCTAssertEqual(attributed.attribute(.foregroundColor, at: linkRange.location, effectiveRange: nil) as? UIColor, theme.linkText)
         XCTAssertEqual(attributed.attribute(.underlineStyle, at: linkRange.location, effectiveRange: nil) as? Int, NSUnderlineStyle.single.rawValue)
+        XCTAssertEqual(attributed.attribute(.markdownLinkDestination, at: linkRange.location, effectiveRange: nil) as? URL, URL(string: "https://example.com"))
         XCTAssertEqual(attributed.attribute(.foregroundColor, at: imageAltRange.location, effectiveRange: nil) as? UIColor, theme.imageAltText)
         XCTAssertTrue(imageAltFont?.fontDescriptor.symbolicTraits.contains(.traitItalic) == true)
         XCTAssertNil(attributed.attribute(.markdownHiddenSyntax, at: nsText.range(of: "https://example.com").location, effectiveRange: nil))

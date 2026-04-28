@@ -295,16 +295,18 @@ struct MarkdownSyntaxStyleApplicator {
 
     func applyLink(
         titleRange: NSRange,
+        destinationURL: URL?,
         hiddenRanges: [NSRange],
         in attributed: NSMutableAttributedString
     ) {
-        attributed.addAttributes(
-            [
-                .foregroundColor: resolvedTheme.linkText,
-                .underlineStyle: NSUnderlineStyle.single.rawValue
-            ],
-            range: titleRange
-        )
+        var attributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: resolvedTheme.linkText,
+            .underlineStyle: NSUnderlineStyle.single.rawValue
+        ]
+        if let destinationURL {
+            attributes[.markdownLinkDestination] = destinationURL
+        }
+        attributed.addAttributes(attributes, range: titleRange)
         applySyntaxMarkerRanges(hiddenRanges, in: attributed)
     }
 
