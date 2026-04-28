@@ -1642,6 +1642,47 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorRevealsFencedCodeMarkersWhenCaretIsInsideBlock() {
+        let text = "Before\n```\ncode\n```\nAfter"
+        let textBox = MutableBox(text)
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.simulatedIsFirstResponder = true
+        let configuration = MarkdownEditorTextView.Configuration(
+            text: textBox.value,
+            documentIdentity: PreviewSampleData.cleanDocument.url,
+            font: .preferredFont(forTextStyle: .body),
+            syntaxMode: .hiddenOutsideCurrentLine,
+            isEditable: true
+        )
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+        textView.selectedRange = NSRange(location: (text as NSString).range(of: "code").location, length: 0)
+        coordinator.textViewDidChangeSelection(textView)
+
+        let nsText = textView.text as NSString
+        let openingFenceRange = nsText.range(of: "```")
+        let closingFenceRange = nsText.range(
+            of: "```",
+            options: [],
+            range: NSRange(
+                location: NSMaxRange(openingFenceRange),
+                length: nsText.length - NSMaxRange(openingFenceRange)
+            )
+        )
+
+        XCTAssertNil(textView.textStorage.attribute(.markdownHiddenSyntax, at: openingFenceRange.location, effectiveRange: nil))
+        XCTAssertNil(textView.textStorage.attribute(.markdownHiddenSyntax, at: closingFenceRange.location, effectiveRange: nil))
+    }
+
+    @MainActor
     func testCoordinatorDefersFullMarkdownRerenderAfterLineBreakEdit() async {
         let textBox = MutableBox("Draft")
         let coordinator = makeCoordinator(text: textBox)

@@ -356,7 +356,7 @@ extension MarkdownEditorTextView {
             }
 
             let selectedRange = textView.selectedRange
-            let revealedLineRange = renderer.revealedLineRange(
+            let revealedLineRange = renderer.revealedSyntaxRange(
                 for: selectedRange,
                 in: textView.text ?? configuration.text
             )
@@ -542,7 +542,7 @@ extension MarkdownEditorTextView {
                 return nil
             }
 
-            return renderer.revealedLineRange(
+            return renderer.revealedSyntaxRange(
                 for: selectionRange,
                 in: text
             )

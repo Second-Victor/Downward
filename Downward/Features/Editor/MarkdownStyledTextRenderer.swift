@@ -165,6 +165,29 @@ struct MarkdownStyledTextRenderer {
         return nsText.lineRange(for: NSRange(location: safeLocation, length: 0))
     }
 
+    func revealedSyntaxRange(
+        for selectionRange: NSRange,
+        in text: String
+    ) -> NSRange? {
+        guard let lineRange = revealedLineRange(for: selectionRange, in: text) else {
+            return nil
+        }
+
+        let fencedBlocks = scanner.fencedCodeBlocks(
+            in: text,
+            lineRanges: scanner.lineRanges(in: text)
+        )
+        guard let fencedBlock = fencedBlocks.first(where: { block in
+            NSIntersectionRange(block.fullRange, lineRange).length > 0
+        }) else {
+            return lineRange
+        }
+
+        // Fenced code markers are whole-line structural handles. Revealing the block's fence
+        // lines together keeps the caret from collapsing into a zero-width backtick run.
+        return NSUnionRange(lineRange, fencedBlock.fullRange)
+    }
+
     func updateHiddenSyntaxVisibility(
         in textStorage: NSTextStorage,
         previousRevealedRange: NSRange?,

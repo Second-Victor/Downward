@@ -755,6 +755,42 @@ final class MarkdownStyledTextRendererTests: XCTestCase {
     }
 
     @MainActor
+    func testFencedCodeFencesRevealWhenCaretIsInsideBlock() {
+        let text = """
+        ```
+        code
+        ```
+        """
+        let nsText = text as NSString
+        let openingFenceRange = nsText.range(of: "```")
+        let closingFenceRange = nsText.range(
+            of: "```",
+            options: [],
+            range: NSRange(
+                location: NSMaxRange(openingFenceRange),
+                length: nsText.length - NSMaxRange(openingFenceRange)
+            )
+        )
+        let codeRange = nsText.range(of: "code")
+        let revealedRange = renderer.revealedSyntaxRange(
+            for: NSRange(location: codeRange.location, length: 0),
+            in: text
+        )
+
+        let rendered = renderer.render(
+            configuration: .init(
+                text: text,
+                baseFont: baseFont,
+                syntaxMode: .hiddenOutsideCurrentLine,
+                revealedRange: revealedRange
+            )
+        )
+
+        XCTAssertNil(hiddenSyntaxValue(in: rendered, at: openingFenceRange))
+        XCTAssertNil(hiddenSyntaxValue(in: rendered, at: closingFenceRange))
+    }
+
+    @MainActor
     func testDoubleBacktickCodeSpanSupportsEmbeddedBackticks() {
         let text = "Use ``code `here` `` today."
         let rendered = renderer.render(
