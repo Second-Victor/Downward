@@ -108,6 +108,7 @@ private struct CompactWorkspaceShell: View {
                 viewModel: viewModel.workspaceViewModel,
                 navigationMode: .stackPath
             )
+                .roundedNavigationBarTitles()
                 .navigationDestination(for: AppRoute.self) { route in
                     WorkspaceRouteDestination(route: route, viewModel: viewModel)
                 }
@@ -153,6 +154,7 @@ private struct RegularWorkspaceShell: View {
                 viewModel: viewModel.workspaceViewModel,
                 navigationMode: .splitSidebar
             )
+                .roundedNavigationBarTitles()
                 .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 360)
         } detail: {
             RegularWorkspaceDetailView(viewModel: viewModel)
@@ -203,6 +205,7 @@ private struct RegularWorkspaceDetailView: View {
                 )
             }
         }
+        .roundedNavigationBarTitles()
     }
 }
 

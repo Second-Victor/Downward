@@ -94,7 +94,7 @@ struct SettingsHomePage: View {
                 Button("Done", action: doneAction)
             }
         }
-        .fontDesign(.rounded)
+        .roundedNavigationBarTitles()
     }
 
     private var workspaceHint: String {

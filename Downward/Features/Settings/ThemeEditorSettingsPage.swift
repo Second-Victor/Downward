@@ -122,7 +122,6 @@ struct ThemeEditorSettingsPage: View {
         }
         .navigationTitle(editing == nil ? "New Theme" : "Edit Theme")
         .navigationBarTitleDisplayMode(.inline)
-        .fontDesign(.rounded)
         .toolbar {
             if editing != nil {
                 ToolbarItem(placement: .topBarTrailing) {

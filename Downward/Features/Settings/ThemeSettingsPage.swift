@@ -92,7 +92,6 @@ struct ThemeSettingsPage: View {
             }
         }
         .navigationTitle("Theme")
-        .fontDesign(.rounded)
         .fileImporter(
             isPresented: $isImportingTheme,
             allowedContentTypes: [.json]

@@ -5,35 +5,29 @@ struct InformationSettingsPage: View {
     let backAction: () -> Void
 
     var body: some View {
-        SettingsShell {
-            SettingsPageHeader(title: "Information", backAction: backAction)
-
-            SettingsCard {
-                SettingsNavigationRow(
-                    icon: .symbol("star.fill"),
-                    iconTint: .yellow,
-                    title: "Rate the App",
-                    value: nil,
-                    isEnabled: false,
-                    action: {}
-                )
-                .accessibilityHint("App Store review routing is not implemented yet.")
+        Form {
+            Section {
+                Label("Rate the App", systemImage: "star.fill")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHint("App Store review routing is not implemented yet.")
+            } footer: {
+                Text("If Downward is working well for you, leaving a rating helps.")
+                    .settingsFooterStyle()
             }
 
-            SettingsHelperText("If Downward is working well for you, leaving a rating helps.")
-
-            SettingsCard {
-                SettingsNavigationRow(
-                    icon: .symbol("info.circle"),
-                    iconTint: .blue.opacity(0.55),
-                    title: "About",
-                    value: nil,
-                    action: { push(.about) }
-                )
+            Section {
+                Button {
+                    push(.about)
+                } label: {
+                    Label("About", systemImage: "info.circle")
+                }
+                .buttonStyle(.plain)
+            } footer: {
+                Text("Version details, privacy policy, and terms are available in About.")
+                    .settingsFooterStyle()
             }
-
-            SettingsHelperText("Version details, privacy policy, and terms are available in About.")
         }
+        .navigationTitle("Information")
     }
 }
 
@@ -41,49 +35,37 @@ struct AboutSettingsPage: View {
     let backAction: () -> Void
 
     var body: some View {
-        SettingsShell {
-            SettingsPageHeader(title: "", backAction: backAction)
+        Form {
+            Section {
+                VStack(spacing: 14) {
+                    AppIconPlaceholder()
 
-            VStack(spacing: 14) {
-                AppIconPlaceholder()
+                    Text("Downward")
+                        .font(.title.weight(.bold))
 
-                Text("Downward")
-                    .font(.title.weight(.bold))
+                    Text(versionText)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
 
-                Text(versionText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                Text("Second Victor Ltd.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    Text("Second Victor Ltd.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 24)
-            .padding(.bottom, 12)
 
-            SettingsCard {
-                SettingsNavigationRow(
-                    icon: .symbol("hand.raised.fill"),
-                    iconTint: .blue,
-                    title: "Privacy Policy",
-                    value: nil,
-                    isEnabled: false,
-                    action: {}
-                )
-                .accessibilityHint("Privacy Policy URL is not configured yet.")
-                SettingsDivider()
-                SettingsNavigationRow(
-                    icon: .symbol("doc.text.fill"),
-                    iconTint: .blue,
-                    title: "Terms & Conditions",
-                    value: nil,
-                    isEnabled: false,
-                    action: {}
-                )
-                .accessibilityHint("Terms and Conditions URL is not configured yet.")
+            Section {
+                Label("Privacy Policy", systemImage: "hand.raised.fill")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHint("Privacy Policy URL is not configured yet.")
+
+                Label("Terms & Conditions", systemImage: "doc.text.fill")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHint("Terms and Conditions URL is not configured yet.")
             }
         }
+        .navigationTitle("About")
     }
 
     private var versionText: String {

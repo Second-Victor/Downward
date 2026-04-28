@@ -104,6 +104,7 @@ struct SettingsScreen: View {
                 editorAppearanceStore: editorAppearanceStore,
                 backAction: pop
             )
+            .roundedNavigationBarTitles()
         case .theme:
             ThemeSettingsPage(
                 editorAppearanceStore: editorAppearanceStore,
@@ -111,6 +112,7 @@ struct SettingsScreen: View {
                 push: push,
                 backAction: pop
             )
+            .roundedNavigationBarTitles()
         case .newTheme:
             ThemeEditorSettingsPage(
                 editorAppearanceStore: editorAppearanceStore,
@@ -118,6 +120,7 @@ struct SettingsScreen: View {
                 editing: nil,
                 backAction: pop
             )
+            .roundedNavigationBarTitles()
         case let .editTheme(id):
             if let theme = themeStore.theme(withID: id) {
                 ThemeEditorSettingsPage(
@@ -126,23 +129,29 @@ struct SettingsScreen: View {
                     editing: theme,
                     backAction: pop
                 )
+                .roundedNavigationBarTitles()
             } else {
                 ContentUnavailableView("Theme Missing", systemImage: "paintpalette", description: Text("The selected custom theme could not be found."))
+                    .roundedNavigationBarTitles()
             }
         case .markdown:
             MarkdownSettingsPage(
                 editorAppearanceStore: editorAppearanceStore,
                 backAction: pop
             )
+            .roundedNavigationBarTitles()
         case .tips:
             TipsSettingsPage(backAction: pop)
+                .roundedNavigationBarTitles()
         case .information:
             InformationSettingsPage(
                 push: push,
                 backAction: pop
             )
+            .roundedNavigationBarTitles()
         case .about:
             AboutSettingsPage(backAction: pop)
+                .roundedNavigationBarTitles()
         }
     }
 

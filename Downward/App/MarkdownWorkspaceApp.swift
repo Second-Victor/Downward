@@ -18,6 +18,7 @@ private struct AppSceneRoot: View {
     var body: some View {
         RootScreen(viewModel: sceneContainer.container.rootViewModel)
             .preferredColorScheme(appColorScheme.colorScheme)
+            .fontDesign(.rounded)
             .onChange(of: scenePhase, initial: true) { _, newPhase in
                 sceneContainer.container.rootViewModel.handleScenePhaseChange(newPhase)
             }

@@ -111,7 +111,6 @@ struct EditorSettingsPage: View {
             }
         }
         .navigationTitle("Editor")
-        .fontDesign(.rounded)
         .onAppear {
             selectedCategory = category(for: editorAppearanceStore.selectedFontChoice)
         }

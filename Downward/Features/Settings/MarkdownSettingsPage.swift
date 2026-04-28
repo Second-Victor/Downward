@@ -30,34 +30,37 @@ struct MarkdownSettingsPage: View {
     }
 
     var body: some View {
-        SettingsShell {
-            SettingsPageHeader(title: "Markdown", backAction: backAction)
-
-            SettingsCard {
-                SettingsToggleRow(
-                    title: "Colour Formatted Text",
+        Form {
+            Section {
+                Toggle(
+                    "Colour Formatted Text",
                     isOn: colorFormattedTextBinding
                 )
+            } footer: {
+                Text("Apply the markdown syntax marker colour to heading, bold, and italic text.")
+                    .settingsFooterStyle()
             }
-            SettingsHelperText(
-                "Apply the markdown syntax marker colour to heading, bold, and italic text."
-            )
 
-            SettingsCard {
-                SettingsToggleRow(
-                    title: "Hide Markdown Formatting",
+            Section {
+                Toggle(
+                    "Hide Markdown Formatting",
                     isOn: hideMarkdownFormattingBinding
                 )
+            } footer: {
+                Text("Hide markdown syntax until the cursor moves into the formatted content.")
+                    .settingsFooterStyle()
             }
-            SettingsHelperText("Hide markdown syntax until the cursor moves into the formatted content.")
 
-            SettingsCard {
-                SettingsToggleRow(
-                    title: "Tap to Toggle Tasks",
+            Section {
+                Toggle(
+                    "Tap to Toggle Tasks",
                     isOn: tapToToggleTasksBinding
                 )
+            } footer: {
+                Text("Tap a task checkbox to mark it as done or undone.")
+                    .settingsFooterStyle()
             }
-            SettingsHelperText("Tap a task checkbox to mark it as done or undone.")
         }
+        .navigationTitle("Markdown")
     }
 }

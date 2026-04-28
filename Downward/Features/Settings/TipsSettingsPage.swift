@@ -11,21 +11,17 @@ struct TipsSettingsPage: View {
     ]
 
     var body: some View {
-        SettingsShell {
-            SettingsPageHeader(title: "Tips", backAction: backAction)
-
-            SettingsCard {
+        Form {
+            Section {
                 ForEach(tips) { tip in
                     SettingsTipRow(tip: tip)
-
-                    if tip != tips.last {
-                        SettingsDivider(leadingInset: 86)
-                    }
                 }
+            } footer: {
+                Text("Tips help support the ongoing development of Downward. Thank you.")
+                    .settingsFooterStyle()
             }
-
-            SettingsHelperText("Tips help support the ongoing development of Downward.\nThank you.")
         }
+        .navigationTitle("Tips")
     }
 }
 
@@ -71,9 +67,7 @@ struct SettingsTipRow: View {
                 .font(.body.weight(.bold))
                 .monospacedDigit()
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .accessibilityHint("StoreKit purchases are not implemented yet.")
     }
 }
