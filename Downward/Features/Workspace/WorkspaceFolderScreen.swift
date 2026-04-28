@@ -288,7 +288,7 @@ private struct WorkspaceTreeRow: View {
                 }
                 .disabled(viewModel.areRowActionsDisabled)
                 .accessibilityLabel("New File in \(node.displayName)")
-                .accessibilityHint("Creates a Markdown, text, or JSON file inside this folder.")
+                .accessibilityHint("Creates a text or source file inside this folder.")
 
                 Button("New Folder", systemImage: "folder.badge.plus") {
                     viewModel.presentCreateFolder(in: folder.url)

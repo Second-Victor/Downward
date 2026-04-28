@@ -474,6 +474,31 @@ final class WorkspaceManagerRestoreTests: XCTestCase {
     }
 
     @MainActor
+    func testCreateFileAcceptsSupportedSourceExtension() async throws {
+        let workspaceURL = try makeTemporaryWorkspace()
+        defer { removeItemIfPresent(at: workspaceURL) }
+        let fileCoordinator = RecordingWorkspaceFileCoordinator()
+
+        let manager = makeLiveWorkspaceManager(
+            for: workspaceURL,
+            fileCoordinator: fileCoordinator
+        )
+        _ = await manager.selectWorkspace(at: workspaceURL)
+
+        let mutationResult = try await manager.createFile(named: "App.swift", in: nil)
+
+        guard case let .createdFile(url, displayName) = mutationResult.outcome else {
+            return XCTFail("Expected createdFile result.")
+        }
+
+        XCTAssertEqual(displayName, "App.swift")
+        XCTAssertEqual(url.lastPathComponent, "App.swift")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertTrue(mutationResult.snapshot.rootNodes.contains(where: { $0.displayName == "App.swift" }))
+        XCTAssertEqual(fileCoordinator.createdURLs, [url])
+    }
+
+    @MainActor
     func testCreateFileAcceptsWorkspaceRootAliasURL() async throws {
         let workspaceURL = try makeTemporaryWorkspace()
         defer { removeItemIfPresent(at: workspaceURL) }

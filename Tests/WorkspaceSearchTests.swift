@@ -93,6 +93,49 @@ final class WorkspaceSearchTests: XCTestCase {
     }
 
     @MainActor
+    func testSearchMatchesNewlySupportedTextAndSourceFiles() {
+        let rootURL = PreviewSampleData.workspaceRootURL
+        let snapshot = WorkspaceSnapshot(
+            rootURL: rootURL,
+            displayName: "Workspace",
+            rootNodes: [
+                .folder(
+                    .init(
+                        url: rootURL.appending(path: "Sources"),
+                        displayName: "Sources",
+                        children: [
+                            .file(
+                                .init(
+                                    url: rootURL.appending(path: "Sources/App.swift"),
+                                    displayName: "App.swift",
+                                    subtitle: "Swift source"
+                                )
+                            ),
+                            .file(
+                                .init(
+                                    url: rootURL.appending(path: "Sources/index.html"),
+                                    displayName: "index.html",
+                                    subtitle: "HTML source"
+                                )
+                            ),
+                        ]
+                    )
+                ),
+            ],
+            lastUpdated: PreviewSampleData.previewDate
+        )
+
+        XCTAssertEqual(
+            WorkspaceSearchEngine.results(in: snapshot, matching: "swift").map(\.relativePath),
+            ["Sources/App.swift"]
+        )
+        XCTAssertEqual(
+            WorkspaceSearchEngine.results(in: snapshot, matching: "html").map(\.relativePath),
+            ["Sources/index.html"]
+        )
+    }
+
+    @MainActor
     func testSearchResultsKeepDuplicateFilenamesDisambiguatedByPathContext() {
         let referencesResult = WorkspaceSearchResult(
             url: PreviewSampleData.readmeDocumentURL,

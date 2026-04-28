@@ -295,7 +295,7 @@ The custom JSON theme path deserializes into `CustomTheme`, then maps into the i
 - image alt text,
 - selection-adjacent or active-line syntax.
 
-Workspace `.json` files are supported text documents and should open through the same editor route as Markdown and plain text. Importing a JSON theme is an explicit Theme settings action, not a browser/search tap side effect.
+Workspace `.json` files and common source/plain-text formats are supported text documents and should open through the same editor route as Markdown files. Importing a JSON theme is an explicit Theme settings action, not a browser/search tap side effect.
 
 Theme changes are allowed to trigger whole-document restyling at first, but the architecture should leave room to retheme from cached semantic ranges later.
 

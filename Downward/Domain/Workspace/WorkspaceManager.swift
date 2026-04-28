@@ -1016,7 +1016,7 @@ actor LiveWorkspaceManager: WorkspaceManager {
             throw AppError.fileOperationFailed(
                 action: preservedExtension == nil ? "Create File" : "Rename File",
                 name: rawName,
-                details: "Use .md, .markdown, .txt, or .json."
+                details: "Use a supported text or source-file extension."
             )
         }
 

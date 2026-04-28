@@ -3,6 +3,34 @@ import XCTest
 @testable import Downward
 
 final class WorkspaceEnumeratorTests: XCTestCase {
+    func testSupportedFileTypeIncludesCommonTextAndSourceExtensions() {
+        let supportedExtensions = [
+            "md", "markdown", "txt", "json",
+            "swift", "html", "htm", "css",
+            "js", "ts", "jsx", "tsx",
+            "py", "rb", "go", "rs",
+            "c", "h", "cpp", "cxx", "cc", "hpp",
+            "m", "mm", "java", "kt", "kts",
+            "sh", "zsh", "bash",
+            "yaml", "yml", "toml", "xml",
+            "csv", "tsv", "log", "ini", "conf"
+        ]
+
+        for fileExtension in supportedExtensions {
+            XCTAssertTrue(
+                SupportedFileType.isSupportedExtension(fileExtension),
+                "Expected .\(fileExtension) to be supported"
+            )
+            XCTAssertTrue(
+                SupportedFileType.isSupportedExtension(fileExtension.uppercased()),
+                "Expected .\(fileExtension.uppercased()) to be supported"
+            )
+        }
+
+        XCTAssertFalse(SupportedFileType.isSupportedExtension("png"))
+        XCTAssertFalse(SupportedFileType.isSupportedExtension("pdf"))
+    }
+
     func testEnumeratorIncludesOnlySupportedFiles() throws {
         let rootURL = try makeTemporaryWorkspace()
         defer { removeItemIfPresent(at: rootURL) }
@@ -11,6 +39,8 @@ final class WorkspaceEnumeratorTests: XCTestCase {
         try createFile(named: "Ideas.markdown", in: rootURL)
         try createFile(named: "Theme.json", in: rootURL)
         try createFile(named: "Scratch.txt", in: rootURL)
+        try createFile(named: "App.swift", in: rootURL)
+        try createFile(named: "index.html", in: rootURL)
         try createFile(named: "Image.png", in: rootURL)
 
         let snapshot = try LiveWorkspaceEnumerator().makeSnapshot(
@@ -18,7 +48,10 @@ final class WorkspaceEnumeratorTests: XCTestCase {
             displayName: "Workspace"
         )
 
-        XCTAssertEqual(snapshot.rootNodes.map(\.displayName), ["Ideas.markdown", "Notes.md", "Scratch.txt", "Theme.json"])
+        XCTAssertEqual(
+            snapshot.rootNodes.map(\.displayName),
+            ["App.swift", "Ideas.markdown", "index.html", "Notes.md", "Scratch.txt", "Theme.json"]
+        )
     }
 
     func testEnumeratorSortsFoldersBeforeFilesAlphabetically() throws {
