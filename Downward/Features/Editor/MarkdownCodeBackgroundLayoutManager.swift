@@ -16,6 +16,7 @@ extension NSAttributedString.Key {
     nonisolated static let markdownLineNumberHiddenWhenSyntaxHidden = NSAttributedString.Key("Downward.MarkdownLineNumberHiddenWhenSyntaxHidden")
     nonisolated static let markdownTaskCheckbox = NSAttributedString.Key("Downward.MarkdownTaskCheckbox")
     nonisolated static let markdownLinkDestination = NSAttributedString.Key("Downward.MarkdownLinkDestination")
+    nonisolated static let markdownLinkRawDestination = NSAttributedString.Key("Downward.MarkdownLinkRawDestination")
 }
 
 final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {

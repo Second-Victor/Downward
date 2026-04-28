@@ -46,9 +46,10 @@ extension MarkdownEditorTextView {
         private weak var taskToggleTapGesture: UITapGestureRecognizer?
         private var pendingTaskToggleRange: NSRange?
         private weak var linkTapGesture: UITapGestureRecognizer?
-        private var pendingLinkDestination: URL?
+        private var pendingLinkDestination: MarkdownLinkDestination?
         private var savedDateHeaderPullDistance: CGFloat = 0
         private let openExternalURL: @MainActor (URL) -> Void
+        private let openLocalMarkdownLink: @MainActor (String) -> Void
         private let taskToggleFeedback = UIImpactFeedbackGenerator(style: .light)
 
         var hasPendingDeferredRerender: Bool {
@@ -70,13 +71,15 @@ extension MarkdownEditorTextView {
             onSavedDateHeaderPullDistanceChange: @escaping @MainActor (CGFloat) -> Void = { _ in },
             openExternalURL: @escaping @MainActor (URL) -> Void = { url in
                 UIApplication.shared.open(url)
-            }
+            },
+            openLocalMarkdownLink: @escaping @MainActor (String) -> Void = { _ in }
         ) {
             _text = text
             self.onEditorFocusChange = onEditorFocusChange
             self.onUndoRedoAvailabilityChange = onUndoRedoAvailabilityChange
             self.onSavedDateHeaderPullDistanceChange = onSavedDateHeaderPullDistanceChange
             self.openExternalURL = openExternalURL
+            self.openLocalMarkdownLink = openLocalMarkdownLink
         }
 
         deinit {
@@ -1070,7 +1073,12 @@ extension MarkdownEditorTextView {
                 return
             }
 
-            openExternalURL(destination)
+            switch destination {
+            case let .external(url):
+                openExternalURL(url)
+            case let .local(rawDestination):
+                openLocalMarkdownLink(rawDestination)
+            }
         }
 
         @objc
@@ -1097,7 +1105,7 @@ extension MarkdownEditorTextView {
         private func resolvedMarkdownLinkDestination(
             at point: CGPoint,
             in textView: UITextView
-        ) -> URL? {
+        ) -> MarkdownLinkDestination? {
             guard textView.textStorage.length > 0 else {
                 return nil
             }
@@ -1114,19 +1122,27 @@ extension MarkdownEditorTextView {
             )
             let characterIndex = min(max(rawCharacterIndex, 0), textView.textStorage.length - 1)
             var linkRange = NSRange(location: NSNotFound, length: 0)
-            guard
-                let destination = textView.textStorage.attribute(
-                    .markdownLinkDestination,
-                    at: characterIndex,
-                    longestEffectiveRange: &linkRange,
-                    in: NSRange(location: 0, length: textView.textStorage.length)
-                ) as? URL,
-                pointHitsCharacterRange(linkRange, at: textContainerPoint, in: textView)
-            else {
-                return nil
+            if let destination = textView.textStorage.attribute(
+                .markdownLinkDestination,
+                at: characterIndex,
+                longestEffectiveRange: &linkRange,
+                in: NSRange(location: 0, length: textView.textStorage.length)
+            ) as? URL,
+               pointHitsCharacterRange(linkRange, at: textContainerPoint, in: textView) {
+                return .external(destination)
             }
 
-            return destination
+            if let rawDestination = textView.textStorage.attribute(
+                .markdownLinkRawDestination,
+                at: characterIndex,
+                longestEffectiveRange: &linkRange,
+                in: NSRange(location: 0, length: textView.textStorage.length)
+            ) as? String,
+               pointHitsCharacterRange(linkRange, at: textContainerPoint, in: textView) {
+                return .local(rawDestination)
+            }
+
+            return nil
         }
 
         private func resolvedTaskCheckboxRange(
@@ -1326,7 +1342,7 @@ extension MarkdownEditorTextView {
             toggleTaskCheckbox(in: checkboxRange, textView: textView)
         }
 
-        func resolvedMarkdownLinkDestinationForTesting(at point: CGPoint, in textView: UITextView) -> URL? {
+        func resolvedMarkdownLinkDestinationForTesting(at point: CGPoint, in textView: UITextView) -> MarkdownLinkDestination? {
             resolvedMarkdownLinkDestination(at: point, in: textView)
         }
 
@@ -1335,7 +1351,12 @@ extension MarkdownEditorTextView {
                 return
             }
 
-            openExternalURL(destination)
+            switch destination {
+            case let .external(url):
+                openExternalURL(url)
+            case let .local(rawDestination):
+                openLocalMarkdownLink(rawDestination)
+            }
         }
 
         func applyInlineMarkdownFormatForTesting(marker: String, in textView: UITextView) {

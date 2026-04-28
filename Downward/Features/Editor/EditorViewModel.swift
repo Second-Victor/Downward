@@ -343,6 +343,45 @@ final class EditorViewModel {
         session.editorAlertError = nil
     }
 
+    func openLocalMarkdownLink(destination: String) {
+        guard let currentRouteDocument else {
+            return
+        }
+
+        guard let snapshot = session.workspaceSnapshot else {
+            session.editorAlertError = UserFacingError(
+                title: "Link Not Available",
+                message: "Choose a workspace before opening local Markdown links.",
+                recoverySuggestion: "Reconnect the workspace, then try the link again."
+            )
+            return
+        }
+
+        switch MarkdownLocalLinkResolver.resolve(
+            destination: destination,
+            from: currentRouteDocument.relativePath,
+            in: snapshot
+        ) {
+        case .anchorOnly:
+            return
+        case let .target(relativePath, url):
+            session.editorAlertError = nil
+            coordinator.presentEditor(relativePath: relativePath, preferredURL: url)
+        case let .missing(displayPath):
+            session.editorAlertError = UserFacingError(
+                title: "Linked File Unavailable",
+                message: "\(displayPath) was not found in the current workspace.",
+                recoverySuggestion: "Check the link path or create the linked file in the workspace."
+            )
+        case let .unsupported(displayPath):
+            session.editorAlertError = UserFacingError(
+                title: "Unsupported Local Link",
+                message: "\(displayPath) cannot be opened as a local workspace document.",
+                recoverySuggestion: "Use a relative link to a supported text file in this workspace, or use a web URL."
+            )
+        }
+    }
+
     func handleEditorFocusChange(_ isFocused: Bool) {
         isEditorFocused = isFocused
 

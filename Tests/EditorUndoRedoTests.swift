@@ -43,6 +43,27 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testViewModelOpensResolvedLocalMarkdownLinkThroughTrustedPresentation() {
+        let system = makeEditorSystem()
+
+        system.viewModel.openLocalMarkdownLink(destination: "References/README.md")
+
+        XCTAssertEqual(system.session.pendingEditorPresentation?.relativePath, "References/README.md")
+        XCTAssertEqual(system.session.pendingEditorPresentation?.routeURL, PreviewSampleData.readmeDocumentURL)
+        XCTAssertNil(system.session.editorAlertError)
+    }
+
+    @MainActor
+    func testViewModelShowsErrorForMissingLocalMarkdownLink() {
+        let system = makeEditorSystem()
+
+        system.viewModel.openLocalMarkdownLink(destination: "References/Missing.md")
+
+        XCTAssertEqual(system.session.editorAlertError?.title, "Linked File Unavailable")
+        XCTAssertNil(system.session.pendingEditorPresentation)
+    }
+
+    @MainActor
     func testCoordinatorConfiguresKeyboardAccessoryToolbar() {
         let textBox = MutableBox("Draft")
         let coordinator = makeCoordinator(text: textBox)
@@ -293,7 +314,7 @@ final class EditorUndoRedoTests: XCTestCase {
 
         XCTAssertEqual(
             coordinator.resolvedMarkdownLinkDestinationForTesting(at: tapPoint, in: textView),
-            URL(string: "https://example.com")
+            .external(try XCTUnwrap(URL(string: "https://example.com")))
         )
     }
 
@@ -329,9 +350,19 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
-    func testCoordinatorDoesNotOpenRelativeMarkdownLinkInBrowser() throws {
+    func testCoordinatorRoutesRelativeMarkdownLinkToLocalOpener() throws {
         let textBox = MutableBox("[Local](notes.md)")
-        let coordinator = makeCoordinator(text: textBox)
+        var openedURL: URL?
+        var openedLocalDestination: String?
+        let coordinator = makeCoordinator(
+            text: textBox,
+            openExternalURL: { url in
+                openedURL = url
+            },
+            openLocalMarkdownLink: { destination in
+                openedLocalDestination = destination
+            }
+        )
         let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         textView.textContainerInset = UIEdgeInsets(
             top: EditorTextViewLayout.contentTopInset,
@@ -351,8 +382,14 @@ final class EditorUndoRedoTests: XCTestCase {
 
         let titleRange = (textBox.value as NSString).range(of: "Local")
         let tapPoint = try XCTUnwrap(pointForCharacterRange(titleRange, in: textView))
+        coordinator.openMarkdownLinkForTesting(at: tapPoint, in: textView)
 
-        XCTAssertNil(coordinator.resolvedMarkdownLinkDestinationForTesting(at: tapPoint, in: textView))
+        XCTAssertEqual(
+            coordinator.resolvedMarkdownLinkDestinationForTesting(at: tapPoint, in: textView),
+            .local("notes.md")
+        )
+        XCTAssertNil(openedURL)
+        XCTAssertEqual(openedLocalDestination, "notes.md")
     }
 
     @MainActor
@@ -1989,7 +2026,8 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     private func makeCoordinator(
         text: MutableBox<String>,
-        openExternalURL: @escaping @MainActor (URL) -> Void = { _ in }
+        openExternalURL: @escaping @MainActor (URL) -> Void = { _ in },
+        openLocalMarkdownLink: @escaping @MainActor (String) -> Void = { _ in }
     ) -> MarkdownEditorTextView.Coordinator {
         let textBinding = Binding(
             get: { text.value },
@@ -1999,7 +2037,8 @@ final class EditorUndoRedoTests: XCTestCase {
             text: textBinding,
             onEditorFocusChange: { _ in },
             onUndoRedoAvailabilityChange: { _, _ in },
-            openExternalURL: openExternalURL
+            openExternalURL: openExternalURL,
+            openLocalMarkdownLink: openLocalMarkdownLink
         )
     }
 

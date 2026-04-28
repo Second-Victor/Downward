@@ -7,6 +7,151 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 ## Latest QA run
 
 - Date: 2026-04-28
+- Branch/commit at start of run: `main` / working tree after prior release-stabilisation edits
+- Xcode: Xcode 26.4 (17E192)
+- Host environment: macOS 26.4.1 reported by XCTest result bundle
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`, OS build `23E244`)
+- Commands run:
+  - `pwd`
+  - `git status --short`
+  - `sed -n '1,260p' AGENTS.md`
+  - `sed -n '1,260p' ARCHITECTURE.md`
+  - `sed -n '1,240p' PLANS.md`
+  - `sed -n '261,520p' ARCHITECTURE.md`
+  - `sed -n '1,260p' CODE_REVIEW.md`
+  - `sed -n '1,180p' RELEASE_QA.md`
+  - `sed -n '261,520p' CODE_REVIEW.md`
+  - `sed -n '181,380p' RELEASE_QA.md`
+  - `git diff --`
+  - `rg -n "MarkdownExternalLinkURL|openURL|link|URL\\(|NSAttributedString\\.Key\\.link|tap|Markdown.*Link|relative" Downward/Features/Editor Downward/App Downward/Domain Tests -g '*.swift'`
+  - `rg -n "open.*Document|openDocument|openRecent|trusted|relativePath|WorkspaceRelativePath|open.*route|Document" Downward/App Downward/Features Downward/Domain Tests -g '*.swift'`
+  - `rg -n "MarkdownExternalLinkURL|notes\\.md|javascript|file:|relative|destination" Tests -g '*.swift'`
+  - `sed -n '1,260p' Downward/Features/Editor/MarkdownFormattingPlan.swift`
+  - `sed -n '1,260p' Downward/Features/Editor/MarkdownSyntaxStyleApplicator.swift`
+  - `rg -n "markdownLinkDestination|handle.*link|openURL|UITextItemInteraction|interaction|shouldInteract|linkDestination|MarkdownExternalLinkURL|linkTap|attribute\\(.markdownLinkDestination" Downward/Features/Editor -g '*.swift'`
+  - `sed -n '260,540p' Downward/Features/Editor/MarkdownSyntaxStyleApplicator.swift`
+  - `sed -n '430,540p' Downward/Features/Editor/MarkdownFormattingPlan.swift`
+  - `sed -n '980,1145p' Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
+  - `sed -n '480,530p' Downward/Features/Editor/MarkdownStyledTextRenderer.swift`
+  - `sed -n '1,120p' Downward/Features/Editor/MarkdownEditorTextView.swift`
+  - `sed -n '1,120p' Downward/Features/Editor/EditorScreen.swift`
+  - `sed -n '1,120p' Downward/Features/Editor/EditorViewModel.swift`
+  - `rg -n "openExternalURL|pendingLinkDestination|openURL|Environment\\(\\\\.openURL\\)|MarkdownEditorTextView\\(" Downward/Features/Editor Downward/App Tests -g '*.swift'`
+  - `sed -n '36,86p' Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift && sed -n '1320,1348p' Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
+  - `rg -n "func loadDocument|func presentEditor|openDocument\\(|editorLoadError|editorAlertError|pendingEditorPresentation|presentedEditorRelativePath" Downward/App Downward/Features/Editor Downward/Features/Workspace Tests -g '*.swift'`
+  - `sed -n '280,460p' Downward/App/AppCoordinator.swift`
+  - `sed -n '680,800p' Tests/MarkdownWorkspaceAppTrustedOpenAndRecentTests.swift`
+  - `sed -n '210,285p' Downward/App/AppCoordinator.swift`
+  - `sed -n '520,570p' Downward/App/AppCoordinator.swift`
+  - `sed -n '250,345p' Downward/Features/Workspace/WorkspaceViewModel.swift`
+  - `sed -n '240,320p' Downward/Features/Editor/EditorViewModel.swift`
+  - `sed -n '1,120p' Downward/Domain/Workspace/SupportedFileType.swift`
+  - `sed -n '1,220p' Downward/Domain/Workspace/WorkspaceSnapshot.swift`
+  - `sed -n '1,90p' Downward/Domain/Errors/UserFacingError.swift && sed -n '1,120p' Downward/Domain/Errors/AppError.swift && sed -n '1,80p' Downward/App/AppSession.swift`
+  - `rg -n "MarkdownLink|resolvedMarkdownLinkDestination|openMarkdownLink|openExternalURL|link" Tests -g '*.swift'`
+  - `sed -n '100,175p' Tests/MarkdownStyledTextRendererTests.swift`
+  - `sed -n '100,165p' Tests/MarkdownSyntaxStyleApplicatorTests.swift`
+  - `sed -n '2120,2225p' Tests/EditorUndoRedoTests.swift`
+  - `sed -n '240,365p' Tests/EditorUndoRedoTests.swift && sed -n '1960,2010p' Tests/EditorUndoRedoTests.swift`
+  - `rg -n "MARKDOWN|MarkdownExternalLinkURL|markdownLinkDestination|pendingLinkDestination|openExternalURL|applyLink|styleLinks|SettingsReleaseConfiguration" Downward Tests -g '*.swift'`
+  - `git diff -- Downward/Features/Editor/MarkdownLocalLinkResolver.swift Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift Downward/Features/Editor/MarkdownStyledTextRenderer.swift Downward/Features/Editor/MarkdownSyntaxStyleApplicator.swift Downward/Features/Editor/MarkdownCodeBackgroundLayoutManager.swift Downward/Features/Editor/MarkdownEditorTextView.swift Downward/Features/Editor/EditorScreen.swift Downward/Features/Editor/EditorViewModel.swift`
+  - `sed -n '1,220p' Downward/Features/Editor/MarkdownLocalLinkResolver.swift`
+  - `sed -n '1,180p' Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
+  - `sed -n '1020,1145p' Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
+  - `rg -n "enum MarkdownLinkDestination|MarkdownLinkDestination" Downward Tests -g '*.swift'`
+  - `sed -n '120,190p' Tests/MarkdownStyledTextRendererTests.swift`
+  - `sed -n '1900,2025p' Tests/EditorUndoRedoTests.swift`
+  - `rg -n "MarkdownLocalLinkResolver|openLocalMarkdownLink|relative Markdown|relative link|local link" Tests Downward -g '*.swift'`
+  - `sed -n '260,370p' Tests/EditorUndoRedoTests.swift`
+  - `sed -n '1330,1365p' Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift`
+  - `sed -n '1,160p' Downward/Domain/Workspace/WorkspaceSnapshot.swift`
+  - `sed -n '1,110p' Tests/MarkdownWorkspaceAppTrustedOpenAndRecentTests.swift`
+  - `rg -n "nestedWorkspace|cleanDocument|WorkspaceNode|PreviewSampleData" Tests Downward -g '*.swift'`
+  - `sed -n '1,220p' Downward/PreviewSampleData.swift`
+  - `rg -n "struct PreviewSampleData|enum PreviewSampleData|PreviewSampleData" Downward Tests -g '*.swift'`
+  - `rg --files | rg 'PreviewSampleData|SampleData'`
+  - `rg -n "enum PreviewSampleData|struct PreviewSampleData" Downward Tests -g '*.swift'`
+  - `sed -n '1,120p' Downward/Domain/Workspace/WorkspaceNode.swift`
+  - `sed -n '1,180p' Downward/Shared/PreviewSupport/PreviewSampleData.swift`
+  - `rg -n "EditorViewModel\\(|makeEditor|editorViewModel|presentEditor\\(|pendingEditorPresentation|editorAlertError" Tests -g '*.swift'`
+  - `sed -n '1,120p' Tests/EditorUndoRedoTests.swift`
+  - `sed -n '1,120p' Downward/App/AppSession.swift`
+  - `sed -n '190,250p' Downward/App/AppCoordinator.swift`
+  - `sed -n '50,86p' Downward/Features/Editor/EditorViewModel.swift && sed -n '1,36p' Downward/App/AppRoute.swift`
+  - `rg -n "enum AppRoute" Downward -g '*.swift'`
+  - `sed -n '1,50p' Downward/Shared/Models/AppRoute.swift`
+  - `sed -n '2200,2255p' Tests/EditorUndoRedoTests.swift`
+  - `rg -n "relative Markdown|relative links|Markdown link|link resolver|P0|P0-10|unchecked|\\[ \\]|\\[x\\]" CODE_REVIEW.md PLANS.md`
+  - `sed -n '80,140p' CODE_REVIEW.md`
+  - `sed -n '56,104p' PLANS.md`
+  - `git diff -- Downward/Features/Editor Tests CODE_REVIEW.md PLANS.md RELEASE_QA.md`
+  - `xcodebuild -list -project Downward.xcodeproj`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-RelativeLinks-0428A -resultBundlePath /tmp/Downward-RelativeLinks-0428A.xcresult -only-testing:DownwardTests/MarkdownLocalLinkResolverTests -only-testing:DownwardTests/MarkdownStyledTextRendererTests -only-testing:DownwardTests/EditorUndoRedoTests`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-RelativeLinks-0428B -resultBundlePath /tmp/Downward-RelativeLinks-0428B.xcresult -only-testing:DownwardTests/MarkdownLocalLinkResolverTests -only-testing:DownwardTests/MarkdownStyledTextRendererTests -only-testing:DownwardTests/EditorUndoRedoTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-RelativeLinks-0428B.xcresult --format json`
+  - `git diff --check`
+  - `git status --short`
+  - `sed -n '236,252p' CODE_REVIEW.md && sed -n '146,154p' PLANS.md && sed -n '1,80p' RELEASE_QA.md`
+  - `git diff -- Downward/Features/Editor/MarkdownLocalLinkResolver.swift Downward/Features/Editor/EditorViewModel.swift Downward/Features/Editor/MarkdownEditorTextViewCoordinator.swift Tests/MarkdownLocalLinkResolverTests.swift Tests/EditorUndoRedoTests.swift CODE_REVIEW.md PLANS.md RELEASE_QA.md`
+  - `git diff --check`
+  - `git status --short`
+- Result:
+  - `xcodebuild -list` completed and confirmed the `Downward` scheme. It emitted CoreSimulator/provisioning-profile diagnostic warnings while listing the project.
+  - First focused relative-link test command failed at compile because the new `MarkdownLocalLinkResolverTests` referenced main-actor-isolated preview fixtures from nonisolated test methods.
+  - The test isolation issue was fixed by making `MarkdownLocalLinkResolverTests` main-actor isolated.
+  - Final focused relative-link/editor/renderer test run passed on iPhone 17 Pro simulator: 109 passed, 0 skipped, 0 failed.
+  - `git diff --check` passed.
+- Relative Markdown link decision:
+  - Downward 1.0 supports safe relative Markdown links to supported workspace-local text files.
+  - External links continue through `MarkdownExternalLinkURL` and the existing scheme allow-list.
+  - Anchor-only links are treated as no-op instead of crashing.
+  - Missing supported workspace links surface an editor alert instead of failing silently.
+  - Absolute paths, workspace-root escapes, `file:` links, web links in the local resolver, query strings, backslashes, and unsupported file types are rejected by the local resolver.
+- Notes/failures:
+  - No real-device Files-provider, iCloud Drive, keyboard interaction, large-document manual scroll, archive, TestFlight, or App Store validation was performed in this pass.
+  - The command `sed -n '50,86p' Downward/Features/Editor/EditorViewModel.swift && sed -n '1,36p' Downward/App/AppRoute.swift` partially failed because `Downward/App/AppRoute.swift` does not exist; `AppRoute` was subsequently found in `Downward/Shared/Models/AppRoute.swift`.
+
+- Date: 2026-04-28
+- Branch/commit at start of run: `main` / working tree after `7c48cee`
+- Xcode: Xcode 26.4 (17E192)
+- Host environment: macOS 26.4.1 reported by XCTest result bundle
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`, OS build `23E244`)
+  - Generic iOS device destination for Release build
+- Commands run:
+  - `xcodebuild -version`
+  - `xcodebuild -list -project Downward.xcodeproj`
+  - `rg -n "print\\(" Downward -g '*.swift'`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ReleaseSettings-0428A -resultBundlePath /tmp/Downward-ReleaseSettings-0428A.xcresult -only-testing:DownwardTests/SettingsScreenModelTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-ReleaseSettings-0428A.xcresult --format json`
+  - `xcodebuild build -project Downward.xcodeproj -scheme Downward -configuration Release -destination 'generic/platform=iOS' -derivedDataPath /tmp/DownwardDerivedData-ReleaseGeneric-0428A`
+  - `git diff --check`
+- Result:
+  - `xcodebuild -list` completed and confirmed the `Downward` scheme. It emitted sandbox/CoreSimulator/provisioning-profile diagnostic warnings while listing the project.
+  - Static `print(` search found only `Downward/Infrastructure/Logging/DebugLogger.swift`, where the call is guarded by `#if DEBUG`.
+  - Focused Settings release-surface tests passed on iPhone 17 Pro simulator: 13 passed, 0 skipped, 0 failed.
+  - Generic iOS Release build passed after aligning deployment targets to iOS `26.0`.
+  - `git diff --check` passed.
+- Project configuration recorded from `Downward.xcodeproj/project.pbxproj`:
+  - Minimum deployment target: iOS `26.0` for project, app target, and test target.
+  - Swift language version: `6.0`.
+  - Bundle identifier: `com.secondvictor.Downward`; test bundle identifier: `com.secondvictor.DownwardTests`.
+  - Marketing version/build: `1.0` / `1`.
+  - Signing team: `7DHWCFL5P9`; generic Release build used automatic Apple Development signing with profile `iOS Team Provisioning Profile: com.secondvictor.Downward`.
+  - Supported devices: iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`).
+  - Orientations: iPhone portrait only; iPad landscape left/right, portrait, and portrait upside down.
+- Release Settings decision:
+  - Tips do not ship in 1.0. `SettingsReleaseConfiguration.current` disables tips, and the Settings home Tips entry plus hidden destination are not shown while StoreKit products are unavailable.
+  - “Rate the App” does not ship until an App Store review URL is configured.
+  - Privacy Policy and Terms rows are hidden until final URLs are configured.
+- Release logging decision:
+  - `DebugLogger` is intentionally no-op outside `DEBUG`; Release builds do not print Downward diagnostics.
+- Notes/failures:
+  - No archive, Xcode Organizer validation, TestFlight install, real-device QA, Files-provider QA, or manual release-build Settings walkthrough was performed in this pass.
+  - App Store metadata privacy/legal links and final App Store review notes still need manual release validation.
+
+- Date: 2026-04-28
 - Branch/commit at start of run: `main` / working tree after `3434f2c`
 - Xcode: Xcode 26.4 (17E192)
 - Host environment: macOS 26.4.1 reported by XCTest result bundle
@@ -505,10 +650,11 @@ Expected result when disabled: app appearance controls chrome as before.
 
 - [ ] Settings sheet hierarchy inspected on compact width.
 - [ ] Settings sheet hierarchy inspected on regular width.
+- [ ] Release build Settings walkthrough confirms Tips entry, Rate the App row, Privacy Policy row, and Terms & Conditions row are hidden while their backing configuration is absent.
 - [ ] Built-in theme switching observed.
 - [ ] Custom theme create/edit/delete observed.
 - [ ] Low-contrast theme warning observed.
-- [ ] Placeholder-backed StoreKit, review, and legal actions remain visibly non-final.
+- [x] Automated Settings model tests confirm StoreKit tips, review, and legal actions are hidden by the current release configuration.
 
 ## Theme Import/Export
 
@@ -538,8 +684,8 @@ Expected result when disabled: app appearance controls chrome as before.
 
 ## Known Limitations and Deferred Future Features
 
-- [ ] StoreKit tips are still placeholder-backed.
-- [ ] App Store review/rating routing is still placeholder-backed.
-- [ ] Legal/privacy URLs are still placeholder-backed.
+- [x] StoreKit tips are disabled and hidden for 1.0 until real products and purchase handling are implemented.
+- [x] App Store review/rating routing is disabled and hidden for 1.0 until a final App Store review URL is configured.
+- [x] Legal/privacy rows are disabled and hidden for 1.0 until final URLs are configured.
 - [ ] Richer markdown constructs such as tables and footnotes remain future work.
 - [ ] Deeper theme marketplace/sharing behavior remains future work.

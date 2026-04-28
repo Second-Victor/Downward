@@ -140,6 +140,41 @@ final class SettingsScreenModelTests: XCTestCase {
         XCTAssertFalse(store.effectiveShowLineNumbers)
     }
 
+    @MainActor
+    func testReleaseConfigurationHidesUnfinishedSettingsSurfaces() {
+        let configuration = SettingsReleaseConfiguration.current
+
+        XCTAssertFalse(configuration.showsTipsPage)
+        XCTAssertFalse(configuration.showsRateTheApp)
+        XCTAssertFalse(configuration.showsLegalLinks)
+        XCTAssertFalse(SettingsPlaceholderFeature.tipsPurchases.isVisible(in: configuration))
+        XCTAssertFalse(SettingsPlaceholderFeature.rateTheApp.isVisible(in: configuration))
+        XCTAssertFalse(SettingsPlaceholderFeature.legalLinks.isVisible(in: configuration))
+        XCTAssertTrue(SettingsPlaceholderFeature.lineNumbers.isVisible(in: configuration))
+        XCTAssertTrue(SettingsPlaceholderFeature.largerHeadingText.isVisible(in: configuration))
+        XCTAssertTrue(SettingsPlaceholderFeature.tapToToggleTasks.isVisible(in: configuration))
+    }
+
+    @MainActor
+    func testConfiguredReleaseSurfacesCanBeReenabled() throws {
+        let appStoreReviewURL = try XCTUnwrap(URL(string: "https://apps.apple.com/app/id1234567890?action=write-review"))
+        let privacyPolicyURL = try XCTUnwrap(URL(string: "https://example.com/privacy"))
+        let termsAndConditionsURL = try XCTUnwrap(URL(string: "https://example.com/terms"))
+        let configuration = SettingsReleaseConfiguration(
+            tipsPurchasesEnabled: true,
+            appStoreReviewURL: appStoreReviewURL,
+            privacyPolicyURL: privacyPolicyURL,
+            termsAndConditionsURL: termsAndConditionsURL
+        )
+
+        XCTAssertTrue(configuration.showsTipsPage)
+        XCTAssertTrue(configuration.showsRateTheApp)
+        XCTAssertTrue(configuration.showsLegalLinks)
+        XCTAssertTrue(SettingsPlaceholderFeature.tipsPurchases.isVisible(in: configuration))
+        XCTAssertTrue(SettingsPlaceholderFeature.rateTheApp.isVisible(in: configuration))
+        XCTAssertTrue(SettingsPlaceholderFeature.legalLinks.isVisible(in: configuration))
+    }
+
     func testPlaceholderSettingsAreNotMarkedImplemented() {
         let placeholders: [SettingsPlaceholderFeature] = [
             .tipsPurchases,

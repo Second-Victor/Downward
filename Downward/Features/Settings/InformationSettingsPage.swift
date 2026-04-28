@@ -3,16 +3,24 @@ import SwiftUI
 struct InformationSettingsPage: View {
     let push: (SettingsPage) -> Void
     let backAction: () -> Void
+    var releaseConfiguration: SettingsReleaseConfiguration = .current
+
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         Form {
-            Section {
-                Label("Rate the App", systemImage: "star.fill")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHint("App Store review routing is not implemented yet.")
-            } footer: {
-                Text("If Downward is working well for you, leaving a rating helps.")
-                    .settingsFooterStyle()
+            if let appStoreReviewURL = releaseConfiguration.appStoreReviewURL {
+                Section {
+                    Button {
+                        openURL(appStoreReviewURL)
+                    } label: {
+                        Label("Rate the App", systemImage: "star.fill")
+                    }
+                    .buttonStyle(.plain)
+                } footer: {
+                    Text("If Downward is working well for you, leaving a rating helps.")
+                        .settingsFooterStyle()
+                }
             }
 
             Section {
@@ -23,7 +31,7 @@ struct InformationSettingsPage: View {
                 }
                 .buttonStyle(.plain)
             } footer: {
-                Text("Version details, privacy policy, and terms are available in About.")
+                Text("Version details are available in About.")
                     .settingsFooterStyle()
             }
         }
@@ -33,6 +41,9 @@ struct InformationSettingsPage: View {
 
 struct AboutSettingsPage: View {
     let backAction: () -> Void
+    var releaseConfiguration: SettingsReleaseConfiguration = .current
+
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         Form {
@@ -55,14 +66,26 @@ struct AboutSettingsPage: View {
                 .padding(.vertical, 24)
             }
 
-            Section {
-                Label("Privacy Policy", systemImage: "hand.raised.fill")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHint("Privacy Policy URL is not configured yet.")
+            if releaseConfiguration.showsLegalLinks {
+                Section {
+                    if let privacyPolicyURL = releaseConfiguration.privacyPolicyURL {
+                        Button {
+                            openURL(privacyPolicyURL)
+                        } label: {
+                            Label("Privacy Policy", systemImage: "hand.raised.fill")
+                        }
+                        .buttonStyle(.plain)
+                    }
 
-                Label("Terms & Conditions", systemImage: "doc.text.fill")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHint("Terms and Conditions URL is not configured yet.")
+                    if let termsAndConditionsURL = releaseConfiguration.termsAndConditionsURL {
+                        Button {
+                            openURL(termsAndConditionsURL)
+                        } label: {
+                            Label("Terms & Conditions", systemImage: "doc.text.fill")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
         }
         .navigationTitle("About")

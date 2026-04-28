@@ -21,6 +21,8 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     let onEditorFocusChange: @MainActor (Bool) -> Void
     let onUndoRedoAvailabilityChange: @MainActor (Bool, Bool) -> Void
     let onSavedDateHeaderPullDistanceChange: @MainActor (CGFloat) -> Void
+    let onOpenExternalURL: @MainActor (URL) -> Void
+    let onOpenLocalMarkdownLink: @MainActor (String) -> Void
 
     init(
         text: Binding<String>,
@@ -40,7 +42,11 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         dismissKeyboardCommandToken: Int,
         onEditorFocusChange: @escaping @MainActor (Bool) -> Void,
         onUndoRedoAvailabilityChange: @escaping @MainActor (Bool, Bool) -> Void,
-        onSavedDateHeaderPullDistanceChange: @escaping @MainActor (CGFloat) -> Void = { _ in }
+        onSavedDateHeaderPullDistanceChange: @escaping @MainActor (CGFloat) -> Void = { _ in },
+        onOpenExternalURL: @escaping @MainActor (URL) -> Void = { url in
+            UIApplication.shared.open(url)
+        },
+        onOpenLocalMarkdownLink: @escaping @MainActor (String) -> Void = { _ in }
     ) {
         _text = text
         self.documentIdentity = documentIdentity
@@ -60,6 +66,8 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         self.onEditorFocusChange = onEditorFocusChange
         self.onUndoRedoAvailabilityChange = onUndoRedoAvailabilityChange
         self.onSavedDateHeaderPullDistanceChange = onSavedDateHeaderPullDistanceChange
+        self.onOpenExternalURL = onOpenExternalURL
+        self.onOpenLocalMarkdownLink = onOpenLocalMarkdownLink
     }
 
     func makeCoordinator() -> Coordinator {
@@ -67,7 +75,9 @@ struct MarkdownEditorTextView: UIViewRepresentable {
             text: $text,
             onEditorFocusChange: onEditorFocusChange,
             onUndoRedoAvailabilityChange: onUndoRedoAvailabilityChange,
-            onSavedDateHeaderPullDistanceChange: onSavedDateHeaderPullDistanceChange
+            onSavedDateHeaderPullDistanceChange: onSavedDateHeaderPullDistanceChange,
+            openExternalURL: onOpenExternalURL,
+            openLocalMarkdownLink: onOpenLocalMarkdownLink
         )
     }
 

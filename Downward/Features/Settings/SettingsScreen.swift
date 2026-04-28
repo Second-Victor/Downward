@@ -36,6 +36,19 @@ enum SettingsPlaceholderFeature: Equatable {
             false
         }
     }
+
+    func isVisible(in configuration: SettingsReleaseConfiguration = .current) -> Bool {
+        switch self {
+        case .lineNumbers, .largerHeadingText, .tapToToggleTasks:
+            true
+        case .tipsPurchases:
+            configuration.showsTipsPage
+        case .rateTheApp:
+            configuration.showsRateTheApp
+        case .legalLinks:
+            configuration.showsLegalLinks
+        }
+    }
 }
 
 struct SettingsScreen: View {
@@ -45,6 +58,7 @@ struct SettingsScreen: View {
     let themeStore: ThemeStore
     let reconnectWorkspaceAction: () -> Void
     let clearWorkspaceAction: () -> Void
+    var releaseConfiguration: SettingsReleaseConfiguration = .current
     var dismissAction: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
@@ -60,7 +74,8 @@ struct SettingsScreen: View {
                 appColorScheme: appColorSchemeBinding,
                 accessState: accessState,
                 doneAction: done,
-                workspaceAction: { isShowingWorkspaceActions = true }
+                workspaceAction: { isShowingWorkspaceActions = true },
+                releaseConfiguration: releaseConfiguration
             )
             .navigationDestination(for: SettingsPage.self) { page in
                 destination(for: page)
@@ -141,16 +156,24 @@ struct SettingsScreen: View {
             )
             .roundedNavigationBarTitles()
         case .tips:
-            TipsSettingsPage(backAction: pop)
-                .roundedNavigationBarTitles()
+            if releaseConfiguration.showsTipsPage {
+                TipsSettingsPage(backAction: pop)
+                    .roundedNavigationBarTitles()
+            } else {
+                EmptyView()
+            }
         case .information:
             InformationSettingsPage(
                 push: push,
-                backAction: pop
+                backAction: pop,
+                releaseConfiguration: releaseConfiguration
             )
             .roundedNavigationBarTitles()
         case .about:
-            AboutSettingsPage(backAction: pop)
+            AboutSettingsPage(
+                backAction: pop,
+                releaseConfiguration: releaseConfiguration
+            )
                 .roundedNavigationBarTitles()
         }
     }

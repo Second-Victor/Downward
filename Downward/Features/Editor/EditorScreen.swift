@@ -2,6 +2,7 @@ import SwiftUI
 
 struct EditorScreen: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openURL) private var openURL
     @State private var savedDateHeaderPullDistance: CGFloat = 0
 
     let viewModel: EditorViewModel
@@ -93,7 +94,11 @@ struct EditorScreen: View {
                     onUndoRedoAvailabilityChange: viewModel.updateUndoRedoAvailability(canUndo:canRedo:),
                     onSavedDateHeaderPullDistanceChange: { pullDistance in
                         savedDateHeaderPullDistance = pullDistance
-                    }
+                    },
+                    onOpenExternalURL: { url in
+                        openURL(url)
+                    },
+                    onOpenLocalMarkdownLink: viewModel.openLocalMarkdownLink(destination:)
                 )
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)

@@ -6,6 +6,7 @@ struct SettingsHomePage: View {
     let accessState: WorkspaceAccessState
     let doneAction: () -> Void
     let workspaceAction: () -> Void
+    var releaseConfiguration: SettingsReleaseConfiguration = .current
 
     var body: some View {
         List {
@@ -68,13 +69,15 @@ struct SettingsHomePage: View {
             }
 
             Section {
-                NavigationLink(value: SettingsPage.tips) {
-                    SettingsHomeRow(
-                        systemName: "banknote.fill",
-                        colors: [.green],
-                        title: "Tips",
-                        detail: nil
-                    )
+                if releaseConfiguration.showsTipsPage {
+                    NavigationLink(value: SettingsPage.tips) {
+                        SettingsHomeRow(
+                            systemName: "banknote.fill",
+                            colors: [.green],
+                            title: "Tips",
+                            detail: nil
+                        )
+                    }
                 }
 
                 NavigationLink(value: SettingsPage.information) {

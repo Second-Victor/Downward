@@ -520,6 +520,7 @@ struct MarkdownStyledTextRenderer {
             ]
             styleApplicator.applyLink(
                 titleRange: titleRange,
+                rawDestination: rawDestination,
                 destinationURL: destinationURL,
                 hiddenRanges: hiddenRanges,
                 in: attributed

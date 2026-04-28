@@ -295,6 +295,7 @@ struct MarkdownSyntaxStyleApplicator {
 
     func applyLink(
         titleRange: NSRange,
+        rawDestination: String? = nil,
         destinationURL: URL?,
         hiddenRanges: [NSRange],
         in attributed: NSMutableAttributedString
@@ -305,6 +306,9 @@ struct MarkdownSyntaxStyleApplicator {
         ]
         if let destinationURL {
             attributes[.markdownLinkDestination] = destinationURL
+        }
+        if let rawDestination, rawDestination.isEmpty == false {
+            attributes[.markdownLinkRawDestination] = rawDestination
         }
         attributed.addAttributes(attributes, range: titleRange)
         applySyntaxMarkerRanges(hiddenRanges, in: attributed)
