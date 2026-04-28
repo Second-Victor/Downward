@@ -26,6 +26,7 @@ extension MarkdownEditorTextView {
         @Binding private var text: String
         private let onEditorFocusChange: @MainActor (Bool) -> Void
         private let onUndoRedoAvailabilityChange: @MainActor (Bool, Bool) -> Void
+        private let onSavedDateHeaderPullDistanceChange: @MainActor (CGFloat) -> Void
         private let renderer = MarkdownStyledTextRenderer()
         private let keyboardGeometryController = EditorKeyboardGeometryController()
         private var configuration: Configuration?
@@ -46,6 +47,7 @@ extension MarkdownEditorTextView {
         private var pendingTaskToggleRange: NSRange?
         private weak var linkTapGesture: UITapGestureRecognizer?
         private var pendingLinkDestination: URL?
+        private var savedDateHeaderPullDistance: CGFloat = 0
         private let openExternalURL: @MainActor (URL) -> Void
         private let taskToggleFeedback = UIImpactFeedbackGenerator(style: .light)
 
@@ -65,6 +67,7 @@ extension MarkdownEditorTextView {
             text: Binding<String>,
             onEditorFocusChange: @escaping @MainActor (Bool) -> Void,
             onUndoRedoAvailabilityChange: @escaping @MainActor (Bool, Bool) -> Void,
+            onSavedDateHeaderPullDistanceChange: @escaping @MainActor (CGFloat) -> Void = { _ in },
             openExternalURL: @escaping @MainActor (URL) -> Void = { url in
                 UIApplication.shared.open(url)
             }
@@ -72,6 +75,7 @@ extension MarkdownEditorTextView {
             _text = text
             self.onEditorFocusChange = onEditorFocusChange
             self.onUndoRedoAvailabilityChange = onUndoRedoAvailabilityChange
+            self.onSavedDateHeaderPullDistanceChange = onSavedDateHeaderPullDistanceChange
             self.openExternalURL = openExternalURL
         }
 
@@ -141,6 +145,7 @@ extension MarkdownEditorTextView {
                 lastHandledUndoCommandToken = undoCommandToken
                 lastHandledRedoCommandToken = redoCommandToken
                 lastHandledDismissKeyboardCommandToken = dismissKeyboardCommandToken
+                updateSavedDateHeaderPullDistance(0)
             }
 
             if
@@ -216,6 +221,7 @@ extension MarkdownEditorTextView {
             if wasAtDocumentStart {
                 normalizeViewportToDocumentStart(in: textView)
             }
+            updateSavedDateHeaderPullDistance(for: textView)
         }
 
         private func applyResolvedTheme(_ resolvedTheme: ResolvedEditorTheme, to textView: UITextView) {
@@ -406,6 +412,7 @@ extension MarkdownEditorTextView {
             }
 
             textView.setNeedsLineNumberDisplay()
+            updateSavedDateHeaderPullDistance(for: textView)
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
@@ -1797,11 +1804,25 @@ extension MarkdownEditorTextView {
         func normalizeViewportToDocumentStart(in textView: UITextView) {
             textView.layoutIfNeeded()
             textView.setContentOffset(.zero, animated: false)
+            updateSavedDateHeaderPullDistance(0)
         }
 
         func isNearDocumentStart(in textView: UITextView, tolerance: CGFloat = 1) -> Bool {
             textView.contentOffset.y <= tolerance
                 && textView.contentOffset.x <= tolerance
+        }
+
+        private func updateSavedDateHeaderPullDistance(for scrollView: UIScrollView) {
+            updateSavedDateHeaderPullDistance(max(0, -scrollView.contentOffset.y))
+        }
+
+        private func updateSavedDateHeaderPullDistance(_ pullDistance: CGFloat) {
+            guard abs(savedDateHeaderPullDistance - pullDistance) > 0.5 else {
+                return
+            }
+
+            savedDateHeaderPullDistance = pullDistance
+            onSavedDateHeaderPullDistanceChange(pullDistance)
         }
 
         private func scheduleViewportResetToDocumentStart(

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct EditorScreen: View {
     @Environment(\.colorScheme) private var colorScheme
+    @State private var savedDateHeaderPullDistance: CGFloat = 0
 
     let viewModel: EditorViewModel
     let documentURL: URL
@@ -20,18 +21,19 @@ struct EditorScreen: View {
 
     var body: some View {
         GeometryReader { proxy in
-            ZStack {
+            ZStack(alignment: .top) {
                 Color(uiColor: resolvedTheme.editorBackground)
                     .ignoresSafeArea(.all)
 
                 editorContent(topViewportInset: proxy.safeAreaInsets.top)
+                savedDateHeader(topViewportInset: proxy.safeAreaInsets.top)
             }
                 .background(Color(uiColor: resolvedTheme.editorBackground).ignoresSafeArea(.all))
-                .navigationTitle(viewModel.title)
+                .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
-                .editorNavigationSubtitle(viewModel.documentLocationText)
                 .editorSystemChrome(colorScheme: editorChromeColorScheme)
                 .task(id: documentURL) {
+                    savedDateHeaderPullDistance = 0
                     viewModel.handleAppear(for: documentURL)
                 }
                 .onDisappear {
@@ -88,7 +90,10 @@ struct EditorScreen: View {
                     redoCommandToken: viewModel.redoCommandToken,
                     dismissKeyboardCommandToken: viewModel.dismissKeyboardCommandToken,
                     onEditorFocusChange: viewModel.handleEditorFocusChange(_:),
-                    onUndoRedoAvailabilityChange: viewModel.updateUndoRedoAvailability(canUndo:canRedo:)
+                    onUndoRedoAvailabilityChange: viewModel.updateUndoRedoAvailability(canUndo:canRedo:),
+                    onSavedDateHeaderPullDistanceChange: { pullDistance in
+                        savedDateHeaderPullDistance = pullDistance
+                    }
                 )
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .disabled(viewModel.isResolvingConflict || viewModel.isShowingConflictResolution)
@@ -137,6 +142,29 @@ struct EditorScreen: View {
         )
     }
 
+    @ViewBuilder
+    private func savedDateHeader(topViewportInset: CGFloat) -> some View {
+        if savedDateHeaderPullDistance > 0, viewModel.savedDateHeaderText.isEmpty == false {
+            Text(viewModel.savedDateHeaderText)
+                .font(.system(size: 13, weight: .regular, design: .rounded))
+                .foregroundStyle(Color(uiColor: resolvedTheme.secondaryText))
+                .opacity(savedDateHeaderOpacity)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .offset(y: savedDateHeaderTopPadding(topViewportInset: topViewportInset))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func savedDateHeaderTopPadding(topViewportInset: CGFloat) -> CGFloat {
+        min(savedDateHeaderPullDistance * 0.18, 18)
+    }
+
+    private var savedDateHeaderOpacity: Double {
+        let progress = min(max((savedDateHeaderPullDistance - 8) / 38, 0), 1)
+        return progress * 0.55
+    }
+
     private var placeholderLeadingInset: CGFloat {
         guard viewModel.effectiveShowLineNumbers else {
             return EditorTextViewLayout.horizontalInset
@@ -150,15 +178,6 @@ struct EditorScreen: View {
 }
 
 private extension View {
-    @ViewBuilder
-    func editorNavigationSubtitle(_ subtitle: String?) -> some View {
-        if let subtitle {
-            navigationSubtitle(subtitle)
-        } else {
-            self
-        }
-    }
-
     @ViewBuilder
     func editorSystemChrome(colorScheme: ColorScheme?) -> some View {
         if let colorScheme {

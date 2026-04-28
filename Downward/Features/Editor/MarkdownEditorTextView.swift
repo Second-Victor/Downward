@@ -20,6 +20,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     let dismissKeyboardCommandToken: Int
     let onEditorFocusChange: @MainActor (Bool) -> Void
     let onUndoRedoAvailabilityChange: @MainActor (Bool, Bool) -> Void
+    let onSavedDateHeaderPullDistanceChange: @MainActor (CGFloat) -> Void
 
     init(
         text: Binding<String>,
@@ -38,7 +39,8 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         redoCommandToken: Int,
         dismissKeyboardCommandToken: Int,
         onEditorFocusChange: @escaping @MainActor (Bool) -> Void,
-        onUndoRedoAvailabilityChange: @escaping @MainActor (Bool, Bool) -> Void
+        onUndoRedoAvailabilityChange: @escaping @MainActor (Bool, Bool) -> Void,
+        onSavedDateHeaderPullDistanceChange: @escaping @MainActor (CGFloat) -> Void = { _ in }
     ) {
         _text = text
         self.documentIdentity = documentIdentity
@@ -57,13 +59,15 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         self.dismissKeyboardCommandToken = dismissKeyboardCommandToken
         self.onEditorFocusChange = onEditorFocusChange
         self.onUndoRedoAvailabilityChange = onUndoRedoAvailabilityChange
+        self.onSavedDateHeaderPullDistanceChange = onSavedDateHeaderPullDistanceChange
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             text: $text,
             onEditorFocusChange: onEditorFocusChange,
-            onUndoRedoAvailabilityChange: onUndoRedoAvailabilityChange
+            onUndoRedoAvailabilityChange: onUndoRedoAvailabilityChange,
+            onSavedDateHeaderPullDistanceChange: onSavedDateHeaderPullDistanceChange
         )
     }
 

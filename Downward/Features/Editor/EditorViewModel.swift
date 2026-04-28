@@ -95,6 +95,14 @@ final class EditorViewModel {
         currentRouteDocument?.displayName ?? activeEditorURL?.lastPathComponent ?? "Editor"
     }
 
+    var savedDateHeaderText: String {
+        guard let lastSavedDate else {
+            return ""
+        }
+
+        return Self.formattedSavedDate(lastSavedDate)
+    }
+
     var documentLocationText: String? {
         guard let currentRouteDocument else {
             return nil
@@ -123,6 +131,18 @@ final class EditorViewModel {
 
     var saveStateText: String {
         saveFailure?.title ?? "Save Failed"
+    }
+
+    private var lastSavedDate: Date? {
+        guard let currentRouteDocument else {
+            return nil
+        }
+
+        if case let .saved(date) = currentRouteDocument.saveState {
+            return date
+        }
+
+        return currentRouteDocument.loadedVersion.contentModificationDate
     }
 
     var isDirty: Bool {
@@ -961,5 +981,13 @@ final class EditorViewModel {
         }
 
         return documentObservationIdentity(for: document) == identity
+    }
+
+    private static func formattedSavedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.doesRelativeDateFormatting = true
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 }

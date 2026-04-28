@@ -706,6 +706,36 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testSavedDateHeaderPublishesPullDistanceOnlyWhenDocumentIsPulledDown() {
+        let textBox = MutableBox("Draft")
+        var pullDistanceEvents: [CGFloat] = []
+        let coordinator = MarkdownEditorTextView.Coordinator(
+            text: Binding(
+                get: { textBox.value },
+                set: { textBox.value = $0 }
+            ),
+            onEditorFocusChange: { _ in },
+            onUndoRedoAvailabilityChange: { _, _ in },
+            onSavedDateHeaderPullDistanceChange: { pullDistanceEvents.append($0) }
+        )
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+
+        textView.contentOffset = CGPoint(x: 0, y: 48)
+        coordinator.scrollViewDidScroll(textView)
+        textView.contentOffset = CGPoint(x: 0, y: -20)
+        coordinator.scrollViewDidScroll(textView)
+        textView.contentOffset = CGPoint(x: 0, y: -8)
+        coordinator.scrollViewDidScroll(textView)
+        textView.contentOffset = CGPoint(x: 0, y: 0)
+        coordinator.scrollViewDidScroll(textView)
+
+        XCTAssertEqual(pullDistanceEvents.count, 3)
+        XCTAssertEqual(pullDistanceEvents[0], 20, accuracy: 0.5)
+        XCTAssertEqual(pullDistanceEvents[1], 8, accuracy: 0.5)
+        XCTAssertEqual(pullDistanceEvents[2], 0, accuracy: 0.5)
+    }
+
+    @MainActor
     func testAccessoryLayoutDoesNotRewriteBottomKeyboardInsets() {
         let textBox = MutableBox("Draft")
         let coordinator = makeCoordinator(text: textBox)

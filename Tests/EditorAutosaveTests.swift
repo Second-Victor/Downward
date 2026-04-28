@@ -581,6 +581,38 @@ final class EditorAutosaveTests: XCTestCase {
     }
 
     @MainActor
+    func testSavedDateHeaderUsesSavedDateWithoutFilename() async throws {
+        let document = PreviewSampleData.cleanDocument
+        let system = makeEditorSystem(
+            documentManager: RecordingDocumentManager(saveDelay: .milliseconds(10)),
+            initialDocument: document
+        )
+
+        let headerText = system.viewModel.savedDateHeaderText
+
+        XCTAssertFalse(headerText.contains("Saved"))
+        XCTAssertFalse(headerText.contains(document.displayName))
+        XCTAssertFalse(headerText.isEmpty)
+    }
+
+    @MainActor
+    func testSavedDateHeaderFallsBackToLoadedVersionWhileDirty() async throws {
+        var document = PreviewSampleData.cleanDocument
+        document.saveState = .unsaved
+        document.isDirty = true
+        let system = makeEditorSystem(
+            documentManager: RecordingDocumentManager(saveDelay: .milliseconds(10)),
+            initialDocument: document
+        )
+
+        let headerText = system.viewModel.savedDateHeaderText
+
+        XCTAssertFalse(headerText.contains("Saved"))
+        XCTAssertFalse(headerText.contains(document.displayName))
+        XCTAssertFalse(headerText.isEmpty)
+    }
+
+    @MainActor
     func testDisappearFlushesPendingDirtyDocumentImmediately() async throws {
         let documentManager = RecordingDocumentManager(saveDelay: .milliseconds(10))
         let system = makeEditorSystem(
