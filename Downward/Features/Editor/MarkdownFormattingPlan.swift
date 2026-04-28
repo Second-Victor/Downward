@@ -34,6 +34,88 @@ nonisolated struct MarkdownInlineFormatPlan: Equatable {
     }
 }
 
+nonisolated struct MarkdownCodeBlockPlan: Equatable {
+    private static let fence = "```"
+
+    let replacement: String
+    let selectedRangeInReplacement: NSRange
+
+    static func make(selectedText: String) -> MarkdownCodeBlockPlan {
+        if let unwrapped = unwrappedCodeBlockContent(from: selectedText) {
+            return MarkdownCodeBlockPlan(
+                replacement: unwrapped,
+                selectedRangeInReplacement: NSRange(location: 0, length: (unwrapped as NSString).length)
+            )
+        }
+
+        let lineEnding = firstLineEnding(in: selectedText) ?? "\n"
+
+        if selectedText.isEmpty {
+            let replacement = "\(fence)\(lineEnding)\(lineEnding)\(fence)\(lineEnding)"
+            return MarkdownCodeBlockPlan(
+                replacement: replacement,
+                selectedRangeInReplacement: NSRange(
+                    location: (fence + lineEnding).utf16.count,
+                    length: 0
+                )
+            )
+        }
+
+        let closeSeparator = selectedText.hasSuffix(lineEnding) ? "" : lineEnding
+        let replacement = "\(fence)\(lineEnding)\(selectedText)\(closeSeparator)\(fence)"
+        return MarkdownCodeBlockPlan(
+            replacement: replacement,
+            selectedRangeInReplacement: NSRange(
+                location: (fence + lineEnding).utf16.count,
+                length: (selectedText as NSString).length
+            )
+        )
+    }
+
+    private static func unwrappedCodeBlockContent(from selectedText: String) -> String? {
+        for lineEnding in ["\r\n", "\n", "\r"] {
+            let opening = fence + lineEnding
+            let closing = lineEnding + fence
+            guard selectedText.hasPrefix(opening),
+                  selectedText.hasSuffix(closing),
+                  (selectedText as NSString).length >= (opening + closing).utf16.count
+            else {
+                continue
+            }
+
+            let nsText = selectedText as NSString
+            return nsText.substring(
+                with: NSRange(
+                    location: opening.utf16.count,
+                    length: nsText.length - opening.utf16.count - closing.utf16.count
+                )
+            )
+        }
+
+        return nil
+    }
+
+    private static func firstLineEnding(in text: String) -> String? {
+        let nsText = text as NSString
+        var index = 0
+        while index < nsText.length {
+            let character = nsText.character(at: index)
+            if character == 0x0D {
+                let next = index + 1
+                if next < nsText.length, nsText.character(at: next) == 0x0A {
+                    return "\r\n"
+                }
+                return "\r"
+            }
+            if character == 0x0A {
+                return "\n"
+            }
+            index += 1
+        }
+        return nil
+    }
+}
+
 nonisolated struct MarkdownLinePrefixPlan: Equatable {
     let replacement: String
     let selectedRangeInReplacement: NSRange?

@@ -1065,6 +1065,20 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorFormatMenuOffersCodeLineAndCodeBlock() throws {
+        let textBox = MutableBox("Draft")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+
+        coordinator.configureKeyboardAccessory(for: textView, resolvedTheme: .default)
+
+        let menu = try XCTUnwrap(textView.formatAccessoryItem?.menu)
+        let codeMenu = try XCTUnwrap(menu.children.compactMap { $0 as? UIMenu }.first { $0.title == "Code" })
+
+        XCTAssertEqual(codeMenu.children.map(\.title), ["Code Block", "Code Line"])
+    }
+
+    @MainActor
     func testCoordinatorAccessoryBoldWrapsSelectedText() {
         let textBox = MutableBox("Hello world")
         let coordinator = makeCoordinator(text: textBox)
@@ -1125,6 +1139,48 @@ final class EditorUndoRedoTests: XCTestCase {
 
         XCTAssertEqual(textBox.value, "Hello **")
         XCTAssertEqual(textView.selectedRange, NSRange(location: 7, length: 0))
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryCodeBlockWrapsSelectedText() {
+        let textBox = MutableBox("let value = 1")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.selectedRange = NSRange(location: 0, length: (textBox.value as NSString).length)
+        coordinator.applyCodeBlockMarkdownFormatForTesting(in: textView)
+
+        XCTAssertEqual(textBox.value, "```\nlet value = 1\n```")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 4, length: 13))
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryCodeBlockWithEmptySelectionPlacesCursorInsideBlock() {
+        let textBox = MutableBox("Before\nAfter")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.selectedRange = NSRange(location: 7, length: 0)
+        coordinator.applyCodeBlockMarkdownFormatForTesting(in: textView)
+
+        XCTAssertEqual(textBox.value, "Before\n```\n\n```\nAfter")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 11, length: 0))
     }
 
     @MainActor
@@ -1225,6 +1281,25 @@ final class EditorUndoRedoTests: XCTestCase {
             undoSelection: NSRange(location: 6, length: 0),
             redoText: "Hello [text](https://)",
             redoSelection: NSRange(location: 7, length: 4)
+        )
+    }
+
+    @MainActor
+    func testCoordinatorAccessoryCodeBlockParticipatesInUndoRedo() {
+        let (textBox, coordinator, textView) = makeFormatterUndoSystem(text: "let value = 1")
+
+        textView.selectedRange = NSRange(location: 0, length: (textBox.value as NSString).length)
+        coordinator.applyCodeBlockMarkdownFormatForTesting(in: textView)
+
+        XCTAssertEqual(textBox.value, "```\nlet value = 1\n```")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 4, length: 13))
+        assertFormatterUndoRedo(
+            textBox: textBox,
+            textView: textView,
+            undoText: "let value = 1",
+            undoSelection: NSRange(location: 0, length: 13),
+            redoText: "```\nlet value = 1\n```",
+            redoSelection: NSRange(location: 4, length: 13)
         )
     }
 

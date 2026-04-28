@@ -20,6 +20,34 @@ final class MarkdownFormattingPlanTests: XCTestCase {
         }
     }
 
+    func testCodeBlockPlanWrapsSelectedTextInFences() {
+        let plan = MarkdownCodeBlockPlan.make(selectedText: "let value = 1")
+
+        XCTAssertEqual(plan.replacement, "```\nlet value = 1\n```")
+        XCTAssertEqual(plan.selectedRangeInReplacement, NSRange(location: 4, length: 13))
+    }
+
+    func testCodeBlockPlanPlacesCursorInsideEmptyBlock() {
+        let plan = MarkdownCodeBlockPlan.make(selectedText: "")
+
+        XCTAssertEqual(plan.replacement, "```\n\n```\n")
+        XCTAssertEqual(plan.selectedRangeInReplacement, NSRange(location: 4, length: 0))
+    }
+
+    func testCodeBlockPlanPreservesSelectedLineEndings() {
+        let plan = MarkdownCodeBlockPlan.make(selectedText: "one\r\ntwo")
+
+        XCTAssertEqual(plan.replacement, "```\r\none\r\ntwo\r\n```")
+        XCTAssertEqual(plan.selectedRangeInReplacement, NSRange(location: 5, length: 8))
+    }
+
+    func testCodeBlockPlanTogglesExistingFencedSelectionOff() {
+        let plan = MarkdownCodeBlockPlan.make(selectedText: "```\nlet value = 1\n```")
+
+        XCTAssertEqual(plan.replacement, "let value = 1")
+        XCTAssertEqual(plan.selectedRangeInReplacement, NSRange(location: 0, length: 13))
+    }
+
     func testHeadingPlanSetsHeadingLevelWithoutStackingMarkers() {
         XCTAssertEqual(MarkdownHeadingPlan.make(level: 2, selectedText: "Title").replacement, "## Title")
         XCTAssertEqual(MarkdownHeadingPlan.make(level: 3, selectedText: "# Title").replacement, "### Title")

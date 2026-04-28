@@ -1229,6 +1229,10 @@ extension MarkdownEditorTextView {
             applyInlineMarkdownFormat(marker: marker, in: textView)
         }
 
+        func applyCodeBlockMarkdownFormatForTesting(in textView: UITextView) {
+            applyCodeBlockMarkdownFormat(in: textView)
+        }
+
         func applyLineMarkdownPrefixForTesting(_ prefix: String, in textView: UITextView) {
             applyLineMarkdownPrefix(prefix, in: textView)
         }
@@ -1284,9 +1288,18 @@ extension MarkdownEditorTextView {
                 UIAction(title: "Link", image: UIImage(systemName: "link")) { [weak self] _ in
                     self?.insertMarkdownLink()
                 },
-                UIAction(title: "Code", image: UIImage(systemName: "chevron.left.forwardslash.chevron.right")) { [weak self] _ in
-                    self?.applyInlineMarkdownFormat(marker: "`")
-                },
+                UIMenu(
+                    title: "Code",
+                    image: UIImage(systemName: "chevron.left.forwardslash.chevron.right"),
+                    children: [
+                        UIAction(title: "Code Block", image: UIImage(systemName: "curlybraces")) { [weak self] _ in
+                            self?.applyCodeBlockMarkdownFormat()
+                        },
+                        UIAction(title: "Code Line", image: UIImage(systemName: "chevron.left.forwardslash.chevron.right")) { [weak self] _ in
+                            self?.applyInlineMarkdownFormat(marker: "`")
+                        },
+                    ]
+                ),
                 UIAction(title: "Task", image: UIImage(systemName: "checklist")) { [weak self] _ in
                     self?.applyLineMarkdownPrefix("- [ ] ")
                 },
@@ -1412,6 +1425,37 @@ extension MarkdownEditorTextView {
 
             let selectedText = currentText.substring(with: selectedRange)
             let plan = MarkdownInlineFormatPlan.make(marker: marker, selectedText: selectedText)
+            applyProgrammaticTextReplacement(
+                plan.replacement,
+                in: selectedRange,
+                selectionAfter: NSRange(
+                    location: selectedRange.location + plan.selectedRangeInReplacement.location,
+                    length: plan.selectedRangeInReplacement.length
+                ),
+                textView: textView,
+                actionName: "Markdown Format"
+            )
+        }
+
+        private func applyCodeBlockMarkdownFormat() {
+            guard let textView = activeTextView else {
+                return
+            }
+
+            applyCodeBlockMarkdownFormat(in: textView)
+        }
+
+        private func applyCodeBlockMarkdownFormat(in textView: UITextView) {
+            guard
+                textView.isEditable,
+                let currentText = textView.text as NSString?
+            else {
+                return
+            }
+
+            let selectedRange = safeRange(textView.selectedRange, forTextLength: currentText.length)
+            let selectedText = currentText.substring(with: selectedRange)
+            let plan = MarkdownCodeBlockPlan.make(selectedText: selectedText)
             applyProgrammaticTextReplacement(
                 plan.replacement,
                 in: selectedRange,
