@@ -158,6 +158,28 @@ Task-list continuation and tap-to-toggle task checkbox edits bypass UIKit's defa
 
 ---
 
+## P1 — Match editor status-bar chrome to editor theme
+
+### Finding
+
+The editor paints its theme background behind the status bar, but the status-bar and navigation chrome can still follow the global app appearance. Dark-on-dark or light-on-light chrome becomes hard to read when the selected editor theme does not match the app/phone appearance.
+
+### Checklist
+
+- [x] Derive the preferred editor chrome scheme from the resolved editor background luminance.
+- [x] Resolve adaptive/system theme colors against the current app scheme so they continue to behave naturally.
+- [x] Apply the editor chrome scheme only when `matchSystemChromeToTheme` is enabled.
+- [x] Preserve the app-wide appearance setting when `matchSystemChromeToTheme` is disabled.
+- [x] Add tests for the chrome scheme decision and view-model setting pass-through.
+- [x] Add manual QA cases to `RELEASE_QA.md`.
+
+### Done when
+
+- [x] Simulator tests cover the luminance decision and setting pass-through.
+- [ ] Real-device status-bar/navigation readability is verified with dark and light editor themes.
+
+---
+
 ## P1 — Extract markdown formatting plans
 
 ### Finding

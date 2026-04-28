@@ -23,8 +23,8 @@ final class KeyboardAccessoryToolbarView: UIView {
         self.resolvedTheme = resolvedTheme
         self.showsDismissButton = showsDismissButton
         formatButton = UIBarButtonItem(
-            title: "Aa",
-            image: nil,
+            title: nil,
+            image: UIImage(systemName: "textformat"),
             primaryAction: nil,
             menu: formatMenu
         )

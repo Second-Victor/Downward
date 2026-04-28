@@ -687,6 +687,9 @@ final class EditorUndoRedoTests: XCTestCase {
 
         XCTAssertEqual(items.count, 6)
         XCTAssertTrue(items.first === accessoryView.formatButton)
+        XCTAssertNil(accessoryView.formatButton.title)
+        XCTAssertNotNil(accessoryView.formatButton.image)
+        XCTAssertEqual(accessoryView.formatButton.accessibilityLabel, "Format")
         XCTAssertTrue(items[2] === accessoryView.undoButton)
         XCTAssertTrue(items[3] === accessoryView.redoButton)
         XCTAssertEqual(items[4].width, 8)

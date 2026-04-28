@@ -193,6 +193,10 @@ final class EditorViewModel {
         editorAppearanceStore.tapToToggleTasks
     }
 
+    var matchSystemChromeToTheme: Bool {
+        editorAppearanceStore.matchSystemChromeToTheme
+    }
+
     var resolvedEditorTheme: ResolvedEditorTheme {
         editorAppearanceStore.resolvedTheme(using: themeStore)
     }

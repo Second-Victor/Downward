@@ -446,6 +446,29 @@ final class EditorAppearanceStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testEditorViewModelReflectsMatchSystemChromeToThemePreference() {
+        let enabledContainer = AppContainer.preview(
+            launchState: .noWorkspaceSelected,
+            editorAppearancePreferences: EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 16,
+                matchSystemChromeToTheme: true
+            )
+        )
+        let disabledContainer = AppContainer.preview(
+            launchState: .noWorkspaceSelected,
+            editorAppearancePreferences: EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 16,
+                matchSystemChromeToTheme: false
+            )
+        )
+
+        XCTAssertTrue(enabledContainer.editorViewModel.matchSystemChromeToTheme)
+        XCTAssertFalse(disabledContainer.editorViewModel.matchSystemChromeToTheme)
+    }
+
+    @MainActor
     private func makeIsolatedUserDefaults(suiteName: String) throws -> UserDefaults {
         guard let userDefaults = UserDefaults(suiteName: suiteName) else {
             throw XCTSkip("Unable to create isolated UserDefaults suite.")

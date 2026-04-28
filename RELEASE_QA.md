@@ -13,6 +13,53 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 - Simulator/device:
   - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`, OS build `23E244`)
 - Commands run:
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-EditorChrome -resultBundlePath /tmp/Downward-EditorChrome.xcresult -only-testing:DownwardTests/EditorAppearanceStoreTests -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests -only-testing:DownwardTests/ResolvedEditorThemeChromeTests`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-EditorChrome2 -resultBundlePath /tmp/Downward-EditorChrome2.xcresult -only-testing:DownwardTests/EditorAppearanceStoreTests -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests -only-testing:DownwardTests/ResolvedEditorThemeChromeTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-EditorChrome2.xcresult --format json`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-EditorChromeFull -resultBundlePath /tmp/Downward-EditorChromeFull.xcresult -parallel-testing-enabled NO`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-EditorChromeFull.xcresult --format json`
+  - `git diff --check`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-EditorChromeNoBar -resultBundlePath /tmp/Downward-EditorChromeNoBar.xcresult -only-testing:DownwardTests/EditorAppearanceStoreTests -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests -only-testing:DownwardTests/ResolvedEditorThemeChromeTests`
+  - `xcrun xcresulttool get test-results summary --path /tmp/Downward-EditorChromeNoBar.xcresult --format json`
+- Result:
+  - Initial focused editor chrome run failed at compile because the new `ResolvedEditorThemeChromeTests` methods were nonisolated while theme helpers are main-actor isolated under the project Swift 6 settings.
+  - Final focused editor chrome/settings/theme run passed: 63 passed, 0 skipped, 0 failed.
+  - Full serial simulator suite passed: 503 total, 501 passed, 2 skipped, 0 failed. Four tests collected performance metrics.
+  - `git diff --check` passed.
+  - Follow-up focused no-bar run passed after removing the forced visible navigation toolbar background: 63 passed, 0 skipped, 0 failed.
+  - The 2 skipped tests are the existing platform-gated case-only rename checks.
+- Notes/failures:
+  - The compile-only focused failure was fixed by marking the new chrome decision tests main-actor.
+  - A visual regression was reported after the first implementation because `.toolbarBackground(.visible, for: .navigationBar)` introduced a top bar and stopped the editor from flowing underneath the controls. The implementation now avoids forcing a visible toolbar background and only requests the editor chrome color scheme.
+  - `xcodebuild test` emitted recurring simulator/TextKit/AppIntents diagnostic noise, but final focused and full serial runs completed successfully.
+  - No manual real-device, Files-provider, keyboard-interaction, or visual editor chrome QA was performed in this pass.
+
+## Manual QA checklist — editor status-bar chrome
+
+Expected result when “Match Menus to Theme” is enabled: time/battery/Wi-Fi indicators remain readable, navigation title/buttons remain readable, editor background still reaches behind the status bar, and there is no flash of wrong status-bar colour after theme changes.
+
+Expected result when disabled: app appearance controls chrome as before.
+
+- [ ] App Appearance = System, phone light mode, editor dark custom theme.
+- [ ] App Appearance = Light, editor dark custom theme.
+- [ ] App Appearance = Dark, editor light custom theme.
+- [ ] App Appearance = System, phone dark mode, editor light custom theme.
+- [ ] Toggle “Match Menus to Theme” on and off.
+- [ ] Switch between adaptive theme, dark custom theme, and light custom theme.
+- [ ] Test compact iPhone navigation.
+- [ ] Test iPad split-view detail editor.
+- [ ] Test after pushing editor from file list.
+- [ ] Test after returning from Settings.
+
+## Previous QA runs
+
+- Date: 2026-04-28
+- Branch/commit at start of run: `main` / working tree after `3434f2c`
+- Xcode: Xcode 26.4 (17E192)
+- Host environment: macOS 26.4.1 reported by XCTest result bundle
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`, OS build `23E244`)
+- Commands run:
   - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ProgrammaticEditorUndo -resultBundlePath /tmp/Downward-ProgrammaticEditorUndo.xcresult -only-testing:DownwardTests/EditorUndoRedoTests -only-testing:DownwardTests/TaskListContinuationPlanTests -only-testing:DownwardTests/MarkdownFormattingPlanTests -only-testing:DownwardTests/LineNumberGutterViewTests`
   - `xcrun xcresulttool get test-results summary --path /tmp/Downward-ProgrammaticEditorUndo.xcresult --format json`
   - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ProgrammaticEditorUndo2 -resultBundlePath /tmp/Downward-ProgrammaticEditorUndo2.xcresult -only-testing:DownwardTests/EditorUndoRedoTests -only-testing:DownwardTests/TaskListContinuationPlanTests -only-testing:DownwardTests/MarkdownFormattingPlanTests -only-testing:DownwardTests/LineNumberGutterViewTests`
@@ -28,8 +75,6 @@ This file is the release/runtime QA checklist for Downward. It records command-l
   - The cursor failure was fixed by having the formatting plan map a cursor at the heading body start to the new heading marker boundary.
   - `xcodebuild test` emitted recurring simulator/TextKit/AppIntents diagnostic noise, but final focused and full serial runs completed successfully.
   - No manual real-device, Files-provider, keyboard-interaction, line-number, hidden-syntax, or visual editor QA was performed in this pass.
-
-## Previous QA runs
 
 - Date: 2026-04-28
 - Branch/commit at start of run: `main` / working tree after `3434f2c`

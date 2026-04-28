@@ -1,11 +1,21 @@
 import SwiftUI
 
 struct EditorScreen: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let viewModel: EditorViewModel
     let documentURL: URL
 
     private var resolvedTheme: ResolvedEditorTheme {
         viewModel.resolvedEditorTheme
+    }
+
+    private var editorChromeColorScheme: ColorScheme? {
+        guard viewModel.matchSystemChromeToTheme else {
+            return nil
+        }
+
+        return resolvedTheme.preferredChromeColorScheme(resolvingAgainst: colorScheme)
     }
 
     var body: some View {
@@ -20,6 +30,7 @@ struct EditorScreen: View {
                 .navigationTitle(viewModel.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .editorNavigationSubtitle(viewModel.documentLocationText)
+                .editorSystemChrome(colorScheme: editorChromeColorScheme)
                 .task(id: documentURL) {
                     viewModel.handleAppear(for: documentURL)
                 }
@@ -142,6 +153,17 @@ private extension View {
     func editorNavigationSubtitle(_ subtitle: String?) -> some View {
         if let subtitle {
             navigationSubtitle(subtitle)
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    func editorSystemChrome(colorScheme: ColorScheme?) -> some View {
+        if let colorScheme {
+            self
+                .preferredColorScheme(colorScheme)
+                .toolbarColorScheme(colorScheme, for: .navigationBar)
         } else {
             self
         }

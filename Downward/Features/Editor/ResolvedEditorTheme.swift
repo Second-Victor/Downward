@@ -1,9 +1,12 @@
+import SwiftUI
 import UIKit
 
 /// Resolved runtime theme roles for the shipping editor stack.
 /// Future custom themes and JSON import/export should map into this type so the renderer,
 /// TextKit drawing, editor surface, and keyboard accessory all consume the same palette.
 struct ResolvedEditorTheme: Equatable {
+    private static let chromeLuminanceThreshold = 0.5
+
     let editorBackground: UIColor
     /// Reserved theme color for keyboard-adjacent surfaces. The shipping accessory host stays
     /// clear/non-opaque so UIKit's own keyboard material shows through without repainting
@@ -113,5 +116,28 @@ struct ResolvedEditorTheme: Equatable {
             checkboxUnchecked: checkboxUnchecked,
             checkboxChecked: checkboxChecked
         )
+    }
+
+    /// SwiftUI uses `.dark` color scheme to request light status-bar/navigation foregrounds.
+    /// Resolve adaptive colors against the current app scheme before measuring luminance so
+    /// system themes keep following the phone/app appearance naturally.
+    func preferredChromeColorScheme(resolvingAgainst colorScheme: ColorScheme) -> ColorScheme {
+        let traits = UITraitCollection(userInterfaceStyle: colorScheme.userInterfaceStyle)
+        let resolvedBackground = editorBackground.resolvedColor(with: traits)
+
+        return resolvedBackground.wcagRelativeLuminance < Self.chromeLuminanceThreshold ? .dark : .light
+    }
+}
+
+private extension ColorScheme {
+    var userInterfaceStyle: UIUserInterfaceStyle {
+        switch self {
+        case .dark:
+            .dark
+        case .light:
+            .light
+        @unknown default:
+            .unspecified
+        }
     }
 }
