@@ -72,8 +72,12 @@ struct ThemeEditorSettingsPage: View {
             Section("Colours") {
                 if hasLowContrast {
                     Label {
-                        Text("Text and background contrast is \(textBackgroundContrastRatio, specifier: "%.1f"):1 - WCAG AA requires 4.5:1. Save and Export Draft remain available, but the editor may be difficult to read.")
-                            .font(.footnote)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(ThemeContrastWarning.title)
+                                .font(.footnote.weight(.semibold))
+                            Text(ThemeContrastWarning.message)
+                                .font(.footnote)
+                        }
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.yellow)
@@ -176,7 +180,7 @@ struct ThemeEditorSettingsPage: View {
     }
 
     private var hasLowContrast: Bool {
-        textBackgroundContrastRatio < 4.5
+        textBackgroundContrastRatio < ThemeContrastWarning.minimumReadableRatio
     }
 
     private var previewResolvedTheme: ResolvedEditorTheme {
@@ -282,6 +286,12 @@ struct ThemeEditorSettingsPage: View {
         let nsError = error as NSError
         return nsError.domain == NSCocoaErrorDomain && nsError.code == CocoaError.userCancelled.rawValue
     }
+}
+
+enum ThemeContrastWarning {
+    static let minimumReadableRatio = 4.5
+    static let title = "This may be hard to read"
+    static let message = "The text and background colours are very similar. Try making one lighter or darker. You can still save this theme."
 }
 
 enum ThemeEditorDraftExport {

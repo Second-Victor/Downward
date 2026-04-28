@@ -58,6 +58,17 @@ final class ThemeEditorSettingsPageTests: XCTestCase {
         XCTAssertNil(basename.rangeOfCharacter(from: illegalCharacters))
     }
 
+    @MainActor
+    func testContrastWarningUsesPlainLanguage() {
+        let combinedCopy = "\(ThemeContrastWarning.title) \(ThemeContrastWarning.message)"
+
+        XCTAssertEqual(ThemeContrastWarning.minimumReadableRatio, 4.5)
+        XCTAssertFalse(combinedCopy.localizedCaseInsensitiveContains("WCAG"))
+        XCTAssertFalse(combinedCopy.localizedCaseInsensitiveContains("AA"))
+        XCTAssertFalse(combinedCopy.contains(":1"))
+        XCTAssertTrue(combinedCopy.localizedCaseInsensitiveContains("hard to read"))
+    }
+
     private static func makeTheme(id: UUID, name: String, text: String) -> CustomTheme {
         CustomTheme(
             id: id,
