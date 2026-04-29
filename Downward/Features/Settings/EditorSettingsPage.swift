@@ -109,6 +109,14 @@ struct EditorSettingsPage: View {
                 Text(largerHeadingHelperText)
                     .settingsFooterStyle()
             }
+
+            Section {
+                Toggle("Reopen Last Document", isOn: reopenLastDocumentBinding)
+                    .accessibilityHint("Opens the most recently edited document after restoring the workspace.")
+            } footer: {
+                Text("When disabled, Downward opens to the file browser after launch.")
+                    .settingsFooterStyle()
+            }
         }
         .navigationTitle("Editor")
         .onAppear {
@@ -148,6 +156,13 @@ struct EditorSettingsPage: View {
         Binding(
             get: { editorAppearanceStore.largerHeadingText },
             set: { editorAppearanceStore.setLargerHeadingText($0) }
+        )
+    }
+
+    private var reopenLastDocumentBinding: Binding<Bool> {
+        Binding(
+            get: { editorAppearanceStore.reopenLastDocumentOnLaunch },
+            set: { editorAppearanceStore.setReopenLastDocumentOnLaunch($0) }
         )
     }
 

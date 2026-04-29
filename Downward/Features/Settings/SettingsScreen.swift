@@ -77,6 +77,9 @@ struct SettingsScreen: View {
                 destination(for: page)
             }
         }
+        .onAppear {
+            editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+        }
     }
 
     @ViewBuilder
@@ -98,6 +101,14 @@ struct SettingsScreen: View {
                 backAction: pop
             )
             .roundedNavigationBarTitles()
+        case .extraThemes:
+            ExtraThemesSettingsPage(
+                editorAppearanceStore: editorAppearanceStore,
+                themeStore: themeStore,
+                push: push,
+                backAction: pop
+            )
+            .roundedNavigationBarTitles()
         case .workspace:
             WorkspaceSettingsPage(
                 workspaceName: workspaceName,
@@ -107,15 +118,23 @@ struct SettingsScreen: View {
             )
             .roundedNavigationBarTitles()
         case .newTheme:
-            ThemeEditorSettingsPage(
-                editorAppearanceStore: editorAppearanceStore,
-                themeStore: themeStore,
-                editing: nil,
-                backAction: pop
-            )
-            .roundedNavigationBarTitles()
+            if ThemeEntitlementGate.canCreateCustomTheme(hasUnlockedThemes: themeStore.hasUnlockedThemes) {
+                ThemeEditorSettingsPage(
+                    editorAppearanceStore: editorAppearanceStore,
+                    themeStore: themeStore,
+                    editing: nil,
+                    backAction: pop
+                )
+                .roundedNavigationBarTitles()
+            } else {
+                lockedThemesView
+                    .roundedNavigationBarTitles()
+            }
         case let .editTheme(id):
-            if let theme = themeStore.theme(withID: id) {
+            if ThemeEntitlementGate.canEditCustomThemes(hasUnlockedThemes: themeStore.hasUnlockedThemes) == false {
+                lockedThemesView
+                    .roundedNavigationBarTitles()
+            } else if let theme = themeStore.theme(withID: id) {
                 ThemeEditorSettingsPage(
                     editorAppearanceStore: editorAppearanceStore,
                     themeStore: themeStore,
@@ -191,12 +210,21 @@ struct SettingsScreen: View {
             dismiss()
         }
     }
+
+    private var lockedThemesView: some View {
+        ContentUnavailableView(
+            "Extra Themes Locked",
+            systemImage: "lock.fill",
+            description: Text("Built-in themes are free. Extra themes require the Themes unlock.")
+        )
+    }
 }
 
 enum SettingsPage: Hashable {
     case home
     case editor
     case theme
+    case extraThemes
     case workspace
     case newTheme
     case editTheme(UUID)
@@ -208,5 +236,8 @@ enum SettingsPage: Hashable {
 
 @MainActor
 func makePreviewThemeStore() -> ThemeStore {
-    ThemeStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-themes-\(UUID().uuidString).json"))
+    ThemeStore(
+        fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-themes-\(UUID().uuidString).json"),
+        entitlements: ThemeEntitlementStore(hasUnlockedThemes: true)
+    )
 }

@@ -127,19 +127,22 @@ Current project settings were aligned on 2026-04-28 so the project, app target, 
 The Settings UI gates unfinished placeholder-like surfaces through `SettingsReleaseConfiguration.current`:
 
 - `TipsSettingsPage` remains in source for later StoreKit work, but the Settings home entry and destination are hidden for 1.0 while purchases are disabled.
-- `InformationSettingsPage` shows “Rate the App” because it is wired to StoreKit's in-app review request, with an App Store review URL still supported as an override.
-- `AboutSettingsPage` shows the configured public project page, Privacy Policy, and Terms & Conditions links.
-- `SettingsPlaceholderFeature` still marks `.tipsPurchases` as not implemented; review and legal links are now implemented release surfaces.
+- `InformationSettingsPage` hides “Rate the App” until a direct App Store review URL is configured; the Settings button no longer calls StoreKit `requestReview()` directly.
+- `AboutSettingsPage` shows the branded app icon, app name, version/build, developer name, short description, Website, Privacy Policy, and Terms & Conditions links.
+- `SettingsPlaceholderFeature` still marks `.tipsPurchases` as not implemented; legal links are implemented release surfaces, and rating is release-visible only after the final App Store review URL is known.
+- Custom theme creation, import, edit, export, and selection now flow through a lightweight themes entitlement abstraction. Built-in themes remain free, and locked custom theme selections fall back to Adaptive.
 
 For a release build, visible non-functional monetisation/legal rows can confuse users and may create review friction.
 
 - [x] Either hide the Tips page for 1.0 or implement real StoreKit products and receipt-safe purchase handling.
 - [x] Either hide “Rate the App” or wire it to a working App Store review flow.
+  - Hidden for 1.0 until the final App Store app ID is known and `https://apps.apple.com/app/idAPP_ID?action=write-review` is configured.
 - [x] Either hide Privacy Policy / Terms rows or configure final URLs.
+- [x] Add a privacy manifest declaring UserDefaults and file timestamp accessed API reasons.
 - [ ] Confirm App Store metadata includes any required privacy/legal links.
 - [ ] Add a release QA case that visits Settings > Tips and Settings > Information/About in the release build.
 - [x] Update tests so placeholder expectations match the intended release behaviour.
-  - Automated Settings tests were updated on 2026-04-29 after final About/legal URLs were configured; the actual release-build Settings walkthrough still needs to be performed.
+  - Automated Settings/theme tests were updated on 2026-04-29 after final About/legal URLs, rating visibility, and custom-theme entitlement gates were configured; the actual release-build Settings walkthrough still needs to be performed.
 
 ## 4. Perform real-device Files provider QA
 
@@ -420,7 +423,7 @@ The coordinator is doing a lot of orchestration. Keep it stable for release; spl
 
 Current status: visually useful, but release gating needed.
 
-Settings hides unfinished purchase surfaces for the 1.0 release, while review and legal/About rows now have release backing via StoreKit `requestReview()` and configured URLs.
+Settings hides unfinished purchase surfaces for the 1.0 release. Rating is hidden until the final App Store review URL is configured, About uses the branded icon asset with configured legal links, and custom themes are gated behind the lightweight themes entitlement abstraction.
 
 ## `Downward/Infrastructure/Logging/DebugLogger.swift`
 

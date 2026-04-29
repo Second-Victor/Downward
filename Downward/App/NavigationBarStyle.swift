@@ -97,6 +97,10 @@ private final class NavigationBarStylingViewController: UIViewController {
         super.viewDidLoad()
         view.isHidden = true
         view.isUserInteractionEnabled = false
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+            (viewController: NavigationBarStylingViewController, _) in
+            viewController.reapplyNavigationBarStyle()
+        }
         reapplyNavigationBarStyle()
     }
 
@@ -112,11 +116,6 @@ private final class NavigationBarStylingViewController: UIViewController {
 
     override func didMove(toParent parent: UIViewController?) {
         super.didMove(toParent: parent)
-        reapplyNavigationBarStyle()
-    }
-
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
         reapplyNavigationBarStyle()
     }
 

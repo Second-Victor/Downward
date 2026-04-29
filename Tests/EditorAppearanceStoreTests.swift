@@ -30,6 +30,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
         store.setTapToToggleTasks(false)
         store.setSelectedThemeID(EditorTheme.greyAdaptive.id)
         store.setMatchSystemChromeToTheme(false)
+        store.setReopenLastDocumentOnLaunch(false)
 
         let reloadedStore = EditorAppearanceStore(
             userDefaults: userDefaults,
@@ -49,7 +50,8 @@ final class EditorAppearanceStoreTests: XCTestCase {
                 colorFormattedText: false,
                 tapToToggleTasks: false,
                 selectedThemeID: EditorTheme.greyAdaptive.id,
-                matchSystemChromeToTheme: false
+                matchSystemChromeToTheme: false,
+                reopenLastDocumentOnLaunch: false
             )
         )
     }
@@ -230,6 +232,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
         XCTAssertFalse(preferences.showLineNumbers)
         XCTAssertEqual(preferences.lineNumberOpacity, EditorAppearancePreferences.defaultLineNumberOpacity)
         XCTAssertTrue(preferences.tapToToggleTasks)
+        XCTAssertTrue(preferences.reopenLastDocumentOnLaunch)
     }
 
     @MainActor
@@ -312,7 +315,11 @@ final class EditorAppearanceStoreTests: XCTestCase {
             checkboxUnchecked: HexColor(hex: "#F44747"),
             checkboxChecked: HexColor(hex: "#6A9955")
         )
-        let themeStore = ThemeStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "editor-theme-\(UUID().uuidString).json"))
+        let themeStore = ThemeStore(
+            fileURL: FileManager.default.temporaryDirectory.appending(path: "editor-theme-\(UUID().uuidString).json"),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: true),
+            bundledPremiumThemes: []
+        )
         let didAddTheme = await themeStore.add(customTheme)
         XCTAssertTrue(didAddTheme)
 
@@ -326,6 +333,47 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         XCTAssertEqual(store.selectedThemeLabel(using: themeStore), "Custom")
         XCTAssertSameResolvedColor(store.resolvedTheme(using: themeStore).editorBackground, customTheme.background.uiColor)
+    }
+
+    @MainActor
+    func testEditorAppearanceStoreFallsBackFromLockedCustomThemeSelection() async {
+        let entitlements = ThemeEntitlementStore(hasUnlockedThemes: true)
+        let customTheme = CustomTheme(
+            id: UUID(),
+            name: "Locked Custom",
+            background: HexColor(hex: "#1E1E1E"),
+            text: HexColor(hex: "#D4D4D4"),
+            tint: HexColor(hex: "#569CD6"),
+            boldItalicMarker: HexColor(hex: "#72727F"),
+            strikethrough: HexColor(hex: "#808080"),
+            inlineCode: HexColor(hex: "#CE9178"),
+            codeBackground: HexColor(hex: "#2D2D2D"),
+            horizontalRule: HexColor(hex: "#404040"),
+            checkboxUnchecked: HexColor(hex: "#F44747"),
+            checkboxChecked: HexColor(hex: "#6A9955")
+        )
+        let themeStore = ThemeStore(
+            fileURL: FileManager.default.temporaryDirectory.appending(path: "locked-editor-theme-\(UUID().uuidString).json"),
+            entitlements: entitlements,
+            bundledPremiumThemes: []
+        )
+        let didAddTheme = await themeStore.add(customTheme)
+        XCTAssertTrue(didAddTheme)
+
+        let store = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 16,
+                selectedThemeID: customTheme.id.uuidString
+            )
+        )
+
+        entitlements.setHasUnlockedThemes(false)
+        store.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+        store.setSelectedThemeID(customTheme.id.uuidString, using: themeStore)
+
+        XCTAssertEqual(store.selectedThemeID, EditorTheme.adaptive.id)
+        XCTAssertEqual(store.selectedThemeLabel(using: themeStore), EditorTheme.adaptive.label)
     }
 
     @MainActor
@@ -344,7 +392,11 @@ final class EditorAppearanceStoreTests: XCTestCase {
             checkboxUnchecked: HexColor(hex: "#F44747"),
             checkboxChecked: HexColor(hex: "#6A9955")
         )
-        let themeStore = ThemeStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "editor-color-formatted-\(UUID().uuidString).json"))
+        let themeStore = ThemeStore(
+            fileURL: FileManager.default.temporaryDirectory.appending(path: "editor-color-formatted-\(UUID().uuidString).json"),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: true),
+            bundledPremiumThemes: []
+        )
         let didAddTheme = await themeStore.add(customTheme)
         XCTAssertTrue(didAddTheme)
 

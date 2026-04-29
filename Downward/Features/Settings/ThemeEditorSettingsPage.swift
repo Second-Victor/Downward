@@ -64,6 +64,16 @@ struct ThemeEditorSettingsPage: View {
     }
 
     var body: some View {
+        Group {
+            if themeStore.hasUnlockedThemes {
+                editorContent
+            } else {
+                lockedThemesView
+            }
+        }
+    }
+
+    private var editorContent: some View {
         List {
             Section("Name") {
                 TextField("Theme Name", text: $name)
@@ -180,6 +190,15 @@ struct ThemeEditorSettingsPage: View {
         }
     }
 
+    private var lockedThemesView: some View {
+        ContentUnavailableView(
+            "Extra Themes Locked",
+            systemImage: "lock.fill",
+            description: Text("Built-in themes are free. Extra themes require the Themes unlock.")
+        )
+        .navigationTitle(editing == nil ? "New Theme" : "Edit Theme")
+    }
+
     private var isSaveDisabled: Bool {
         isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -251,6 +270,11 @@ struct ThemeEditorSettingsPage: View {
     }
 
     private func saveTheme() async {
+        guard themeStore.hasUnlockedThemes else {
+            themeStore.lastError = ThemeEntitlementGate.lockedMessage
+            return
+        }
+
         guard isSaving == false else { return }
         isSaving = true
         defer { isSaving = false }
@@ -262,7 +286,7 @@ struct ThemeEditorSettingsPage: View {
             guard await themeStore.update(theme) else { return }
         } else {
             guard await themeStore.add(theme) else { return }
-            editorAppearanceStore.setSelectedThemeID(theme.id.uuidString)
+            editorAppearanceStore.setSelectedThemeID(theme.id.uuidString, using: themeStore)
         }
 
         backAction()
@@ -286,6 +310,11 @@ struct ThemeEditorSettingsPage: View {
     }
 
     private func exportTheme() {
+        guard ThemeEntitlementGate.canExportCustomThemes(hasUnlockedThemes: themeStore.hasUnlockedThemes) else {
+            themeStore.lastError = ThemeEntitlementGate.lockedMessage
+            return
+        }
+
         let theme = makeTheme(id: editing?.id ?? UUID())
         exportDocument = ThemeEditorDraftExport.document(for: theme)
         exportFilename = ThemeEditorDraftExport.filename(for: theme.name)

@@ -1173,6 +1173,10 @@ final class AppCoordinator {
         for snapshot: WorkspaceSnapshot,
         generation: Int
     ) async {
+        guard editorAppearanceStore.reopenLastDocumentOnLaunch else {
+            return
+        }
+
         guard generation == workspaceTransitionGeneration else {
             return
         }

@@ -21,13 +21,23 @@ final class ThemeEditorSettingsPageTests: XCTestCase {
     }
 
     @MainActor
+    func testDraftExportRequiresThemeUnlock() {
+        XCTAssertFalse(ThemeEntitlementGate.canExportCustomThemes(hasUnlockedThemes: false))
+        XCTAssertTrue(ThemeEntitlementGate.canExportCustomThemes(hasUnlockedThemes: true))
+    }
+
+    @MainActor
     func testDraftExportedJSONCanBeImportedAgain() async throws {
         let fileURL = FileManager.default.temporaryDirectory
             .appending(path: "draft-export-import-\(UUID().uuidString).json")
         let theme = Self.makeTheme(id: UUID(), name: "Portable Draft", text: "#FEFEFE")
         let document = ThemeEditorDraftExport.document(for: theme)
         let decoded = try ThemeExchangeDocument(data: document.exportedData())
-        let store = ThemeStore(fileURL: fileURL)
+        let store = ThemeStore(
+            fileURL: fileURL,
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: true),
+            bundledPremiumThemes: []
+        )
         await store.waitForInitialLoad()
 
         let didImport = await store.importThemes(decoded.themes)

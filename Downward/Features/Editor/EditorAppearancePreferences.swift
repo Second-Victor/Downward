@@ -14,6 +14,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
     var createMarkdownTitleFromFilename: Bool
     var selectedThemeID: String
     var matchSystemChromeToTheme: Bool
+    var reopenLastDocumentOnLaunch: Bool
 
     init(
         fontChoice: EditorFontChoice,
@@ -26,7 +27,8 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         tapToToggleTasks: Bool = true,
         createMarkdownTitleFromFilename: Bool = false,
         selectedThemeID: String = EditorTheme.adaptive.id,
-        matchSystemChromeToTheme: Bool = true
+        matchSystemChromeToTheme: Bool = true,
+        reopenLastDocumentOnLaunch: Bool = true
     ) {
         self.fontChoice = fontChoice
         self.fontSize = fontSize
@@ -39,6 +41,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         self.createMarkdownTitleFromFilename = createMarkdownTitleFromFilename
         self.selectedThemeID = selectedThemeID
         self.matchSystemChromeToTheme = matchSystemChromeToTheme
+        self.reopenLastDocumentOnLaunch = reopenLastDocumentOnLaunch
     }
 
     static let `default` = EditorAppearancePreferences(
@@ -59,6 +62,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         case createMarkdownTitleFromFilename
         case selectedThemeID
         case matchSystemChromeToTheme
+        case reopenLastDocumentOnLaunch
     }
 
     init(from decoder: any Decoder) throws {
@@ -101,6 +105,10 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
             Bool.self,
             forKey: .matchSystemChromeToTheme
         ) ?? true
+        reopenLastDocumentOnLaunch = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .reopenLastDocumentOnLaunch
+        ) ?? true
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -116,5 +124,6 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         try container.encode(createMarkdownTitleFromFilename, forKey: .createMarkdownTitleFromFilename)
         try container.encode(selectedThemeID, forKey: .selectedThemeID)
         try container.encode(matchSystemChromeToTheme, forKey: .matchSystemChromeToTheme)
+        try container.encode(reopenLastDocumentOnLaunch, forKey: .reopenLastDocumentOnLaunch)
     }
 }

@@ -104,6 +104,10 @@ final class EditorAppearanceStore {
         effectivePreferences.matchSystemChromeToTheme
     }
 
+    var reopenLastDocumentOnLaunch: Bool {
+        effectivePreferences.reopenLastDocumentOnLaunch
+    }
+
     var resolvedTheme: ResolvedEditorTheme {
         // Compatibility path for tests and callers that do not own a ThemeStore.
         // Runtime editor rendering should prefer resolvedTheme(using:).
@@ -220,6 +224,15 @@ final class EditorAppearanceStore {
         persist()
     }
 
+    func setSelectedThemeID(_ id: String, using themeStore: ThemeStore) {
+        guard themeStore.canSelectTheme(withID: id) else {
+            setSelectedThemeID(EditorTheme.adaptive.id)
+            return
+        }
+
+        setSelectedThemeID(id)
+    }
+
     func fallBackToAdaptiveThemeIfSelectedThemeWasDeleted(_ deletedThemeID: UUID, didDelete: Bool) {
         guard didDelete, selectedThemeID == deletedThemeID.uuidString else {
             return
@@ -228,12 +241,33 @@ final class EditorAppearanceStore {
         setSelectedThemeID(EditorTheme.adaptive.id)
     }
 
+    func fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using themeStore: ThemeStore) {
+        let entitledThemeID = ThemeEntitlementGate.entitledThemeID(
+            for: selectedThemeID,
+            hasUnlockedThemes: themeStore.hasUnlockedThemes
+        )
+        guard entitledThemeID != selectedThemeID else {
+            return
+        }
+
+        setSelectedThemeID(entitledThemeID)
+    }
+
     func setMatchSystemChromeToTheme(_ isEnabled: Bool) {
         guard preferences.matchSystemChromeToTheme != isEnabled else {
             return
         }
 
         preferences.matchSystemChromeToTheme = isEnabled
+        persist()
+    }
+
+    func setReopenLastDocumentOnLaunch(_ isEnabled: Bool) {
+        guard preferences.reopenLastDocumentOnLaunch != isEnabled else {
+            return
+        }
+
+        preferences.reopenLastDocumentOnLaunch = isEnabled
         persist()
     }
 
@@ -278,7 +312,8 @@ final class EditorAppearanceStore {
             tapToToggleTasks: preferences.tapToToggleTasks,
             createMarkdownTitleFromFilename: preferences.createMarkdownTitleFromFilename,
             selectedThemeID: preferences.selectedThemeID,
-            matchSystemChromeToTheme: preferences.matchSystemChromeToTheme
+            matchSystemChromeToTheme: preferences.matchSystemChromeToTheme,
+            reopenLastDocumentOnLaunch: preferences.reopenLastDocumentOnLaunch
         )
     }
 

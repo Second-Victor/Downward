@@ -107,11 +107,13 @@ final class SettingsScreenModelTests: XCTestCase {
         store.setColorFormattedText(false)
         store.setTapToToggleTasks(false)
         store.setCreateMarkdownTitleFromFilename(true)
+        store.setReopenLastDocumentOnLaunch(false)
 
         XCTAssertEqual(store.markdownSyntaxMode, .hiddenOutsideCurrentLine)
         XCTAssertEqual(store.colorFormattedText, false)
         XCTAssertFalse(store.tapToToggleTasks)
         XCTAssertTrue(store.createMarkdownTitleFromFilename)
+        XCTAssertFalse(store.reopenLastDocumentOnLaunch)
     }
 
     @MainActor
@@ -167,13 +169,13 @@ final class SettingsScreenModelTests: XCTestCase {
         let configuration = SettingsReleaseConfiguration.current
 
         XCTAssertFalse(configuration.showsTipsPage)
-        XCTAssertTrue(configuration.showsRateTheApp)
+        XCTAssertFalse(configuration.showsRateTheApp)
         XCTAssertTrue(configuration.showsLegalLinks)
         XCTAssertEqual(configuration.projectURL?.absoluteString, "https://secondvictor.com/public/projects/downward/downward.html")
         XCTAssertEqual(configuration.privacyPolicyURL?.absoluteString, "https://secondvictor.com/public/projects/downward/downward-policy.html")
         XCTAssertEqual(configuration.termsAndConditionsURL?.absoluteString, "https://secondvictor.com/public/projects/downward/downward-terms.html")
         XCTAssertFalse(SettingsPlaceholderFeature.tipsPurchases.isVisible(in: configuration))
-        XCTAssertTrue(SettingsPlaceholderFeature.rateTheApp.isVisible(in: configuration))
+        XCTAssertFalse(SettingsPlaceholderFeature.rateTheApp.isVisible(in: configuration))
         XCTAssertTrue(SettingsPlaceholderFeature.legalLinks.isVisible(in: configuration))
         XCTAssertTrue(SettingsPlaceholderFeature.lineNumbers.isVisible(in: configuration))
         XCTAssertTrue(SettingsPlaceholderFeature.largerHeadingText.isVisible(in: configuration))
@@ -198,6 +200,18 @@ final class SettingsScreenModelTests: XCTestCase {
         XCTAssertTrue(SettingsPlaceholderFeature.tipsPurchases.isVisible(in: configuration))
         XCTAssertTrue(SettingsPlaceholderFeature.rateTheApp.isVisible(in: configuration))
         XCTAssertTrue(SettingsPlaceholderFeature.legalLinks.isVisible(in: configuration))
+    }
+
+    @MainActor
+    func testRateTheAppIsHiddenWithoutAppStoreReviewURL() {
+        let configuration = SettingsReleaseConfiguration(
+            tipsPurchasesEnabled: false,
+            rateTheAppEnabled: true,
+            appStoreReviewURL: nil
+        )
+
+        XCTAssertFalse(configuration.showsRateTheApp)
+        XCTAssertFalse(SettingsPlaceholderFeature.rateTheApp.isVisible(in: configuration))
     }
 
     func testPlaceholderSettingsAreNotMarkedImplemented() {

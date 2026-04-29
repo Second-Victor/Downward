@@ -162,7 +162,11 @@ final class MarkdownWorkspaceAppTrustedOpenAndRecentTests: MarkdownWorkspaceAppT
             text: jsonText
         )
         let existingTheme = Self.makeTheme(name: "Existing Theme")
-        let themeStore = ThemeStore(fileURL: try makeTemporaryThemeURL())
+        let themeStore = ThemeStore(
+            fileURL: try makeTemporaryThemeURL(),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: true),
+            bundledPremiumThemes: []
+        )
         await themeStore.waitForInitialLoad()
         let didAddExistingTheme = await themeStore.add(existingTheme)
         XCTAssertTrue(didAddExistingTheme)
@@ -647,7 +651,11 @@ final class MarkdownWorkspaceAppTrustedOpenAndRecentTests: MarkdownWorkspaceAppT
             ]
         )
         let existingTheme = Self.makeTheme(name: "Existing Theme")
-        let themeStore = ThemeStore(fileURL: try makeTemporaryThemeURL())
+        let themeStore = ThemeStore(
+            fileURL: try makeTemporaryThemeURL(),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: true),
+            bundledPremiumThemes: []
+        )
         await themeStore.waitForInitialLoad()
         let didAddExistingTheme = await themeStore.add(existingTheme)
         XCTAssertTrue(didAddExistingTheme)
@@ -797,7 +805,11 @@ final class MarkdownWorkspaceAppTrustedOpenAndRecentTests: MarkdownWorkspaceAppT
         )
         let recentFilesStore = RecentFilesStore(initialItems: [staleItem])
         let existingTheme = Self.makeTheme(name: "Existing Theme")
-        let themeStore = ThemeStore(fileURL: try makeTemporaryThemeURL())
+        let themeStore = ThemeStore(
+            fileURL: try makeTemporaryThemeURL(),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: true),
+            bundledPremiumThemes: []
+        )
         await themeStore.waitForInitialLoad()
         let didAddExistingTheme = await themeStore.add(existingTheme)
         XCTAssertTrue(didAddExistingTheme)

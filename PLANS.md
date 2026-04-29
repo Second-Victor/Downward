@@ -66,6 +66,7 @@ The previous completed backlog has been compressed out of this file. The current
 - [x] Confirm iPhone/iPad orientation support is intentional.
 - [ ] Confirm app icon, display name, and bundle metadata are final.
 - [ ] Confirm privacy metadata and App Store review notes are ready.
+  - `PrivacyInfo.xcprivacy` was added on 2026-04-29 with UserDefaults and file timestamp accessed API reasons; App Store metadata still needs final manual validation.
 
 ## 3. Resolve visible placeholder Settings surfaces
 
@@ -73,13 +74,13 @@ The previous completed backlog has been compressed out of this file. The current
 - [ ] If Tips ships, implement real StoreKit products and purchase handling.
 - [x] If Tips does not ship, hide the Tips page and remove visible prices from release builds.
 - [x] Decide whether “Rate the App” ships in 1.0.
-- [x] If rating ships, wire it to a working App Store review flow.
+- [x] Hide “Rate the App” until a direct App Store review URL is configured.
 - [ ] If using a direct App Store review URL, confirm the final App Store ID.
-  - Not applicable for the current implementation path unless a direct review URL replaces StoreKit `requestReview()`.
+  - Configure `https://apps.apple.com/app/idAPP_ID?action=write-review` once the final App Store app ID is known.
 - [x] Configure final Privacy Policy and Terms URLs, or hide those rows.
 - [x] Update tests so `SettingsPlaceholderFeature` matches the release decision.
 - [ ] Record the final Settings walkthrough in `RELEASE_QA.md`.
-  - Automated Settings tests were updated on 2026-04-29 after final About/legal URLs were configured; the actual release-build Settings walkthrough still needs to be performed.
+  - Automated Settings/theme tests were updated on 2026-04-29 after final About/legal URLs, rating visibility, and custom-theme entitlement gates were configured; the actual release-build Settings walkthrough still needs to be performed.
 
 ## 4. Real-device Files provider QA
 

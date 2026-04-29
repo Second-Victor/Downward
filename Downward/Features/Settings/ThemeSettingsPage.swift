@@ -6,9 +6,6 @@ struct ThemeSettingsPage: View {
     let themeStore: ThemeStore
     let push: (SettingsPage) -> Void
     let backAction: () -> Void
-    private let themeImportService = ThemeImportService()
-
-    @State private var isImportingTheme = false
 
     var body: some View {
         Form {
@@ -18,7 +15,7 @@ struct ThemeSettingsPage: View {
                         theme: theme,
                         isSelected: editorAppearanceStore.selectedThemeID == theme.id
                     ) {
-                        editorAppearanceStore.setSelectedThemeID(theme.id)
+                        editorAppearanceStore.setSelectedThemeID(theme.id, using: themeStore)
                     }
                 }
             } footer: {
@@ -27,54 +24,111 @@ struct ThemeSettingsPage: View {
             }
 
             Section {
+                NavigationLink(value: SettingsPage.extraThemes) {
+                    SettingsHomeLabel(title: "Extra Themes", systemName: "sparkles", colors: [.purple, .pink])
+                }
+            } footer: {
+                Text("Support the app development and unlock themes")
+                    .settingsFooterStyle()
+            }
+        }
+        .navigationTitle("Theme")
+        .onAppear {
+            editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+        }
+    }
+}
+
+struct ExtraThemesSettingsPage: View {
+    let editorAppearanceStore: EditorAppearanceStore
+    let themeStore: ThemeStore
+    let push: (SettingsPage) -> Void
+    let backAction: () -> Void
+    private let themeImportService = ThemeImportService()
+
+    @State private var isImportingTheme = false
+
+    var body: some View {
+        Form {
+            Section {
                 ForEach(themeStore.themes) { customTheme in
                     ThemeSelectionRow(
                         theme: EditorTheme(from: customTheme),
                         isSelected: editorAppearanceStore.selectedThemeID == customTheme.id.uuidString,
-                        onEdit: { push(.editTheme(customTheme.id)) }
+                        isEnabled: themeStore.hasUnlockedThemes,
+                        onEdit: themeStore.hasUnlockedThemes ? { push(.editTheme(customTheme.id)) } : nil
                     ) {
-                        editorAppearanceStore.setSelectedThemeID(customTheme.id.uuidString)
+                        editorAppearanceStore.setSelectedThemeID(customTheme.id.uuidString, using: themeStore)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            // Explicit theme mutations are ThemeStore-owned and serialized there;
-                            // do not cancel user-requested persistence with view lifetime changes.
-                            Task {
-                                let didDelete = await themeStore.delete(id: customTheme.id)
-                                editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedThemeWasDeleted(
-                                    customTheme.id,
-                                    didDelete: didDelete
-                                )
+                        if themeStore.canDeleteTheme(id: customTheme.id) {
+                            Button(role: .destructive) {
+                                // Explicit theme mutations are ThemeStore-owned and serialized there;
+                                // do not cancel user-requested persistence with view lifetime changes.
+                                Task {
+                                    let didDelete = await themeStore.delete(id: customTheme.id)
+                                    editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedThemeWasDeleted(
+                                        customTheme.id,
+                                        didDelete: didDelete
+                                    )
+                                }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
                             }
-                        } label: {
-                            Label("Delete", systemImage: "trash")
                         }
                     }
                     .swipeActions(edge: .leading) {
-                        Button {
-                            push(.editTheme(customTheme.id))
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
+                        if themeStore.hasUnlockedThemes {
+                            Button {
+                                push(.editTheme(customTheme.id))
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                            .tint(.orange)
                         }
-                        .tint(.orange)
                     }
                 }
 
+                if themeStore.hasUnlockedThemes == false {
+                    ThemeLockedRow()
+                }
+
                 Button {
+                    guard ThemeEntitlementGate.canCreateCustomTheme(hasUnlockedThemes: themeStore.hasUnlockedThemes) else {
+                        themeStore.lastError = ThemeEntitlementGate.lockedMessage
+                        return
+                    }
+
                     push(.newTheme)
                 } label: {
                     SettingsHomeLabel(title: "New Theme", systemName: "plus.circle.fill", colors: [.green])
                 }
 
                 Button {
+                    guard ThemeEntitlementGate.canImportCustomThemes(hasUnlockedThemes: themeStore.hasUnlockedThemes) else {
+                        themeStore.lastError = ThemeEntitlementGate.lockedMessage
+                        return
+                    }
+
                     isImportingTheme = true
                 } label: {
                     SettingsHomeLabel(title: "Import Theme", systemName: "square.and.arrow.down.fill", colors: [.blue])
                 }
+
+                if themeStore.canRestoreThemePurchases {
+                    Button {
+                        Task {
+                            await themeStore.restoreThemePurchases()
+                            editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+                        }
+                    } label: {
+                        SettingsHomeLabel(title: "Restore Purchases", systemName: "arrow.clockwise.circle.fill", colors: [.purple])
+                    }
+                }
             } header: {
-                Text("Custom")
+                Text("Themes")
             } footer: {
-                Text("Create custom palettes, import them from JSON, or export a theme to share it.")
+                Text("Support the app development and unlock themes")
                     .settingsFooterStyle()
             }
 
@@ -87,11 +141,11 @@ struct ThemeSettingsPage: View {
                     )
                 )
             } footer: {
-                Text("When enabled, editor menus and keyboard etc, will follow the current theme instead of the app appearance.")
+                Text("When enabled, editor menus and keyboard controls follow the selected editor theme instead of the app appearance.")
                     .settingsFooterStyle()
             }
         }
-        .navigationTitle("Theme")
+        .navigationTitle("Extra Themes")
         .fileImporter(
             isPresented: $isImportingTheme,
             allowedContentTypes: [.json]
@@ -109,6 +163,9 @@ struct ThemeSettingsPage: View {
                 Text(error)
             }
         }
+        .onAppear {
+            editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+        }
     }
 
     private var themeErrorBinding: Binding<Bool> {
@@ -123,9 +180,15 @@ struct ThemeSettingsPage: View {
     }
 
     private func handleImport(result: Result<URL, Error>) async {
+        guard ThemeEntitlementGate.canImportCustomThemes(hasUnlockedThemes: themeStore.hasUnlockedThemes) else {
+            themeStore.lastError = ThemeEntitlementGate.lockedMessage
+            return
+        }
+
         await ThemeSettingsImportHandler.handle(
             result: result,
-            themeStore: themeStore
+            themeStore: themeStore,
+            hasUnlockedThemes: themeStore.hasUnlockedThemes
         ) { url in
             try await themeImportService.loadThemes(from: url)
         }
@@ -139,8 +202,14 @@ enum ThemeSettingsImportHandler {
     static func handle(
         result: Result<URL, Error>,
         themeStore: ThemeStore,
+        hasUnlockedThemes: Bool = true,
         loadThemes: LoadThemes
     ) async {
+        guard ThemeEntitlementGate.canImportCustomThemes(hasUnlockedThemes: hasUnlockedThemes) else {
+            themeStore.lastError = ThemeEntitlementGate.lockedMessage
+            return
+        }
+
         do {
             let url = try result.get()
             let themes = try await loadThemes(url)
@@ -162,6 +231,7 @@ enum ThemeSettingsImportHandler {
 struct ThemeSelectionRow: View {
     let theme: EditorTheme
     let isSelected: Bool
+    var isEnabled = true
     var onEdit: (() -> Void)?
     let action: () -> Void
 
@@ -181,6 +251,7 @@ struct ThemeSelectionRow: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .disabled(isEnabled == false)
 
             if let onEdit {
                 Button("Edit", systemImage: "slider.horizontal.3", action: onEdit)
@@ -192,6 +263,27 @@ struct ThemeSelectionRow: View {
                     .buttonStyle(.plain)
             }
         }
+        .opacity(isEnabled ? 1 : 0.55)
+    }
+}
+
+private struct ThemeLockedRow: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lock.fill")
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Extra Themes")
+                    .foregroundStyle(.primary)
+
+                Text("Unlock to select, edit, create, import, and export extra themes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
     }
 }
 

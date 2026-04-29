@@ -385,6 +385,44 @@ final class MarkdownWorkspaceAppSmokeTests: MarkdownWorkspaceAppTestCase {
     }
 
     @MainActor
+    func testBootstrapSkipsLastOpenDocumentWhenEditorPreferenceIsDisabled() async throws {
+        let session = AppSession()
+        let editorAppearanceStore = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 16,
+                reopenLastDocumentOnLaunch: false
+            )
+        )
+        let coordinator = AppCoordinator(
+            session: session,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: PreviewSampleData.nestedWorkspace,
+                forcedRestoreResult: .ready(PreviewSampleData.nestedWorkspace)
+            ),
+            documentManager: RestorationDocumentManager(
+                openedDocument: PreviewSampleData.cleanDocument
+            ),
+            editorAppearanceStore: editorAppearanceStore,
+            sessionStore: StubSessionStore(
+                initialSession: RestorableDocumentSession(relativePath: "Inbox.md")
+            ),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge(),
+            logger: DebugLogger()
+        )
+
+        await coordinator.bootstrapIfNeeded()
+
+        XCTAssertEqual(session.launchState, .workspaceReady)
+        XCTAssertEqual(session.workspaceSnapshot, PreviewSampleData.nestedWorkspace)
+        XCTAssertNil(session.openDocument)
+        XCTAssertEqual(session.path, [])
+        XCTAssertNil(session.workspaceAlertError)
+    }
+
+    @MainActor
     func testBootstrapRestoresLastOpenJSONDocumentAsEditorDocument() async throws {
         let workspaceURL = try makeTemporaryWorkspace(named: "RestoreJSONWorkspace")
         defer { removeItemIfPresent(at: workspaceURL) }
@@ -416,7 +454,11 @@ final class MarkdownWorkspaceAppSmokeTests: MarkdownWorkspaceAppTestCase {
             conflictState: .none
         )
         let existingTheme = Self.makeTheme(name: "Existing Theme")
-        let themeStore = ThemeStore(fileURL: try makeTemporaryThemeURL())
+        let themeStore = ThemeStore(
+            fileURL: try makeTemporaryThemeURL(),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: true),
+            bundledPremiumThemes: []
+        )
         await themeStore.waitForInitialLoad()
         let didAddExistingTheme = await themeStore.add(existingTheme)
         XCTAssertTrue(didAddExistingTheme)

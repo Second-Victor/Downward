@@ -16,7 +16,7 @@ struct EditorTheme: Identifiable, Equatable {
 
     static let adaptive = EditorTheme(
         id: "adaptive",
-        label: "Adaptive",
+        label: "Downward Default",
         background: .systemBackground,
         text: .label,
         tint: .systemBlue,

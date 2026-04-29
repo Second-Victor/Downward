@@ -5,13 +5,13 @@ final class ThemeStoreTests: XCTestCase {
     @MainActor
     func testThemeStoreAddsAndPersistsCustomTheme() async throws {
         let fileURL = try makeTemporaryThemeURL()
-        let store = ThemeStore(fileURL: fileURL)
+        let store = makeThemeStore(fileURL: fileURL)
         let theme = Self.makeTheme(name: "Night Writing")
 
         let didAdd = await store.add(theme)
         XCTAssertTrue(didAdd)
 
-        let reloadedStore = ThemeStore(fileURL: fileURL)
+        let reloadedStore = makeThemeStore(fileURL: fileURL)
         await reloadedStore.waitForInitialLoad()
 
         XCTAssertEqual(reloadedStore.themes, [theme])
@@ -19,9 +19,96 @@ final class ThemeStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testThemeStoreListsBundledPremiumThemesBehindUnlock() async throws {
+        let store = makeThemeStore(
+            fileURL: try makeTemporaryThemeURL(),
+            hasUnlockedThemes: false,
+            bundledPremiumThemes: ThemeStore.bundledPremiumThemes
+        )
+        await store.waitForInitialLoad()
+
+        XCTAssertEqual(store.themes, ThemeStore.bundledPremiumThemes)
+        XCTAssertEqual(
+            store.themes.map(\.name),
+            [
+                "Monokai Light",
+                "Monokai",
+                "Solarized",
+                "OLED Midnight",
+                "Sepia Paper",
+                "Forest",
+                "Polar Night"
+            ]
+        )
+
+        let monokai = try XCTUnwrap(store.themes.last)
+        XCTAssertFalse(store.canSelectTheme(withID: monokai.id.uuidString))
+        XCTAssertEqual(store.resolve(monokai.id.uuidString), .adaptive)
+    }
+
+    @MainActor
+    func testThemeStoreKeepsBundledPremiumThemeEditsAcrossReload() async throws {
+        let fileURL = try makeTemporaryThemeURL()
+        let bundledTheme = Self.makeTheme(name: "Bundled Original")
+        let store = makeThemeStore(
+            fileURL: fileURL,
+            bundledPremiumThemes: [bundledTheme]
+        )
+        await store.waitForInitialLoad()
+
+        var editedTheme = bundledTheme
+        editedTheme.name = "Edited Bundled"
+        let didUpdate = await store.update(editedTheme)
+
+        let reloadedStore = makeThemeStore(
+            fileURL: fileURL,
+            bundledPremiumThemes: [bundledTheme]
+        )
+        await reloadedStore.waitForInitialLoad()
+
+        XCTAssertTrue(didUpdate)
+        XCTAssertEqual(store.themes, [editedTheme])
+        XCTAssertEqual(reloadedStore.themes, [editedTheme])
+        XCTAssertEqual(reloadedStore.resolve(editedTheme.id.uuidString).label, "Edited Bundled")
+    }
+
+    @MainActor
+    func testThemeStoreDoesNotDeleteBundledPremiumThemes() async throws {
+        let bundledTheme = Self.makeTheme(name: "Bundled")
+        let store = makeThemeStore(
+            fileURL: try makeTemporaryThemeURL(),
+            bundledPremiumThemes: [bundledTheme]
+        )
+        await store.waitForInitialLoad()
+
+        let didDelete = await store.delete(id: bundledTheme.id)
+
+        XCTAssertFalse(didDelete)
+        XCTAssertEqual(store.themes, [bundledTheme])
+        XCTAssertFalse(store.canDeleteTheme(id: bundledTheme.id))
+        XCTAssertEqual(store.lastError, "Bundled Extra Themes cannot be deleted.")
+    }
+
+    @MainActor
+    func testThemeStoreDeletesUserAddedThemes() async throws {
+        let store = makeThemeStore(fileURL: try makeTemporaryThemeURL())
+        let userTheme = Self.makeTheme(name: "User Theme")
+
+        let didAdd = await store.add(userTheme)
+        let canDelete = store.canDeleteTheme(id: userTheme.id)
+        let didDelete = await store.delete(id: userTheme.id)
+
+        XCTAssertTrue(didAdd)
+        XCTAssertTrue(canDelete)
+        XCTAssertTrue(didDelete)
+        XCTAssertTrue(store.themes.isEmpty)
+        XCTAssertNil(store.lastError)
+    }
+
+    @MainActor
     func testThemeStoreRejectsDuplicateCustomThemeNames() async throws {
         let fileURL = try makeTemporaryThemeURL()
-        let store = ThemeStore(fileURL: fileURL)
+        let store = makeThemeStore(fileURL: fileURL)
         let firstTheme = Self.makeTheme(id: UUID(), name: "Duplicate")
         let secondTheme = Self.makeTheme(id: UUID(), name: "duplicate")
 
@@ -38,7 +125,7 @@ final class ThemeStoreTests: XCTestCase {
     @MainActor
     func testThemeStoreImportRejectsDuplicateThemeNamesWithUserReadableError() async throws {
         let fileURL = try makeTemporaryThemeURL()
-        let store = ThemeStore(fileURL: fileURL)
+        let store = makeThemeStore(fileURL: fileURL)
         let existingTheme = Self.makeTheme(id: UUID(), name: "Duplicate")
         let importedTheme = Self.makeTheme(id: UUID(), name: "duplicate")
 
@@ -58,7 +145,7 @@ final class ThemeStoreTests: XCTestCase {
     @MainActor
     func testThemeStoreImportReplacesExistingThemeWithMatchingID() async throws {
         let fileURL = try makeTemporaryThemeURL()
-        let store = ThemeStore(fileURL: fileURL)
+        let store = makeThemeStore(fileURL: fileURL)
         let themeID = UUID()
         let originalTheme = Self.makeTheme(id: themeID, name: "Original")
         let importedReplacement = Self.makeTheme(id: themeID, name: "Replacement")
@@ -76,7 +163,7 @@ final class ThemeStoreTests: XCTestCase {
     @MainActor
     func testThemeStoreImportAddsAllThemesFromExplicitImport() async throws {
         let fileURL = try makeTemporaryThemeURL()
-        let store = ThemeStore(fileURL: fileURL)
+        let store = makeThemeStore(fileURL: fileURL)
         let firstTheme = Self.makeTheme(id: UUID(), name: "Bundle One")
         let secondTheme = Self.makeTheme(id: UUID(), name: "Bundle Two")
 
@@ -93,7 +180,7 @@ final class ThemeStoreTests: XCTestCase {
         let recorder = DelayedThemePersistenceRecorder()
         let firstTheme = Self.makeTheme(id: UUID(), name: "First")
         let secondTheme = Self.makeTheme(id: UUID(), name: "Second")
-        let store = ThemeStore(
+        let store = makeThemeStore(
             fileURL: fileURL,
             persistThemes: { themes, fileURL in
                 try await recorder.persist(themes, to: fileURL)
@@ -106,7 +193,7 @@ final class ThemeStoreTests: XCTestCase {
 
         let results = await (didAddFirst, didAddSecond)
         let persistedThemeNames = await recorder.persistedThemeNames
-        let reloadedStore = ThemeStore(fileURL: fileURL)
+        let reloadedStore = makeThemeStore(fileURL: fileURL)
         await reloadedStore.waitForInitialLoad()
 
         XCTAssertEqual(results.0, true)
@@ -123,7 +210,7 @@ final class ThemeStoreTests: XCTestCase {
         let recorder = DelayedThemePersistenceRecorder()
         let importedTheme = Self.makeTheme(id: UUID(), name: "Imported")
         let manualTheme = Self.makeTheme(id: UUID(), name: "Manual")
-        let store = ThemeStore(
+        let store = makeThemeStore(
             fileURL: fileURL,
             persistThemes: { themes, fileURL in
                 try await recorder.persist(themes, to: fileURL)
@@ -136,7 +223,7 @@ final class ThemeStoreTests: XCTestCase {
 
         let results = await (didImport, didAdd)
         let persistedThemeNames = await recorder.persistedThemeNames
-        let reloadedStore = ThemeStore(fileURL: fileURL)
+        let reloadedStore = makeThemeStore(fileURL: fileURL)
         await reloadedStore.waitForInitialLoad()
 
         XCTAssertEqual(results.0, true)
@@ -150,7 +237,7 @@ final class ThemeStoreTests: XCTestCase {
     @MainActor
     func testSettingsImportHandlerLoadsSelectedFileAndImportsThroughThemeStore() async throws {
         let fileURL = try makeTemporaryThemeURL()
-        let store = ThemeStore(fileURL: fileURL)
+        let store = makeThemeStore(fileURL: fileURL)
         await store.waitForInitialLoad()
         let selectedURL = fileURL.deletingLastPathComponent().appending(path: "SelectedTheme.json")
         let theme = Self.makeTheme(id: UUID(), name: "Settings Import")
@@ -173,7 +260,7 @@ final class ThemeStoreTests: XCTestCase {
     @MainActor
     func testSettingsImportHandlerIgnoresUserCancellation() async throws {
         let fileURL = try makeTemporaryThemeURL()
-        let store = ThemeStore(fileURL: fileURL)
+        let store = makeThemeStore(fileURL: fileURL)
         await store.waitForInitialLoad()
         let cancellationError = NSError(
             domain: NSCocoaErrorDomain,
@@ -595,6 +682,115 @@ final class ThemeStoreTests: XCTestCase {
                 "One of the themes in this import file is invalid at themes[1].background. Hex colours may only contain hexadecimal digits."
             )
         }
+    }
+
+    @MainActor
+    func testLockedThemeStoreRejectsCustomThemeCreation() async throws {
+        let store = makeThemeStore(fileURL: try makeTemporaryThemeURL(), hasUnlockedThemes: false)
+        let theme = Self.makeTheme(name: "Locked")
+
+        let didAdd = await store.add(theme)
+
+        XCTAssertFalse(didAdd)
+        XCTAssertTrue(store.themes.isEmpty)
+        XCTAssertEqual(store.lastError, ThemeEntitlementGate.lockedMessage)
+    }
+
+    @MainActor
+    func testLockedThemeStoreRejectsCustomThemeEditing() async throws {
+        let entitlements = ThemeEntitlementStore(hasUnlockedThemes: true)
+        let store = makeThemeStore(fileURL: try makeTemporaryThemeURL(), entitlements: entitlements)
+        let theme = Self.makeTheme(id: UUID(), name: "Original")
+        let updatedTheme = Self.makeTheme(id: theme.id, name: "Updated")
+
+        let didAddTheme = await store.add(theme)
+        XCTAssertTrue(didAddTheme)
+        entitlements.setHasUnlockedThemes(false)
+
+        let didUpdate = await store.update(updatedTheme)
+
+        XCTAssertFalse(didUpdate)
+        XCTAssertEqual(store.themes, [theme])
+        XCTAssertEqual(store.lastError, ThemeEntitlementGate.lockedMessage)
+    }
+
+    @MainActor
+    func testLockedThemeStoreRejectsCustomThemeImport() async throws {
+        let store = makeThemeStore(fileURL: try makeTemporaryThemeURL(), hasUnlockedThemes: false)
+        let importedTheme = Self.makeTheme(name: "Imported")
+
+        let didImport = await store.importThemes([importedTheme])
+
+        XCTAssertFalse(didImport)
+        XCTAssertTrue(store.themes.isEmpty)
+        XCTAssertEqual(store.lastError, ThemeEntitlementGate.lockedMessage)
+    }
+
+    @MainActor
+    func testLockedThemeStoreResolvesSelectedCustomThemeToAdaptive() async throws {
+        let entitlements = ThemeEntitlementStore(hasUnlockedThemes: true)
+        let store = makeThemeStore(fileURL: try makeTemporaryThemeURL(), entitlements: entitlements)
+        let theme = Self.makeTheme(name: "Locked Later")
+
+        let didAddTheme = await store.add(theme)
+        XCTAssertTrue(didAddTheme)
+        entitlements.setHasUnlockedThemes(false)
+
+        XCTAssertEqual(store.resolve(theme.id.uuidString), .adaptive)
+        XCTAssertFalse(store.canSelectTheme(withID: theme.id.uuidString))
+        XCTAssertTrue(store.canSelectTheme(withID: EditorTheme.adaptive.id))
+    }
+
+    @MainActor
+    func testSettingsImportHandlerDoesNotLoadFileWhenThemesAreLocked() async throws {
+        let store = makeThemeStore(fileURL: try makeTemporaryThemeURL(), hasUnlockedThemes: false)
+        let selectedURL = URL(filePath: "/tmp/LockedTheme.json")
+        let recorder = ThemeImportLoadRecorder(themes: [Self.makeTheme(name: "Should Not Load")])
+
+        await ThemeSettingsImportHandler.handle(
+            result: .success(selectedURL),
+            themeStore: store,
+            hasUnlockedThemes: false
+        ) { url in
+            try await recorder.load(from: url)
+        }
+
+        let loadedURLs = await recorder.recordedLoadedURLs()
+
+        XCTAssertTrue(loadedURLs.isEmpty)
+        XCTAssertTrue(store.themes.isEmpty)
+        XCTAssertEqual(store.lastError, ThemeEntitlementGate.lockedMessage)
+    }
+
+    @MainActor
+    func testThemeEntitlementGateCoversCustomThemeEntryPoints() {
+        XCTAssertFalse(ThemeEntitlementGate.canCreateCustomTheme(hasUnlockedThemes: false))
+        XCTAssertFalse(ThemeEntitlementGate.canImportCustomThemes(hasUnlockedThemes: false))
+        XCTAssertFalse(ThemeEntitlementGate.canEditCustomThemes(hasUnlockedThemes: false))
+        XCTAssertFalse(ThemeEntitlementGate.canExportCustomThemes(hasUnlockedThemes: false))
+        XCTAssertFalse(ThemeEntitlementGate.canSelectCustomTheme(hasUnlockedThemes: false))
+
+        XCTAssertTrue(ThemeEntitlementGate.canCreateCustomTheme(hasUnlockedThemes: true))
+        XCTAssertTrue(ThemeEntitlementGate.canImportCustomThemes(hasUnlockedThemes: true))
+        XCTAssertTrue(ThemeEntitlementGate.canEditCustomThemes(hasUnlockedThemes: true))
+        XCTAssertTrue(ThemeEntitlementGate.canExportCustomThemes(hasUnlockedThemes: true))
+        XCTAssertTrue(ThemeEntitlementGate.canSelectCustomTheme(hasUnlockedThemes: true))
+    }
+
+    @MainActor
+    private func makeThemeStore(
+        fileURL: URL,
+        persistThemes: ThemeStore.PersistThemes? = nil,
+        hasUnlockedThemes: Bool = true,
+        entitlements: ThemeEntitlementStore? = nil,
+        bundledPremiumThemes: [CustomTheme] = []
+    ) -> ThemeStore {
+        ThemeStore(
+            fileURL: fileURL,
+            persistThemes: persistThemes,
+            entitlements: entitlements ?? ThemeEntitlementStore(hasUnlockedThemes: hasUnlockedThemes),
+            bundledPremiumThemes: bundledPremiumThemes
+        )
     }
 
     private func makeTemporaryThemeURL() throws -> URL {

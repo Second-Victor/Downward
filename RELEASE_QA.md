@@ -12,6 +12,89 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 - Simulator/device:
   - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`)
 - Commands run:
+  - `rg --files -g 'AGENTS.md' -g 'ARCHITECTURE.md' -g 'PLANS.md' -g 'CODE_REVIEW.md' -g 'RELEASE_QA.md' -g '*.xcodeproj' -g '*.pbxproj'`
+  - `rg -n "SettingsReleaseConfiguration|Rate the App|requestReview|ThemeStore|ThemeImportService|custom theme|CustomTheme|Theme" .`
+  - `git status --short`
+  - `git diff -- Downward/App/AppCoordinator.swift Downward/Domain/Persistence/EditorAppearanceStore.swift Downward/Features/Editor/EditorAppearancePreferences.swift Downward/Features/Settings/EditorSettingsPage.swift RELEASE_QA.md Tests/EditorAppearanceStoreTests.swift Tests/MarkdownWorkspaceAppSmokeTests.swift Tests/SettingsScreenModelTests.swift`
+  - `sed -n '1,220p' Downward/Features/Settings/SettingsReleaseConfiguration.swift`
+  - `sed -n '1,260p' Downward/Features/Settings/InformationSettingsPage.swift`
+  - `sed -n '1,260p' Downward/Features/Settings/ThemeSettingsPage.swift`
+  - `sed -n '1,360p' Downward/Domain/Persistence/ThemeStore.swift`
+  - `sed -n '1,340p' Downward/Domain/Persistence/EditorAppearanceStore.swift`
+  - `sed -n '1,260p' Downward/Features/Settings/SettingsScreen.swift`
+  - `sed -n '1,280p' Tests/ThemeStoreTests.swift`
+  - `sed -n '280,620p' Tests/ThemeStoreTests.swift`
+  - `sed -n '1,280p' Tests/ThemeEditorSettingsPageTests.swift`
+  - `rg -n "ASSETCATALOG|Resources|PrivacyInfo|PBXResourcesBuildPhase|Assets.xcassets|Downward.app|INFOPLIST|PRODUCT_BUNDLE_IDENTIFIER|Resources" Downward.xcodeproj/project.pbxproj`
+  - `find Downward.icon Downward/Assets.xcassets/AppIcon.appiconset -maxdepth 2 -type f -print`
+  - `sed -n '1,220p' Downward.icon/Assets/Chevron.svg`
+  - `sed -n '1,220p' Downward.icon/icon.json`
+  - `rg -n "ThemeStore\\(|ThemeSettingsPage\\(|ThemeEditorSettingsPage\\(|resolvedTheme\\(using:|selectedThemeLabel\\(using:|themeStore.resolve" Downward Tests -g '*.swift'`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ReleaseCompliance -resultBundlePath /tmp/Downward-ReleaseCompliance.xcresult -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests -only-testing:DownwardTests/ThemeEditorSettingsPageTests -only-testing:DownwardTests/EditorAppearanceStoreTests`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ReleaseCompliance2 -resultBundlePath /tmp/Downward-ReleaseCompliance2.xcresult -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests -only-testing:DownwardTests/ThemeEditorSettingsPageTests -only-testing:DownwardTests/EditorAppearanceStoreTests`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ReleaseCompliance3 -resultBundlePath /tmp/Downward-ReleaseCompliance3.xcresult -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests -only-testing:DownwardTests/ThemeEditorSettingsPageTests -only-testing:DownwardTests/EditorAppearanceStoreTests`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ReleaseCompliance4 -resultBundlePath /tmp/Downward-ReleaseCompliance4.xcresult -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests -only-testing:DownwardTests/ThemeEditorSettingsPageTests -only-testing:DownwardTests/EditorAppearanceStoreTests`
+  - `test -f /tmp/DownwardDerivedData-ReleaseCompliance3/Build/Products/Debug-iphonesimulator/Downward.app/PrivacyInfo.xcprivacy`
+  - `plutil -p /tmp/DownwardDerivedData-ReleaseCompliance3/Build/Products/Debug-iphonesimulator/Downward.app/PrivacyInfo.xcprivacy`
+  - `test -f /tmp/DownwardDerivedData-ReleaseCompliance4/Build/Products/Debug-iphonesimulator/Downward.app/PrivacyInfo.xcprivacy`
+  - `plutil -p /tmp/DownwardDerivedData-ReleaseCompliance4/Build/Products/Debug-iphonesimulator/Downward.app/PrivacyInfo.xcprivacy`
+  - `git diff --check`
+- Result:
+  - Added `PrivacyInfo.xcprivacy`; the built app bundle contains the manifest with UserDefaults reason `CA92.1`, file timestamp reason `3B52.1`, no tracking, and no collected data types.
+  - Settings > Information now hides “Rate the App” until a direct App Store review URL is configured; the Settings button path no longer uses StoreKit `requestReview()`.
+  - Settings > About now uses a branded icon asset and shows app name, version/build, developer name, short description, Website, Privacy Policy, and Terms & Conditions rows without release-visible unavailable-link fallback text.
+  - Added a lightweight themes entitlement abstraction. Built-in themes remain free; custom theme create/import/edit/export/selection are gated behind `hasUnlockedThemes`, and locked custom selections fall back to Adaptive.
+  - Final focused simulator tests passed on iPhone 17 Pro simulator: SettingsScreenModelTests, ThemeStoreTests, ThemeEditorSettingsPageTests, and EditorAppearanceStoreTests all passed.
+  - `git diff --check` passed.
+- Notes/failures:
+  - The first two focused test runs failed at compile due to `await` calls inside XCTest autoclosures; those test-authoring mistakes were fixed before the final passing run.
+  - The final App Store app ID is still unknown in-repo, so the direct review URL remains unconfigured and the Rate row is hidden.
+  - No release-build Settings walkthrough or real-device QA was performed in this pass.
+
+- Date: 2026-04-29
+- Branch/commit at start of run: `main` / `a72e0f2`
+- Xcode: Xcode 26.4 (17E192)
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`)
+- Commands run:
+  - `git status --short`
+  - `rg -n "restoreLastOpenDocument|loadRestorableDocumentSession|saveRestorableDocumentSession|EditorAppearancePreferences|EditorAppearanceStore|EditorSettingsPage|SettingsFontOption|showLineNumbers|largerHeading" Downward Tests -g '*.swift'`
+  - `sed -n '1,260p' Downward/Features/Settings/EditorSettingsPage.swift`
+  - `sed -n '1,260p' Downward/Domain/Persistence/EditorAppearanceStore.swift`
+  - `sed -n '260,340p' Downward/Domain/Persistence/EditorAppearanceStore.swift`
+  - `sed -n '1,140p' Downward/Features/Editor/EditorAppearancePreferences.swift`
+  - `sed -n '1160,1270p' Downward/App/AppCoordinator.swift`
+  - `sed -n '300,360p' Tests/MarkdownWorkspaceAppSmokeTests.swift`
+  - `sed -n '360,430p' Tests/MarkdownWorkspaceAppSmokeTests.swift`
+  - `sed -n '1,130p' Tests/EditorAppearanceStoreTests.swift`
+  - `sed -n '210,260p' Tests/EditorAppearanceStoreTests.swift`
+  - `sed -n '1,180p' Tests/SettingsScreenModelTests.swift`
+  - `sed -n '64,90p' Downward/App/AppCoordinator.swift`
+  - `sed -n '640,700p' Downward/App/AppCoordinator.swift`
+  - `git diff --check`
+  - `git diff --stat`
+  - `git status --short`
+  - `git diff -- Downward/App/AppCoordinator.swift Downward/Domain/Persistence/EditorAppearanceStore.swift Downward/Features/Editor/EditorAppearancePreferences.swift Downward/Features/Settings/EditorSettingsPage.swift`
+  - `git diff -- Tests/EditorAppearanceStoreTests.swift Tests/MarkdownWorkspaceAppSmokeTests.swift Tests/SettingsScreenModelTests.swift`
+  - `xcrun simctl list devices available`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ReopenLastDocumentSetting -resultBundlePath /tmp/Downward-ReopenLastDocumentSetting.xcresult -only-testing:DownwardTests/EditorAppearanceStoreTests -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/MarkdownWorkspaceAppSmokeTests`
+  - `tail -n 80 RELEASE_QA.md`
+  - `sed -n '1,120p' RELEASE_QA.md`
+- Result:
+  - Added an Editor setting, "Reopen Last Document", persisted through `EditorAppearanceStore`.
+  - Existing installs default to enabled, preserving the current launch behavior until the user disables it.
+  - When disabled, workspace restore still opens the selected workspace, but skips reopening the last edited document so the app lands in the file browser.
+  - Focused simulator tests passed on iPhone 17 Pro simulator: EditorAppearanceStoreTests, SettingsScreenModelTests, and MarkdownWorkspaceAppSmokeTests all passed.
+  - `git diff --check` passed.
+- Notes/failures:
+  - No manual launch walkthrough on device was performed in this pass.
+
+- Date: 2026-04-29
+- Branch/commit at start of run: `main` / `a72e0f2`
+- Xcode: Xcode 26.4 (17E192)
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`)
+- Commands run:
   - `rg -n "savedDateHeader|displayName|currentRouteDocument|documentName|OpenDocument" Downward/Features/Editor Tests -g '*.swift'`
   - `sed -n '1,260p' Downward/Features/Editor/EditorViewModel.swift`
   - `sed -n '1,130p' Downward/Features/Editor/EditorScreen.swift`
@@ -143,7 +226,7 @@ This file is the release/runtime QA checklist for Downward. It records command-l
   - `git diff --check` passed.
 - Release Settings decision update:
   - Tips remain disabled and hidden for 1.0 until StoreKit products and purchase handling exist.
-  - “Rate the App” now ships using StoreKit `requestReview()` when no direct App Store review URL is configured.
+  - Superseded later on 2026-04-29: “Rate the App” is now hidden until a direct App Store review URL is configured.
   - About now links to the configured Downward project page, Privacy Policy, and Terms & Conditions URLs:
     - `https://secondvictor.com/public/projects/downward/downward.html`
     - `https://secondvictor.com/public/projects/downward/downward-policy.html`
@@ -795,11 +878,12 @@ Expected result when disabled: app appearance controls chrome as before.
 
 - [ ] Settings sheet hierarchy inspected on compact width.
 - [ ] Settings sheet hierarchy inspected on regular width.
-- [ ] Release build Settings walkthrough confirms Tips entry is hidden and Rate the App, Privacy Policy, and Terms & Conditions rows are visible with configured release backing.
+- [ ] Release build Settings walkthrough confirms Tips entry is hidden, Rate the App is hidden until the App Store review URL is configured, and Website, Privacy Policy, and Terms & Conditions rows are visible with configured release backing.
 - [ ] Built-in theme switching observed.
-- [ ] Custom theme create/edit/delete observed.
+- [ ] Locked custom theme create/import/edit/export/selection affordances observed.
+- [ ] Custom theme create/edit/delete/import/export observed after a test entitlement unlock or StoreKit wiring.
 - [ ] Low-contrast theme warning observed.
-- [x] Automated Settings model tests confirm StoreKit tips are hidden and review/legal About actions are visible with the current release configuration.
+- [x] Automated Settings/theme tests confirm StoreKit tips are hidden, Rate the App is hidden without an App Store URL, legal About actions are visible with the current release configuration, and custom theme gates enforce `hasUnlockedThemes`.
 
 ## Theme Import/Export
 
@@ -830,7 +914,8 @@ Expected result when disabled: app appearance controls chrome as before.
 ## Known Limitations and Deferred Future Features
 
 - [x] StoreKit tips are disabled and hidden for 1.0 until real products and purchase handling are implemented.
-- [x] App Store review/rating uses StoreKit `requestReview()` for 1.0; a direct App Store review URL remains optional.
+- [x] App Store review/rating is hidden for 1.0 until the final direct App Store review URL is configured; Settings no longer calls StoreKit `requestReview()` directly.
 - [x] Legal/privacy rows are enabled for 1.0 with configured final URLs.
+- [x] Custom themes are gated behind a lightweight entitlement abstraction; StoreKit wiring remains deferred.
 - [ ] Richer markdown constructs such as tables and footnotes remain future work.
 - [ ] Deeper theme marketplace/sharing behavior remains future work.

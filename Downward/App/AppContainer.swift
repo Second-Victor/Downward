@@ -40,6 +40,7 @@ final class AppContainer {
         self.documentManager = documentManager
         self.errorReporter = errorReporter
         self.folderPickerBridge = folderPickerBridge
+        editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
 
         let session = AppSession()
         self.session = session
@@ -89,7 +90,9 @@ final class AppContainer {
         let sessionStore = UserDefaultsSessionStore()
         let recentFilesStore = RecentFilesStore()
         let editorAppearanceStore = EditorAppearanceStore()
-        let themeStore = ThemeStore()
+        // StoreKit is not wired yet. Keep themes unlocked in live builds so premium
+        // theme selection and editing can be exercised before purchase plumbing lands.
+        let themeStore = ThemeStore(entitlements: ThemeEntitlementStore(hasUnlockedThemes: true))
         let workspaceManager = LiveWorkspaceManager(
             bookmarkStore: bookmarkStore,
             securityScopedAccess: securityScopedAccess,
@@ -129,7 +132,10 @@ final class AppContainer {
         let sessionStore = StubSessionStore()
         let recentFilesStore = RecentFilesStore(initialItems: recentFiles)
         let editorAppearanceStore = EditorAppearanceStore(initialPreferences: editorAppearancePreferences)
-        let themeStore = ThemeStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-themes-\(UUID().uuidString).json"))
+        let themeStore = ThemeStore(
+            fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-themes-\(UUID().uuidString).json"),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: true)
+        )
         let forcedRestoreResult: WorkspaceRestoreResult? = switch launchState {
         case .noWorkspaceSelected:
             .noWorkspaceSelected
