@@ -146,7 +146,23 @@ final class EditorKeyboardGeometryController: NSObject {
         }
 
         let caretRect = textView.caretRect(for: selectedRange.end)
-        let visibleRect = caretRect.insetBy(dx: 0, dy: -20)
-        textView.scrollRectToVisible(visibleRect, animated: true)
+        let targetRect = caretRect.insetBy(dx: 0, dy: -20)
+        var visibleRect = CGRect(origin: textView.contentOffset, size: textView.bounds.size)
+        visibleRect.origin.x += textView.adjustedContentInset.left
+        visibleRect.origin.y += textView.adjustedContentInset.top
+        visibleRect.size.width = max(
+            0,
+            visibleRect.size.width - textView.adjustedContentInset.left - textView.adjustedContentInset.right
+        )
+        visibleRect.size.height = max(
+            0,
+            visibleRect.size.height - textView.adjustedContentInset.top - textView.adjustedContentInset.bottom
+        )
+
+        guard visibleRect.contains(targetRect) == false else {
+            return
+        }
+
+        textView.scrollRectToVisible(targetRect, animated: false)
     }
 }

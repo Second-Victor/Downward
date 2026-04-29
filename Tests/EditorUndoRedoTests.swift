@@ -714,6 +714,87 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorPreservesCaretScreenPositionForSameDocumentRerenderWhenLayoutChanges() {
+        let text = makeWrappingMarkdownLines(count: 140)
+        let textBox = MutableBox(text)
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.simulatedIsFirstResponder = true
+        let configuration = makeConfiguration(
+            text: textBox.value,
+            largerHeadingText: false
+        )
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let caretLocation = (text as NSString).range(of: "Plain line 80").location
+        let beforeScreenY = placeCaret(
+            at: caretLocation,
+            screenY: 280,
+            in: textView
+        )
+
+        coordinator.apply(
+            configuration: makeConfiguration(
+                text: textBox.value,
+                largerHeadingText: true
+            ),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: false
+        )
+
+        XCTAssertEqual(textView.selectedRange, NSRange(location: caretLocation, length: 0))
+        XCTAssertEqual(caretScreenY(in: textView), beforeScreenY, accuracy: 1.5)
+    }
+
+    @MainActor
+    func testCoordinatorPreservesCaretScreenPositionWhenHiddenSyntaxRevealChangesLayout() {
+        let firstLine = String(repeating: "**opening marker text wraps** ", count: 18)
+        let middleLines = (0..<70).map { "Plain spacer line \($0)" }.joined(separator: "\n")
+        let bottomLine = String(repeating: "~~bottom marker text wraps~~ ", count: 18)
+        let text = "\(firstLine)\n\(middleLines)\n\(bottomLine)"
+        let textBox = MutableBox(text)
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.simulatedIsFirstResponder = true
+        textView.selectedRange = NSRange(location: 4, length: 0)
+
+        coordinator.apply(
+            configuration: makeConfiguration(
+                text: textBox.value,
+                syntaxMode: .hiddenOutsideCurrentLine
+            ),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let caretLocation = (text as NSString).range(of: "bottom marker").location
+        let beforeScreenY = placeCaret(
+            at: caretLocation,
+            screenY: 280,
+            in: textView
+        )
+
+        coordinator.textViewDidChangeSelection(textView)
+
+        XCTAssertEqual(textView.selectedRange, NSRange(location: caretLocation, length: 0))
+        XCTAssertEqual(caretScreenY(in: textView), beforeScreenY, accuracy: 1.5)
+    }
+
+    @MainActor
     func testTopViewportInsetChangeKeepsScrolledDocumentStableAwayFromTop() {
         let textBox = MutableBox(String(repeating: "Line\n", count: 120))
         let coordinator = makeCoordinator(text: textBox)
@@ -2176,6 +2257,18 @@ final class EditorUndoRedoTests: XCTestCase {
     @MainActor
     private func makeConfiguration(
         text: String,
+        syntaxMode: MarkdownSyntaxMode
+    ) -> MarkdownEditorTextView.Configuration {
+        makeConfiguration(
+            text: text,
+            documentIdentity: PreviewSampleData.cleanDocument.url,
+            syntaxMode: syntaxMode
+        )
+    }
+
+    @MainActor
+    private func makeConfiguration(
+        text: String,
         tapToToggleTasks: Bool
     ) -> MarkdownEditorTextView.Configuration {
         makeConfiguration(
@@ -2189,6 +2282,7 @@ final class EditorUndoRedoTests: XCTestCase {
     private func makeConfiguration(
         text: String,
         documentIdentity: URL,
+        syntaxMode: MarkdownSyntaxMode = .visible,
         showLineNumbers: Bool = false,
         largerHeadingText: Bool = false,
         tapToToggleTasks: Bool = true
@@ -2197,12 +2291,64 @@ final class EditorUndoRedoTests: XCTestCase {
             text: text,
             documentIdentity: documentIdentity,
             font: .preferredFont(forTextStyle: .body),
-            syntaxMode: .visible,
+            syntaxMode: syntaxMode,
             showLineNumbers: showLineNumbers,
             largerHeadingText: largerHeadingText,
             tapToToggleTasks: tapToToggleTasks,
             isEditable: true
         )
+    }
+
+    @MainActor
+    private func makeWrappingMarkdownLines(count: Int) -> String {
+        (0..<count)
+            .map { index in
+                if index.isMultiple(of: 6) {
+                    return "# Heading \(index) with enough words to wrap on the narrow test text view"
+                }
+
+                return "Plain line \(index) with enough text to keep layout realistic"
+            }
+            .joined(separator: "\n")
+    }
+
+    @MainActor
+    private func placeCaret(
+        at location: Int,
+        screenY: CGFloat,
+        in textView: UITextView,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> CGFloat {
+        textView.selectedRange = NSRange(location: location, length: 0)
+        guard let position = textView.position(from: textView.beginningOfDocument, offset: location) else {
+            XCTFail("Expected caret position", file: file, line: line)
+            return .nan
+        }
+
+        textView.layoutManager.ensureLayout(for: textView.textContainer)
+        let caretRect = textView.caretRect(for: position)
+        textView.contentSize = CGSize(
+            width: max(textView.contentSize.width, textView.bounds.width),
+            height: max(textView.contentSize.height, caretRect.maxY + textView.bounds.height)
+        )
+        textView.setContentOffset(CGPoint(x: 0, y: max(0, caretRect.minY - screenY)), animated: false)
+        return caretScreenY(in: textView, file: file, line: line)
+    }
+
+    @MainActor
+    private func caretScreenY(
+        in textView: UITextView,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> CGFloat {
+        let location = textView.selectedRange.location
+        guard let position = textView.position(from: textView.beginningOfDocument, offset: location) else {
+            XCTFail("Expected caret position", file: file, line: line)
+            return .nan
+        }
+
+        return textView.caretRect(for: position).minY - textView.contentOffset.y
     }
 
     @MainActor

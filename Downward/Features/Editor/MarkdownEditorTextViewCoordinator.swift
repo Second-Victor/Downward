@@ -23,6 +23,11 @@ extension MarkdownEditorTextView {
             let touchedLineBreaks: Bool
         }
 
+        private enum ViewportAnchor {
+            case caret(location: Int, screenY: CGFloat, contentOffsetX: CGFloat)
+            case contentOffset(CGPoint)
+        }
+
         @Binding private var text: String
         private let onEditorFocusChange: @MainActor (Bool) -> Void
         private let onUndoRedoAvailabilityChange: @MainActor (Bool, Bool) -> Void
@@ -495,7 +500,9 @@ extension MarkdownEditorTextView {
             preserveViewport: Bool
         ) {
             let selectedRange = safeSelectedRange(for: textView, text: configuration.text)
-            let preservedContentOffset = textView.contentOffset
+            let viewportAnchor = preserveViewport
+                ? captureViewportAnchor(in: textView, selectedRange: selectedRange)
+                : nil
             let revealedLineRange = revealedLineRange(
                 in: textView,
                 selectionRange: selectedRange,
@@ -521,8 +528,8 @@ extension MarkdownEditorTextView {
             }
             updateTypingAttributes(for: textView, font: configuration.font, resolvedTheme: configuration.resolvedTheme)
             textView.selectedRange = safeRange(selectedRange, forTextLength: textView.textStorage.length)
-            if preserveViewport {
-                textView.setContentOffset(preservedContentOffset, animated: false)
+            if let viewportAnchor {
+                restoreViewport(viewportAnchor, in: textView)
             } else {
                 // A newly opened document should start from the resting top position instead of
                 // inheriting whatever scroll offset the previous document or layout pass used.
@@ -582,7 +589,7 @@ extension MarkdownEditorTextView {
             revealedLineRange: NSRange?
         ) {
             let selectedRange = safeSelectedRange(for: textView, text: configuration.text)
-            let contentOffset = textView.contentOffset
+            let viewportAnchor = captureViewportAnchor(in: textView, selectedRange: selectedRange)
 
             isApplyingProgrammaticChange = true
             renderer.updateHiddenSyntaxVisibility(
@@ -595,7 +602,7 @@ extension MarkdownEditorTextView {
             }
             updateTypingAttributes(for: textView, font: configuration.font, resolvedTheme: configuration.resolvedTheme)
             textView.selectedRange = safeRange(selectedRange, forTextLength: textView.textStorage.length)
-            textView.setContentOffset(contentOffset, animated: false)
+            restoreViewport(viewportAnchor, in: textView)
             isApplyingProgrammaticChange = false
             lastRevealedLineRange = revealedLineRange
             hasPendingFullDocumentRerender = false
@@ -696,12 +703,12 @@ extension MarkdownEditorTextView {
                 return false
             }
 
-            let preservedContentOffset = textView.contentOffset
+            let viewportAnchor = captureViewportAnchor(in: textView, selectedRange: selectionRange)
             isApplyingProgrammaticChange = true
             applyAttributedFragmentInPlace(renderedLine, to: textView.textStorage, at: clampedLineRange)
             updateTypingAttributes(for: textView, font: configuration.font, resolvedTheme: configuration.resolvedTheme)
             textView.selectedRange = safeRange(selectionRange, forTextLength: textView.textStorage.length)
-            textView.setContentOffset(preservedContentOffset, animated: false)
+            restoreViewport(viewportAnchor, in: textView)
             isApplyingProgrammaticChange = false
 
             cancelDeferredRerender()
@@ -1820,6 +1827,94 @@ extension MarkdownEditorTextView {
             let location = min(max(range.location, 0), textLength)
             let length = min(max(range.length, 0), textLength - location)
             return NSRange(location: location, length: length)
+        }
+
+        private func captureViewportAnchor(
+            in textView: UITextView,
+            selectedRange: NSRange
+        ) -> ViewportAnchor {
+            guard
+                textView.isFirstResponder,
+                selectedRange.length == 0,
+                let caretPosition = textView.position(
+                    from: textView.beginningOfDocument,
+                    offset: selectedRange.location
+                )
+            else {
+                return .contentOffset(textView.contentOffset)
+            }
+
+            let caretRect = textView.caretRect(for: caretPosition)
+            return .caret(
+                location: selectedRange.location,
+                screenY: caretRect.minY - textView.contentOffset.y,
+                contentOffsetX: textView.contentOffset.x
+            )
+        }
+
+        private func restoreViewport(
+            _ anchor: ViewportAnchor,
+            in textView: UITextView
+        ) {
+            switch anchor {
+            case .contentOffset(let contentOffset):
+                textView.setContentOffset(contentOffset, animated: false)
+            case .caret(let location, let screenY, let contentOffsetX):
+                let safeLocation = min(max(location, 0), textView.textStorage.length)
+                guard
+                    let caretPosition = textView.position(
+                        from: textView.beginningOfDocument,
+                        offset: safeLocation
+                    )
+                else {
+                    return
+                }
+
+                let caretRect = textView.caretRect(for: caretPosition)
+                let targetOffset = CGPoint(
+                    x: contentOffsetX,
+                    y: caretRect.minY - screenY
+                )
+                let minimumContentSize = CGSize(
+                    width: caretRect.maxX + textView.textContainerInset.right,
+                    height: caretRect.maxY + textView.textContainerInset.bottom
+                )
+                textView.setContentOffset(
+                    clampedContentOffset(
+                        targetOffset,
+                        for: textView,
+                        minimumContentSize: minimumContentSize
+                    ),
+                    animated: false
+                )
+            }
+        }
+
+        private func clampedContentOffset(
+            _ contentOffset: CGPoint,
+            for scrollView: UIScrollView,
+            minimumContentSize: CGSize = .zero
+        ) -> CGPoint {
+            let adjustedInset = scrollView.adjustedContentInset
+            let contentSize = CGSize(
+                width: max(scrollView.contentSize.width, minimumContentSize.width),
+                height: max(scrollView.contentSize.height, minimumContentSize.height)
+            )
+            let minimumX = -adjustedInset.left
+            let minimumY = -adjustedInset.top
+            let maximumX = max(
+                minimumX,
+                contentSize.width - scrollView.bounds.width + adjustedInset.right
+            )
+            let maximumY = max(
+                minimumY,
+                contentSize.height - scrollView.bounds.height + adjustedInset.bottom
+            )
+
+            return CGPoint(
+                x: min(max(contentOffset.x, minimumX), maximumX),
+                y: min(max(contentOffset.y, minimumY), maximumY)
+            )
         }
 
         func normalizeViewportToDocumentStart(in textView: UITextView) {
