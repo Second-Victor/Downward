@@ -70,6 +70,11 @@ final class ThemeEditorSettingsPageTests: XCTestCase {
     }
 
     @MainActor
+    func testThemeAccentColorPropertyNamesHeadingAndAccentUsage() {
+        XCTAssertEqual(ThemeColorProperty.tint.title, "Heading / Accents")
+    }
+
+    @MainActor
     func testThemePreviewUsesFixedFontSizeIndependentOfEditorSettings() {
         let editorAppearanceStore = EditorAppearanceStore(
             initialPreferences: EditorAppearancePreferences(

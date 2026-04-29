@@ -46,7 +46,7 @@ struct MarkdownSyntaxStyleApplicator {
         )
         attributed.addAttribute(
             .foregroundColor,
-            value: resolvedTheme.syntaxMarkerText,
+            value: resolvedTheme.headingText,
             range: markerRange
         )
 
@@ -69,7 +69,7 @@ struct MarkdownSyntaxStyleApplicator {
         )
         attributed.addAttribute(
             .foregroundColor,
-            value: resolvedTheme.syntaxMarkerText,
+            value: resolvedTheme.headingText,
             range: underlineRange
         )
         attributed.addAttribute(.markdownSetextHeadingUnderline, value: true, range: underlineRange)
@@ -216,8 +216,10 @@ struct MarkdownSyntaxStyleApplicator {
         _ span: MarkdownDelimitedInlineSpan,
         in attributed: NSMutableAttributedString
     ) {
+        let markerColor: UIColor?
         switch span.style {
         case .boldItalic:
+            markerColor = nil
             applyInlineContent(
                 range: span.contentRange,
                 in: attributed,
@@ -228,6 +230,7 @@ struct MarkdownSyntaxStyleApplicator {
                 additionalAttributes: [.foregroundColor: resolvedTheme.emphasisText]
             )
         case .bold:
+            markerColor = nil
             applyInlineContent(
                 range: span.contentRange,
                 in: attributed,
@@ -238,6 +241,7 @@ struct MarkdownSyntaxStyleApplicator {
                 additionalAttributes: [.foregroundColor: resolvedTheme.emphasisText]
             )
         case .italic:
+            markerColor = nil
             applyInlineContent(
                 range: span.contentRange,
                 in: attributed,
@@ -248,6 +252,7 @@ struct MarkdownSyntaxStyleApplicator {
                 additionalAttributes: [.foregroundColor: resolvedTheme.emphasisText]
             )
         case .strikethrough:
+            markerColor = resolvedTheme.strikethroughText
             applyInlineContent(
                 range: span.contentRange,
                 in: attributed,
@@ -259,7 +264,7 @@ struct MarkdownSyntaxStyleApplicator {
             )
         }
 
-        applySyntaxMarkerRanges(span.markerRanges, in: attributed)
+        applySyntaxMarkerRanges(span.markerRanges, color: markerColor, in: attributed)
     }
 
     func applySyntaxMarkerRanges(

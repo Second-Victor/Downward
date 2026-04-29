@@ -55,7 +55,7 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
         XCTAssertEqual(attributed.attribute(.foregroundColor, at: headingRange.location, effectiveRange: nil) as? UIColor, theme.headingText)
         XCTAssertGreaterThan(headingFont?.pointSize ?? 0, baseFont.pointSize)
         XCTAssertTrue(headingFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
-        XCTAssertEqual(attributed.attribute(.foregroundColor, at: markerRange.location, effectiveRange: nil) as? UIColor, theme.syntaxMarkerText)
+        XCTAssertEqual(attributed.attribute(.foregroundColor, at: markerRange.location, effectiveRange: nil) as? UIColor, theme.headingText)
         XCTAssertEqual(attributed.attribute(.markdownHiddenSyntax, at: markerRange.location, effectiveRange: nil) as? Bool, true)
     }
 
@@ -227,11 +227,13 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
 
         let boldItalicFont = attributed.attribute(.font, at: nsText.range(of: "both").location, effectiveRange: nil) as? UIFont
         let strikeRange = nsText.range(of: "gone")
+        let strikeMarkerRange = nsText.range(of: "~~")
 
         XCTAssertTrue(boldItalicFont?.fontDescriptor.symbolicTraits.contains(.traitBold) == true)
         XCTAssertTrue(boldItalicFont?.fontDescriptor.symbolicTraits.contains(.traitItalic) == true)
         XCTAssertEqual(attributed.attribute(.foregroundColor, at: nsText.range(of: "both").location, effectiveRange: nil) as? UIColor, theme.emphasisText)
         XCTAssertEqual(attributed.attribute(.foregroundColor, at: strikeRange.location, effectiveRange: nil) as? UIColor, theme.strikethroughText)
+        XCTAssertEqual(attributed.attribute(.foregroundColor, at: strikeMarkerRange.location, effectiveRange: nil) as? UIColor, theme.strikethroughText)
         XCTAssertEqual(attributed.attribute(.strikethroughStyle, at: strikeRange.location, effectiveRange: nil) as? Int, NSUnderlineStyle.single.rawValue)
         XCTAssertEqual(attributed.attribute(.markdownHiddenSyntax, at: nsText.range(of: "***").location, effectiveRange: nil) as? Bool, true)
     }

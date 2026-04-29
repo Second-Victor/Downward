@@ -354,7 +354,7 @@ enum ThemeColorProperty: String, Identifiable, CaseIterable {
         switch self {
         case .background: "Background"
         case .text: "Text"
-        case .tint: "Accent"
+        case .tint: "Heading / Accents"
         case .boldItalicMarker: "Bold / Italic Markers"
         case .strikethrough: "Strikethrough Text"
         case .inlineCode: "Code"
