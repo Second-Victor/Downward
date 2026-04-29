@@ -28,17 +28,8 @@ struct ThemeSettingsPage: View {
                     SettingsHomeLabel(
                         title: "Extra Themes",
                         systemName: "circle.hexagongrid.fill",
-                        colors: [
-                            .orange,
-                            .pink,
-                            .teal,
-//                            Color(uiColor: .label),
-                            .yellow,
-                            .purple,
-                            .blue,
-                            .green
-                        ],
-                        usesDiscreteColorDots: true
+                        colors: [.accentColor],
+                        usesMulticolor: true
                     )
                 }
             } footer: {
@@ -87,7 +78,7 @@ struct ExtraThemesSettingsPage: View {
                                     )
                                 }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                GradientIconLabel("Delete", systemName: "trash", color: .red)
                             }
                         }
                     }
@@ -96,7 +87,7 @@ struct ExtraThemesSettingsPage: View {
                             Button {
                                 push(.editTheme(customTheme.id))
                             } label: {
-                                Label("Edit", systemImage: "pencil")
+                                GradientIconLabel("Edit", systemName: "pencil", color: .orange)
                             }
                             .tint(.orange)
                         }
@@ -258,7 +249,7 @@ struct ThemeSelectionRow: View {
                     Spacer()
                     if isSelected {
                         Image(systemName: "checkmark")
-                            .foregroundStyle(.tint)
+                            .symbolGradient(.accentColor)
                             .bold()
                     }
                 }
@@ -268,13 +259,14 @@ struct ThemeSelectionRow: View {
             .disabled(isEnabled == false)
 
             if let onEdit {
-                Button("Edit", systemImage: "slider.horizontal.3", action: onEdit)
-                    .labelStyle(.iconOnly)
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 32, height: 32)
-                    .contentShape(.rect)
-                    .buttonStyle(.plain)
+                Button(action: onEdit) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.title3)
+                        .symbolGradient(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
             }
         }
         .opacity(isEnabled ? 1 : 0.55)
@@ -285,7 +277,7 @@ private struct ThemeLockedRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "lock.fill")
-                .foregroundStyle(.secondary)
+                .symbolGradient(.secondary)
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 3) {

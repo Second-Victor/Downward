@@ -4,9 +4,13 @@ struct EditorOverlayChrome: View {
     let viewModel: EditorViewModel
 
     var body: some View {
-        Label(viewModel.saveStateText, systemImage: viewModel.saveStateSymbolName)
+        Label {
+            Text(viewModel.saveStateText)
+        } icon: {
+            Image(systemName: viewModel.saveStateSymbolName)
+                .symbolGradient(.red)
+        }
             .font(.caption)
-            .foregroundStyle(.red)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(viewModel.saveStateText)
             .accessibilityValue(viewModel.saveFailureMessage ?? "")

@@ -11,7 +11,7 @@ struct ReconnectWorkspaceView: View {
             VStack(spacing: 20) {
                 Image(systemName: "externaldrive.badge.exclamationmark")
                     .font(.system(size: 40, weight: .medium))
-                    .foregroundStyle(.orange)
+                    .symbolGradient(.orange)
                     .accessibilityHidden(true)
 
                 VStack(spacing: 8) {

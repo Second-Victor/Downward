@@ -9,9 +9,13 @@ struct ConflictResolutionView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     if let error = viewModel.conflictError {
                         VStack(alignment: .leading, spacing: 12) {
-                            Label(error.title, systemImage: "exclamationmark.triangle.fill")
+                            Label {
+                                Text(error.title)
+                            } icon: {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .symbolGradient(.red)
+                            }
                                 .font(.headline)
-                                .foregroundStyle(.red)
 
                             Text(error.message)
                                 .foregroundStyle(.primary)

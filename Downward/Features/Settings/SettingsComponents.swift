@@ -61,7 +61,7 @@ struct SettingsPageHeader<Trailing: View>: View {
                     Button(action: backAction) {
                         Image(systemName: "chevron.left")
                             .font(.title3.weight(.bold))
-                            .foregroundStyle(.primary)
+                            .symbolGradient(.primary)
                             .frame(width: 52, height: 52)
                             .background(.regularMaterial, in: Circle())
                     }
@@ -211,13 +211,13 @@ struct SettingsRowContent: View {
             if showsChevron {
                 Image(systemName: "chevron.right")
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                    .symbolGradient(Color(uiColor: .tertiaryLabel))
             }
 
             if let trailingSystemImage {
                 Image(systemName: trailingSystemImage)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .symbolGradient(.primary)
             }
         }
         .padding(.horizontal, 22)
@@ -237,12 +237,13 @@ struct SettingsIconView: View {
             case let .symbol(systemName):
                 Image(systemName: systemName)
                     .font(.body.weight(.semibold))
+                    .symbolGradient(tint)
             case let .text(text):
                 Text(text)
                     .font(.body.weight(.medium))
+                    .foregroundStyle(tint)
             }
         }
-        .foregroundStyle(tint)
         .frame(width: 22, height: 22)
         .accessibilityHidden(true)
     }
@@ -265,7 +266,7 @@ struct SettingsSelectableRow: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.body.weight(.bold))
-                        .foregroundStyle(.blue)
+                        .symbolGradient(.blue)
                 }
             }
             .padding(.horizontal, 24)
@@ -304,6 +305,7 @@ struct SettingsStepperRow: View {
             HStack(spacing: 0) {
                 Button(action: decrementAction) {
                     Image(systemName: "minus")
+                        .symbolGradient(.primary)
                         .frame(width: 46, height: 34)
                 }
                 .disabled(canDecrement == false)
@@ -313,12 +315,12 @@ struct SettingsStepperRow: View {
 
                 Button(action: incrementAction) {
                     Image(systemName: "plus")
+                        .symbolGradient(.primary)
                         .frame(width: 46, height: 34)
                 }
                 .disabled(canIncrement == false)
             }
             .font(.body.weight(.bold))
-            .foregroundStyle(.primary)
             .background(Color(uiColor: .tertiarySystemFill), in: Capsule(style: .continuous))
         }
         .padding(.horizontal, 22)

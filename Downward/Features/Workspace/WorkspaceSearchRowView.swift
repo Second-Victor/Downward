@@ -13,7 +13,7 @@ struct WorkspaceSearchRowView: View {
             HStack(alignment: .center, spacing: iconToTitleSpacing) {
                 Image(systemName: "doc.text")
                     .font(.title2)
-                    .foregroundStyle(.secondary)
+                    .symbolGradient(.secondary)
                     .frame(width: iconColumnWidth, alignment: .center)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -24,7 +24,7 @@ struct WorkspaceSearchRowView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Image(systemName: result.pathContextSymbolName)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .symbolGradient(Color(uiColor: .tertiaryLabel))
                             .accessibilityHidden(true)
 
                         Text(result.pathContextText)

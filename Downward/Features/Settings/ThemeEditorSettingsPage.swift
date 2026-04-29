@@ -90,7 +90,7 @@ struct ThemeEditorSettingsPage: View {
                         }
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.yellow)
+                            .symbolGradient(.yellow)
                     }
                     .listRowBackground(Color.yellow.opacity(0.12))
                 }
@@ -145,8 +145,14 @@ struct ThemeEditorSettingsPage: View {
         .toolbar {
             if editing != nil {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(ThemeEditorDraftExport.buttonTitle, systemImage: "square.and.arrow.up") {
+                    Button {
                         exportTheme()
+                    } label: {
+                        GradientIconLabel(
+                            ThemeEditorDraftExport.buttonTitle,
+                            systemName: "square.and.arrow.up",
+                            color: .accentColor
+                        )
                     }
                 }
             }
@@ -191,11 +197,13 @@ struct ThemeEditorSettingsPage: View {
     }
 
     private var lockedThemesView: some View {
-        ContentUnavailableView(
+        GradientContentUnavailableView(
             "Extra Themes Locked",
-            systemImage: "lock.fill",
-            description: Text("Built-in themes are free. Extra themes require the Themes unlock.")
-        )
+            systemName: "lock.fill",
+            color: .secondary
+        ) {
+            Text("Built-in themes are free. Extra themes require the Themes unlock.")
+        }
         .navigationTitle(editing == nil ? "New Theme" : "Edit Theme")
     }
 
@@ -356,7 +364,7 @@ enum ThemeEditorDraftExport {
 enum ThemeEditorPreviewLayout {
     static let previewFontSize: CGFloat = 15
     static let previewHeight: CGFloat = 270
-    static let cornerRadius: CGFloat = 16
+    static let cornerRadius: CGFloat = 20
     static let topPadding: CGFloat = 8
     static let bottomPadding: CGFloat = 8
     static let listTopContentMargin = previewHeight + topPadding + bottomPadding

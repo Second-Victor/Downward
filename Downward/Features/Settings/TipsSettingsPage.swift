@@ -48,7 +48,7 @@ struct SettingsTipRow: View {
         HStack(spacing: 20) {
             Image(systemName: tip.icon)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(tip.tint)
+                .symbolGradient(tip.tint)
                 .frame(width: 34)
 
             VStack(alignment: .leading, spacing: 4) {

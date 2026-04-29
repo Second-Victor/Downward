@@ -86,6 +86,7 @@ private struct AboutLinkRow: View {
         Link(destination: destination) {
             HStack(spacing: 10) {
                 Image(systemName: systemName)
+                    .symbolGradient(.primary)
                     .frame(width: 18)
                     .accessibilityHidden(true)
 

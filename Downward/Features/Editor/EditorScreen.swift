@@ -120,17 +120,21 @@ struct EditorScreen: View {
             .ignoresSafeArea(.container, edges: [.top, .bottom])
             .ignoresSafeArea(.keyboard, edges: .bottom)
         } else if let error = viewModel.loadError {
-            ContentUnavailableView(
+            GradientContentUnavailableView(
                 error.title,
-                systemImage: "exclamationmark.triangle",
-                description: Text(error.message)
-            )
+                systemName: "exclamationmark.triangle",
+                color: .orange
+            ) {
+                Text(error.message)
+            }
         } else {
-            ContentUnavailableView(
+            GradientContentUnavailableView(
                 "Loading Document",
-                systemImage: "doc.text",
-                description: Text("Opening the selected file.")
-            )
+                systemName: "doc.text",
+                color: .secondary
+            ) {
+                Text("Opening the selected file.")
+            }
         }
     }
 

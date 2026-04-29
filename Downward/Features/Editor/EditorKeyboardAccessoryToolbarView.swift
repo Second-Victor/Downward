@@ -95,12 +95,6 @@ final class KeyboardAccessoryToolbarView: UIView {
         toolbar.frame = CGRect(x: 0, y: 0, width: bounds.width, height: toolbarHeight)
     }
 
-    func updateFormatMenu(_ formatMenu: UIMenu) {
-        // Kept as the narrow replacement point for future dynamic format menus. The coordinator
-        // currently builds the menu once so accessory state refreshes do not churn UIKit menu items.
-        formatButton.menu = formatMenu
-    }
-
     func update(canUndo: Bool, canRedo: Bool, canDismiss: Bool) {
         undoButton.isEnabled = canUndo
         redoButton.isEnabled = canRedo
@@ -111,7 +105,7 @@ final class KeyboardAccessoryToolbarView: UIView {
 
     func applyResolvedTheme(_ resolvedTheme: ResolvedEditorTheme) {
         self.resolvedTheme = resolvedTheme
-        // The toolbar's tint drives the bar-button (undo / redo / dismiss) icon color.
+        // The toolbar's tint drives the keyboard bar-button icon color.
         // Background stays clear so the keyboard host's own material shows through, which
         // keeps the accessory visually consistent with the status bar / nav bar buttons.
         toolbar.tintColor = resolvedTheme.accent

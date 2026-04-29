@@ -8,11 +8,13 @@ struct RecentFilesSheet: View {
     var body: some View {
         Group {
             if viewModel.recentFiles.isEmpty {
-                ContentUnavailableView(
+                GradientContentUnavailableView(
                     "No Recent Files",
-                    systemImage: "clock",
-                    description: Text("Files you open in this workspace will appear here for quick reopen.")
-                )
+                    systemName: "clock",
+                    color: .secondary
+                ) {
+                    Text("Files you open in this workspace will appear here for quick reopen.")
+                }
             } else {
                 List {
                     Section {

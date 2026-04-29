@@ -16,17 +16,21 @@ struct WorkspaceScreen: View {
     var body: some View {
         Group {
             if viewModel.isLoading {
-                ContentUnavailableView(
+                GradientContentUnavailableView(
                     "Loading Workspace",
-                    systemImage: "arrow.trianglehead.2.clockwise.rotate.90",
-                    description: Text("Reading the current folder structure.")
-                )
+                    systemName: "arrow.trianglehead.2.clockwise.rotate.90",
+                    color: .secondary
+                ) {
+                    Text("Reading the current folder structure.")
+                }
             } else if viewModel.isShowingErrorState, let error = viewModel.loadError {
-                ContentUnavailableView(
+                GradientContentUnavailableView(
                     error.title,
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(error.message)
-                )
+                    systemName: "exclamationmark.triangle",
+                    color: .orange
+                ) {
+                    Text(error.message)
+                }
             } else {
                 WorkspaceFolderScreen(
                     viewModel: viewModel,

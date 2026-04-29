@@ -15,7 +15,7 @@ struct LaunchStateView: View {
             VStack(spacing: 20) {
                 Image(systemName: symbolName)
                     .font(.system(size: 40, weight: .medium))
-                    .foregroundStyle(.tint)
+                    .symbolGradient(.accentColor)
                     .accessibilityHidden(true)
 
                 VStack(spacing: 8) {

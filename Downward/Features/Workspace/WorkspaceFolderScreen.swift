@@ -57,8 +57,10 @@ struct WorkspaceFolderScreen: View {
         .toolbar {
             if showsSettingsButton {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Settings", systemImage: "gearshape") {
+                    Button {
                         viewModel.showSettings()
+                    } label: {
+                        GradientIconLabel("Settings", systemName: "gearshape", color: .accentColor)
                     }
                     .disabled(viewModel.isBusy)
                     .accessibilityHint("Shows workspace management options.")
@@ -66,13 +68,19 @@ struct WorkspaceFolderScreen: View {
             }
 
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Menu("Add", systemImage: "plus") {
-                    Button("New File", systemImage: "doc.badge.plus") {
+                Menu {
+                    Button {
                         viewModel.presentCreateFile(in: nil)
+                    } label: {
+                        GradientIconLabel("New File", systemName: "doc.badge.plus", color: .accentColor)
                     }
-                    Button("New Folder", systemImage: "folder.badge.plus") {
+                    Button {
                         viewModel.presentCreateFolder(in: nil)
+                    } label: {
+                        GradientIconLabel("New Folder", systemName: "folder.badge.plus", color: .accentColor)
                     }
+                } label: {
+                    GradientIconLabel("Add", systemName: "plus", color: .accentColor)
                 }
                 .disabled(viewModel.isBusy)
                 .accessibilityLabel("Add Item")
@@ -195,11 +203,13 @@ struct WorkspaceFolderScreen: View {
 
     private func refreshableStateView(title: String, systemImage: String, message: String) -> some View {
         ScrollView {
-            ContentUnavailableView(
+            GradientContentUnavailableView(
                 title,
-                systemImage: systemImage,
-                description: Text(message)
-            )
+                systemName: systemImage,
+                color: .secondary
+            ) {
+                Text(message)
+            }
             .frame(maxWidth: .infinity)
             .padding(.top, 48)
         }
@@ -283,36 +293,46 @@ private struct WorkspaceTreeRow: View {
             }
             .buttonStyle(.plain)
             .contextMenu {
-                Button("New File", systemImage: "plus") {
+                Button {
                     viewModel.presentCreateFile(in: folder.url)
+                } label: {
+                    GradientIconLabel("New File", systemName: "plus", color: .accentColor)
                 }
                 .disabled(viewModel.areRowActionsDisabled)
                 .accessibilityLabel("New File in \(node.displayName)")
                 .accessibilityHint("Creates a text or source file inside this folder.")
 
-                Button("New Folder", systemImage: "folder.badge.plus") {
+                Button {
                     viewModel.presentCreateFolder(in: folder.url)
+                } label: {
+                    GradientIconLabel("New Folder", systemName: "folder.badge.plus", color: .accentColor)
                 }
                 .disabled(viewModel.areRowActionsDisabled)
                 .accessibilityLabel("New Folder in \(node.displayName)")
                 .accessibilityHint("Creates a folder inside this folder.")
 
-                Button("Rename", systemImage: "pencil") {
+                Button {
                     viewModel.presentRename(for: node)
+                } label: {
+                    GradientIconLabel("Rename", systemName: "pencil", color: .accentColor)
                 }
                 .disabled(viewModel.areRowActionsDisabled)
                 .accessibilityLabel("Rename \(node.displayName)")
                 .accessibilityHint("Changes the folder name.")
 
-                Button("Move", systemImage: "folder") {
+                Button {
                     viewModel.presentMove(for: node)
+                } label: {
+                    GradientIconLabel("Move", systemName: "folder", color: .blue)
                 }
                 .disabled(viewModel.areRowActionsDisabled)
                 .accessibilityLabel("Move \(node.displayName)")
                 .accessibilityHint("Moves this folder to another folder in the workspace.")
 
-                Button("Delete", systemImage: "trash", role: .destructive) {
+                Button(role: .destructive) {
                     viewModel.presentDelete(for: node)
+                } label: {
+                    GradientIconLabel("Delete", systemName: "trash", color: .red)
                 }
                 .disabled(viewModel.areRowActionsDisabled)
                 .accessibilityLabel("Delete \(node.displayName)")
@@ -408,28 +428,34 @@ private struct WorkspaceTreeRow: View {
 
     @ViewBuilder
     private var fileContextMenu: some View {
-        Button("Move", systemImage: "folder") {
+        Button {
             if case .file = node {
                 viewModel.presentMove(for: node)
             }
+        } label: {
+            GradientIconLabel("Move", systemName: "folder", color: .blue)
         }
         .disabled(viewModel.areRowActionsDisabled)
         .accessibilityLabel("Move \(node.displayName)")
         .accessibilityHint("Moves this file to another folder in the workspace.")
 
-        Button("Rename", systemImage: "pencil") {
+        Button {
             if case .file = node {
                 viewModel.presentRename(for: node)
             }
+        } label: {
+            GradientIconLabel("Rename", systemName: "pencil", color: .accentColor)
         }
         .disabled(viewModel.areRowActionsDisabled)
         .accessibilityLabel("Rename \(node.displayName)")
         .accessibilityHint("Changes the file name.")
 
-        Button("Delete", systemImage: "trash", role: .destructive) {
+        Button(role: .destructive) {
             if case .file = node {
                 viewModel.presentDelete(for: node)
             }
+        } label: {
+            GradientIconLabel("Delete", systemName: "trash", color: .red)
         }
         .disabled(viewModel.areRowActionsDisabled)
         .accessibilityLabel("Delete \(node.displayName)")
@@ -438,26 +464,32 @@ private struct WorkspaceTreeRow: View {
 
     @ViewBuilder
     private var fileSwipeActions: some View {
-        Button("Move", systemImage: "folder") {
+        Button {
             if case .file = node {
                 viewModel.presentMove(for: node)
             }
+        } label: {
+            GradientIconLabel("Move", systemName: "folder", color: .blue)
         }
         .disabled(viewModel.areRowActionsDisabled)
         .tint(.blue)
 
-        Button("Rename", systemImage: "pencil") {
+        Button {
             if case .file = node {
                 viewModel.presentRename(for: node)
             }
+        } label: {
+            GradientIconLabel("Rename", systemName: "pencil", color: .accentColor)
         }
         .disabled(viewModel.areRowActionsDisabled)
         .tint(.accentColor)
 
-        Button("Delete", systemImage: "trash") {
+        Button {
             if case .file = node {
                 viewModel.presentDelete(for: node)
             }
+        } label: {
+            GradientIconLabel("Delete", systemName: "trash", color: .red)
         }
         .disabled(viewModel.areRowActionsDisabled)
         .tint(.red)
@@ -465,26 +497,32 @@ private struct WorkspaceTreeRow: View {
 
     @ViewBuilder
     private var folderSwipeActions: some View {
-        Button("Move", systemImage: "folder") {
+        Button {
             if case .folder = node {
                 viewModel.presentMove(for: node)
             }
+        } label: {
+            GradientIconLabel("Move", systemName: "folder", color: .blue)
         }
         .disabled(viewModel.areRowActionsDisabled)
         .tint(.blue)
 
-        Button("Rename", systemImage: "pencil") {
+        Button {
             if case .folder = node {
                 viewModel.presentRename(for: node)
             }
+        } label: {
+            GradientIconLabel("Rename", systemName: "pencil", color: .accentColor)
         }
         .disabled(viewModel.areRowActionsDisabled)
         .tint(.accentColor)
 
-        Button("Delete", systemImage: "trash") {
+        Button {
             if case .folder = node {
                 viewModel.presentDelete(for: node)
             }
+        } label: {
+            GradientIconLabel("Delete", systemName: "trash", color: .red)
         }
         .disabled(viewModel.areRowActionsDisabled)
         .tint(.red)

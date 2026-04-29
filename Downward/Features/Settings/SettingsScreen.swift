@@ -143,7 +143,13 @@ struct SettingsScreen: View {
                 )
                 .roundedNavigationBarTitles()
             } else {
-                ContentUnavailableView("Theme Missing", systemImage: "paintpalette", description: Text("The selected custom theme could not be found."))
+                GradientContentUnavailableView(
+                    "Theme Missing",
+                    systemName: "paintpalette",
+                    color: .secondary
+                ) {
+                    Text("The selected custom theme could not be found.")
+                }
                     .roundedNavigationBarTitles()
             }
         case .markdown:
@@ -212,11 +218,13 @@ struct SettingsScreen: View {
     }
 
     private var lockedThemesView: some View {
-        ContentUnavailableView(
+        GradientContentUnavailableView(
             "Extra Themes Locked",
-            systemImage: "lock.fill",
-            description: Text("Built-in themes are free. Extra themes require the Themes unlock.")
-        )
+            systemName: "lock.fill",
+            color: .secondary
+        ) {
+            Text("Built-in themes are free. Extra themes require the Themes unlock.")
+        }
     }
 }
 

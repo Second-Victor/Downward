@@ -13,7 +13,7 @@ struct RecentFileRowView: View {
             HStack(alignment: .center, spacing: iconToTitleSpacing) {
                 Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
                     .font(.title3)
-                    .foregroundStyle(.secondary)
+                    .symbolGradient(.secondary)
                     .frame(width: iconColumnWidth, alignment: .center)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -24,7 +24,7 @@ struct RecentFileRowView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Image(systemName: item.pathContextSymbolName)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .symbolGradient(Color(uiColor: .tertiaryLabel))
                             .accessibilityHidden(true)
 
                         Text(item.pathContextText)

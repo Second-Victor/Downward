@@ -7,11 +7,13 @@ struct WorkspaceSearchResultsView: View {
     var body: some View {
         if viewModel.searchResults.isEmpty {
             ScrollView {
-                ContentUnavailableView(
+                GradientContentUnavailableView(
                     "No Matching Files",
-                    systemImage: "magnifyingglass",
-                    description: Text("No supported text files match \"\(viewModel.searchQueryDescription)\". Try a file name or a folder path.")
-                )
+                    systemName: "magnifyingglass",
+                    color: .secondary
+                ) {
+                    Text("No supported text files match \"\(viewModel.searchQueryDescription)\". Try a file name or a folder path.")
+                }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 48)
             }

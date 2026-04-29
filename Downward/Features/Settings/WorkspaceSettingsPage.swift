@@ -48,7 +48,7 @@ struct WorkspaceSettingsPage: View {
                     HStack(spacing: 10) {
                         Image(systemName: "folder.badge.plus")
                             .symbolRenderingMode(.palette)
-                            .foregroundStyle(.red, .blue)
+                            .foregroundStyle(.green, .blue)
                             .frame(width: 22)
                             .accessibilityHidden(true)
 
@@ -67,6 +67,7 @@ struct WorkspaceSettingsPage: View {
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "xmark.circle")
+                                .symbolGradient(.red)
                                 .frame(width: 22)
                                 .accessibilityHidden(true)
 

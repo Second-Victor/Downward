@@ -23,7 +23,7 @@ struct WorkspaceRowView: View {
             HStack(alignment: .center, spacing: iconToTitleSpacing) {
                 Image(systemName: node.isFolder ? "folder" : "doc.text")
                     .font(.title2)
-                    .foregroundStyle(node.isFolder ? Color.accentColor : .secondary)
+                    .symbolGradient(node.isFolder ? .accentColor : .secondary)
                     .frame(width: iconColumnWidth, alignment: .center)
 
                 VStack(alignment: .leading, spacing: node.subtitle == nil ? 0 : 3) {
@@ -58,6 +58,7 @@ struct WorkspaceRowView: View {
 
                 Image(systemName: folderDisclosureState == .expanded ? "chevron.down" : "chevron.right")
                     .font(.caption.weight(.semibold))
+                    .symbolGradient(.secondary)
                     .frame(width: 12)
                     .accessibilityHidden(true)
             }

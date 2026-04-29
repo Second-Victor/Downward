@@ -305,7 +305,7 @@ struct SettingsFontRow: View {
 
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .foregroundStyle(.tint)
+                        .symbolGradient(.accentColor)
                         .bold()
                 }
             }
