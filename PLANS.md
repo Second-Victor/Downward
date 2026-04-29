@@ -73,12 +73,13 @@ The previous completed backlog has been compressed out of this file. The current
 - [ ] If Tips ships, implement real StoreKit products and purchase handling.
 - [x] If Tips does not ship, hide the Tips page and remove visible prices from release builds.
 - [x] Decide whether “Rate the App” ships in 1.0.
-- [ ] If rating ships, wire it to the App Store review flow with a final App Store ID.
-- [x] If rating does not ship, hide the row.
+- [x] If rating ships, wire it to a working App Store review flow.
+- [ ] If using a direct App Store review URL, confirm the final App Store ID.
+  - Not applicable for the current implementation path unless a direct review URL replaces StoreKit `requestReview()`.
 - [x] Configure final Privacy Policy and Terms URLs, or hide those rows.
 - [x] Update tests so `SettingsPlaceholderFeature` matches the release decision.
 - [ ] Record the final Settings walkthrough in `RELEASE_QA.md`.
-  - Release Settings automated coverage and an unchecked manual walkthrough case were added on 2026-04-28; the actual release-build walkthrough still needs to be performed.
+  - Automated Settings tests were updated on 2026-04-29 after final About/legal URLs were configured; the actual release-build Settings walkthrough still needs to be performed.
 
 ## 4. Real-device Files provider QA
 

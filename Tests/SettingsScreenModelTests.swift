@@ -163,15 +163,18 @@ final class SettingsScreenModelTests: XCTestCase {
     }
 
     @MainActor
-    func testReleaseConfigurationHidesUnfinishedSettingsSurfaces() {
+    func testReleaseConfigurationShowsImplementedInformationSurfaces() {
         let configuration = SettingsReleaseConfiguration.current
 
         XCTAssertFalse(configuration.showsTipsPage)
-        XCTAssertFalse(configuration.showsRateTheApp)
-        XCTAssertFalse(configuration.showsLegalLinks)
+        XCTAssertTrue(configuration.showsRateTheApp)
+        XCTAssertTrue(configuration.showsLegalLinks)
+        XCTAssertEqual(configuration.projectURL?.absoluteString, "https://secondvictor.com/public/projects/downward/downward.html")
+        XCTAssertEqual(configuration.privacyPolicyURL?.absoluteString, "https://secondvictor.com/public/projects/downward/downward-policy.html")
+        XCTAssertEqual(configuration.termsAndConditionsURL?.absoluteString, "https://secondvictor.com/public/projects/downward/downward-terms.html")
         XCTAssertFalse(SettingsPlaceholderFeature.tipsPurchases.isVisible(in: configuration))
-        XCTAssertFalse(SettingsPlaceholderFeature.rateTheApp.isVisible(in: configuration))
-        XCTAssertFalse(SettingsPlaceholderFeature.legalLinks.isVisible(in: configuration))
+        XCTAssertTrue(SettingsPlaceholderFeature.rateTheApp.isVisible(in: configuration))
+        XCTAssertTrue(SettingsPlaceholderFeature.legalLinks.isVisible(in: configuration))
         XCTAssertTrue(SettingsPlaceholderFeature.lineNumbers.isVisible(in: configuration))
         XCTAssertTrue(SettingsPlaceholderFeature.largerHeadingText.isVisible(in: configuration))
         XCTAssertTrue(SettingsPlaceholderFeature.tapToToggleTasks.isVisible(in: configuration))
@@ -199,14 +202,14 @@ final class SettingsScreenModelTests: XCTestCase {
 
     func testPlaceholderSettingsAreNotMarkedImplemented() {
         let placeholders: [SettingsPlaceholderFeature] = [
-            .tipsPurchases,
-            .rateTheApp,
-            .legalLinks
+            .tipsPurchases
         ]
 
         XCTAssertTrue(placeholders.allSatisfy { $0.isImplemented == false })
         XCTAssertTrue(SettingsPlaceholderFeature.lineNumbers.isImplemented)
         XCTAssertTrue(SettingsPlaceholderFeature.largerHeadingText.isImplemented)
         XCTAssertTrue(SettingsPlaceholderFeature.tapToToggleTasks.isImplemented)
+        XCTAssertTrue(SettingsPlaceholderFeature.rateTheApp.isImplemented)
+        XCTAssertTrue(SettingsPlaceholderFeature.legalLinks.isImplemented)
     }
 }

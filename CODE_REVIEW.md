@@ -124,22 +124,22 @@ Current project settings were aligned on 2026-04-28 so the project, app target, 
 
 ## 3. Decide what to do with visible placeholder monetisation and legal surfaces
 
-The Settings UI now gates unfinished placeholder-like surfaces through `SettingsReleaseConfiguration.current`:
+The Settings UI gates unfinished placeholder-like surfaces through `SettingsReleaseConfiguration.current`:
 
 - `TipsSettingsPage` remains in source for later StoreKit work, but the Settings home entry and destination are hidden for 1.0 while purchases are disabled.
-- `InformationSettingsPage` only shows “Rate the App” when an App Store review URL is configured.
-- `AboutSettingsPage` only shows Privacy Policy / Terms & Conditions rows when URLs are configured.
-- `SettingsPlaceholderFeature` still marks `.tipsPurchases`, `.rateTheApp`, and `.legalLinks` as not implemented, and tests cover that the current release configuration hides them.
+- `InformationSettingsPage` shows “Rate the App” because it is wired to StoreKit's in-app review request, with an App Store review URL still supported as an override.
+- `AboutSettingsPage` shows the configured public project page, Privacy Policy, and Terms & Conditions links.
+- `SettingsPlaceholderFeature` still marks `.tipsPurchases` as not implemented; review and legal links are now implemented release surfaces.
 
 For a release build, visible non-functional monetisation/legal rows can confuse users and may create review friction.
 
 - [x] Either hide the Tips page for 1.0 or implement real StoreKit products and receipt-safe purchase handling.
-- [x] Either hide “Rate the App” or wire it to the App Store review flow only when an App Store ID is available.
+- [x] Either hide “Rate the App” or wire it to a working App Store review flow.
 - [x] Either hide Privacy Policy / Terms rows or configure final URLs.
 - [ ] Confirm App Store metadata includes any required privacy/legal links.
 - [ ] Add a release QA case that visits Settings > Tips and Settings > Information/About in the release build.
 - [x] Update tests so placeholder expectations match the intended release behaviour.
-  - An unchecked manual QA case was added to `RELEASE_QA.md`; the actual release-build Settings walkthrough still needs to be performed.
+  - Automated Settings tests were updated on 2026-04-29 after final About/legal URLs were configured; the actual release-build Settings walkthrough still needs to be performed.
 
 ## 4. Perform real-device Files provider QA
 
@@ -420,7 +420,7 @@ The coordinator is doing a lot of orchestration. Keep it stable for release; spl
 
 Current status: visually useful, but release gating needed.
 
-Settings now hides placeholder purchase/review/legal surfaces for the 1.0 release unless their backing StoreKit, App Store review URL, or legal URLs are configured.
+Settings hides unfinished purchase surfaces for the 1.0 release, while review and legal/About rows now have release backing via StoreKit `requestReview()` and configured URLs.
 
 ## `Downward/Infrastructure/Logging/DebugLogger.swift`
 

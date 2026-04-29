@@ -6,6 +6,49 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 
 ## Latest QA run
 
+- Date: 2026-04-29
+- Branch/commit at start of run: `main` / `4586602`
+- Xcode: Xcode 26.4 (17E192)
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`)
+- Commands run:
+  - `git status --short`
+  - `rg -n "SettingsReleaseConfiguration|InformationSettingsPage|AboutSettingsPage|SettingsPlaceholderFeature|rateTheApp|legalLinks|Privacy Policy|Terms" Downward Tests`
+  - `sed -n '1,260p' Downward/Features/Settings/InformationSettingsPage.swift`
+  - `sed -n '1,220p' Downward/Features/Settings/SettingsReleaseConfiguration.swift`
+  - `sed -n '1,240p' Downward/Features/Settings/SettingsScreen.swift`
+  - `sed -n '140,230p' Tests/SettingsScreenModelTests.swift`
+  - `sed -n '1,220p' Downward/Features/Settings/SettingsHomePage.swift`
+  - `git diff --check`
+  - `xcrun simctl list devices available`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-SettingsInfo -resultBundlePath /tmp/Downward-SettingsInfo.xcresult -only-testing:DownwardTests/SettingsScreenModelTests`
+  - `tail -n 80 RELEASE_QA.md`
+  - `git diff -- Downward/Features/Settings/InformationSettingsPage.swift Downward/Features/Settings/SettingsReleaseConfiguration.swift Downward/Features/Settings/SettingsScreen.swift Tests/SettingsScreenModelTests.swift`
+  - `git rev-parse --abbrev-ref HEAD`
+  - `git rev-parse --short HEAD`
+  - `xcodebuild -version`
+  - `rg -n "Rate the App|Privacy|Terms|legal|Settings|Tips|review" CODE_REVIEW.md PLANS.md`
+  - `sed -n '100,180p' PLANS.md`
+  - `sed -n '80,150p' CODE_REVIEW.md`
+  - `sed -n '68,84p' PLANS.md`
+  - `sed -n '125,145p' CODE_REVIEW.md`
+  - `sed -n '418,428p' CODE_REVIEW.md`
+  - `git status --short`
+  - `git diff --stat`
+  - `git diff -- CODE_REVIEW.md PLANS.md RELEASE_QA.md Downward/Features/Settings/InformationSettingsPage.swift Downward/Features/Settings/SettingsReleaseConfiguration.swift Downward/Features/Settings/SettingsScreen.swift Tests/SettingsScreenModelTests.swift`
+- Result:
+  - Focused Settings model tests passed on iPhone 17 Pro simulator: 15 passed, 0 skipped, 0 failed.
+  - `git diff --check` passed.
+- Release Settings decision update:
+  - Tips remain disabled and hidden for 1.0 until StoreKit products and purchase handling exist.
+  - “Rate the App” now ships using StoreKit `requestReview()` when no direct App Store review URL is configured.
+  - About now links to the configured Downward project page, Privacy Policy, and Terms & Conditions URLs:
+    - `https://secondvictor.com/public/projects/downward/downward.html`
+    - `https://secondvictor.com/public/projects/downward/downward-policy.html`
+    - `https://secondvictor.com/public/projects/downward/downward-terms.html`
+- Notes/failures:
+  - No release-build Settings walkthrough, real-device QA, archive validation, TestFlight install, or App Store metadata validation was performed in this pass.
+
 - Date: 2026-04-28
 - Branch/commit at start of run: `main` / working tree after prior release-stabilisation edits
 - Xcode: Xcode 26.4 (17E192)
@@ -650,11 +693,11 @@ Expected result when disabled: app appearance controls chrome as before.
 
 - [ ] Settings sheet hierarchy inspected on compact width.
 - [ ] Settings sheet hierarchy inspected on regular width.
-- [ ] Release build Settings walkthrough confirms Tips entry, Rate the App row, Privacy Policy row, and Terms & Conditions row are hidden while their backing configuration is absent.
+- [ ] Release build Settings walkthrough confirms Tips entry is hidden and Rate the App, Privacy Policy, and Terms & Conditions rows are visible with configured release backing.
 - [ ] Built-in theme switching observed.
 - [ ] Custom theme create/edit/delete observed.
 - [ ] Low-contrast theme warning observed.
-- [x] Automated Settings model tests confirm StoreKit tips, review, and legal actions are hidden by the current release configuration.
+- [x] Automated Settings model tests confirm StoreKit tips are hidden and review/legal About actions are visible with the current release configuration.
 
 ## Theme Import/Export
 
@@ -685,7 +728,7 @@ Expected result when disabled: app appearance controls chrome as before.
 ## Known Limitations and Deferred Future Features
 
 - [x] StoreKit tips are disabled and hidden for 1.0 until real products and purchase handling are implemented.
-- [x] App Store review/rating routing is disabled and hidden for 1.0 until a final App Store review URL is configured.
-- [x] Legal/privacy rows are disabled and hidden for 1.0 until final URLs are configured.
+- [x] App Store review/rating uses StoreKit `requestReview()` for 1.0; a direct App Store review URL remains optional.
+- [x] Legal/privacy rows are enabled for 1.0 with configured final URLs.
 - [ ] Richer markdown constructs such as tables and footnotes remain future work.
 - [ ] Deeper theme marketplace/sharing behavior remains future work.
