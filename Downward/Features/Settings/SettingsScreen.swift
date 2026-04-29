@@ -64,48 +64,18 @@ struct SettingsScreen: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(AppColorScheme.storageKey) private var appColorSchemeRaw = AppColorScheme.system.rawValue
     @State private var navigationPath: [SettingsPage] = []
-    @State private var isShowingWorkspaceActions = false
-    @State private var isShowingClearConfirmation = false
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
             SettingsHomePage(
                 summary: summary,
                 appColorScheme: appColorSchemeBinding,
-                accessState: accessState,
                 doneAction: done,
-                workspaceAction: { isShowingWorkspaceActions = true },
                 releaseConfiguration: releaseConfiguration
             )
             .navigationDestination(for: SettingsPage.self) { page in
                 destination(for: page)
             }
-        }
-        .confirmationDialog(
-            "Workspace",
-            isPresented: $isShowingWorkspaceActions,
-            titleVisibility: .visible
-        ) {
-            Button(reconnectButtonTitle, action: reconnectWorkspaceAction)
-
-            Button("Clear Workspace", role: .destructive) {
-                isShowingClearConfirmation = true
-            }
-            .disabled(canClearWorkspace == false)
-
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(workspaceActionMessage)
-        }
-        .confirmationDialog(
-            "Clear Workspace",
-            isPresented: $isShowingClearConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Clear Workspace", role: .destructive, action: clearWorkspaceAction)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the saved folder selection and closes the current workspace.")
         }
     }
 
@@ -126,6 +96,14 @@ struct SettingsScreen: View {
                 themeStore: themeStore,
                 push: push,
                 backAction: pop
+            )
+            .roundedNavigationBarTitles()
+        case .workspace:
+            WorkspaceSettingsPage(
+                workspaceName: workspaceName,
+                accessState: accessState,
+                changeWorkspaceAction: reconnectWorkspaceAction,
+                clearWorkspaceAction: clearWorkspaceAction
             )
             .roundedNavigationBarTitles()
         case .newTheme:
@@ -194,33 +172,6 @@ struct SettingsScreen: View {
         )
     }
 
-    private var reconnectButtonTitle: String {
-        switch accessState {
-        case .noneSelected:
-            "Choose Workspace"
-        case .restorable, .ready, .invalid:
-            "Reconnect Workspace"
-        }
-    }
-
-    private var workspaceActionMessage: String {
-        switch accessState {
-        case .noneSelected:
-            "Choose a folder from Files."
-        case .restorable, .ready, .invalid:
-            "Reconnect or clear the current workspace."
-        }
-    }
-
-    private var canClearWorkspace: Bool {
-        switch accessState {
-        case .noneSelected:
-            false
-        case .restorable, .ready, .invalid:
-            true
-        }
-    }
-
     private func push(_ page: SettingsPage) {
         navigationPath.append(page)
     }
@@ -246,6 +197,7 @@ enum SettingsPage: Hashable {
     case home
     case editor
     case theme
+    case workspace
     case newTheme
     case editTheme(UUID)
     case markdown

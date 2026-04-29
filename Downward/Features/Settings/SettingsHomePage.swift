@@ -3,9 +3,7 @@ import SwiftUI
 struct SettingsHomePage: View {
     let summary: SettingsHomeSummary
     @Binding var appColorScheme: AppColorScheme
-    let accessState: WorkspaceAccessState
     let doneAction: () -> Void
-    let workspaceAction: () -> Void
     var releaseConfiguration: SettingsReleaseConfiguration = .current
 
     var body: some View {
@@ -56,7 +54,7 @@ struct SettingsHomePage: View {
             }
 
             Section {
-                Button(action: workspaceAction) {
+                NavigationLink(value: SettingsPage.workspace) {
                     SettingsHomeRow(
                         systemName: "folder",
                         colors: [.blue],
@@ -64,8 +62,6 @@ struct SettingsHomePage: View {
                         detail: summary.workspaceName
                     )
                 }
-                .buttonStyle(.plain)
-                .accessibilityHint(workspaceHint)
             }
 
             Section {
@@ -98,19 +94,6 @@ struct SettingsHomePage: View {
             }
         }
         .roundedNavigationBarTitles()
-    }
-
-    private var workspaceHint: String {
-        switch accessState {
-        case .noneSelected:
-            "Choose a workspace folder."
-        case .restorable:
-            "A saved workspace can be restored."
-        case .ready:
-            "The current workspace is ready."
-        case .invalid:
-            "The saved workspace needs to be reconnected."
-        }
     }
 }
 

@@ -51,6 +51,28 @@ final class SettingsScreenModelTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkspaceSettingsPresentationShowsCurrentFolderName() {
+        let presentation = WorkspaceSettingsPresentation(
+            workspaceName: "Writing",
+            accessState: .ready(displayName: "Writing")
+        )
+
+        XCTAssertEqual(presentation.currentFolderName, "Writing")
+        XCTAssertTrue(presentation.canClearWorkspace)
+    }
+
+    @MainActor
+    func testWorkspaceSettingsPresentationShowsNoneWithoutWorkspaceAndDisablesClear() {
+        let presentation = WorkspaceSettingsPresentation(
+            workspaceName: nil,
+            accessState: .noneSelected
+        )
+
+        XCTAssertEqual(presentation.currentFolderName, "None")
+        XCTAssertFalse(presentation.canClearWorkspace)
+    }
+
+    @MainActor
     func testHomeSummaryUsesCurrentAppearanceName() {
         let summary = SettingsHomeSummary(
             workspaceName: "Writing",
