@@ -69,6 +69,40 @@ final class ThemeEditorSettingsPageTests: XCTestCase {
         XCTAssertTrue(combinedCopy.localizedCaseInsensitiveContains("hard to read"))
     }
 
+    @MainActor
+    func testThemePreviewUsesFixedFontSizeIndependentOfEditorSettings() {
+        let editorAppearanceStore = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .georgia,
+                fontSize: 28
+            )
+        )
+
+        XCTAssertEqual(ThemeEditorPreviewLayout.previewFont.pointSize, ThemeEditorPreviewLayout.previewFontSize)
+        XCTAssertNotEqual(editorAppearanceStore.editorUIFont.pointSize, ThemeEditorPreviewLayout.previewFont.pointSize)
+    }
+
+    @MainActor
+    func testThemePreviewContentMarginLeavesRoomForFixedOverlay() {
+        XCTAssertEqual(
+            ThemeEditorPreviewLayout.listTopContentMargin,
+            ThemeEditorPreviewLayout.previewHeight + ThemeEditorPreviewLayout.topPadding + ThemeEditorPreviewLayout.bottomPadding
+        )
+    }
+
+    @MainActor
+    func testPaletteColorPickerUsesCompactFixedGridOnlyWhenItFits() {
+        XCTAssertEqual(PaletteColorPickerLayout.columnCount, 6)
+        XCTAssertEqual(PaletteColorPickerLayout.fixedSwatchSize, 56)
+        XCTAssertEqual(
+            PaletteColorPickerLayout.fixedGridWidth,
+            CGFloat(PaletteColorPickerLayout.columnCount) * PaletteColorPickerLayout.fixedSwatchSize
+                + CGFloat(PaletteColorPickerLayout.columnCount - 1) * PaletteColorPickerLayout.swatchSpacing
+        )
+        XCTAssertGreaterThan(PaletteColorPickerLayout.fixedGridWidth, 390)
+        XCTAssertLessThan(PaletteColorPickerLayout.fixedGridWidth, 430)
+    }
+
     private static func makeTheme(id: UUID, name: String, text: String) -> CustomTheme {
         CustomTheme(
             id: id,

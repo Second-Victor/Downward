@@ -40,7 +40,8 @@ struct PaletteColorPicker: View {
     ]
 
     private static let allSwatches = swatches.flatMap { $0 }
-    private static let gridColumns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 6)
+    private static let flexibleGridColumns = PaletteColorPickerLayout.gridColumns(kind: .flexible)
+    private static let fixedGridColumns = PaletteColorPickerLayout.gridColumns(kind: .fixed)
 
     init(title: String, selection: Binding<Color>) {
         self.title = title
@@ -83,17 +84,11 @@ struct PaletteColorPicker: View {
                 }
             }
 
-            LazyVGrid(columns: Self.gridColumns, spacing: 12) {
-                ForEach(Self.allSwatches.indices, id: \.self) { index in
-                    let row = index / 6
-                    let column = index % 6
-                    SwatchCircle(
-                        color: Self.allSwatches[index],
-                        isSelected: selectedRow == row && selectedColumn == column
-                    ) {
-                        selectSwatch(row: row, column: column)
-                    }
-                }
+            ViewThatFits(in: .horizontal) {
+                swatchGrid(columns: Self.fixedGridColumns)
+                    .frame(width: PaletteColorPickerLayout.fixedGridWidth)
+
+                swatchGrid(columns: Self.flexibleGridColumns)
             }
 
             BrightnessTrack(
@@ -106,6 +101,21 @@ struct PaletteColorPicker: View {
             }
         }
         .padding()
+    }
+
+    private func swatchGrid(columns: [GridItem]) -> some View {
+        LazyVGrid(columns: columns, spacing: PaletteColorPickerLayout.swatchSpacing) {
+            ForEach(Self.allSwatches.indices, id: \.self) { index in
+                let row = index / PaletteColorPickerLayout.columnCount
+                let column = index % PaletteColorPickerLayout.columnCount
+                SwatchCircle(
+                    color: Self.allSwatches[index],
+                    isSelected: selectedRow == row && selectedColumn == column
+                ) {
+                    selectSwatch(row: row, column: column)
+                }
+            }
+        }
     }
 
     private func selectSwatch(row: Int, column: Int) {
@@ -179,6 +189,33 @@ struct PaletteColorPicker: View {
             Int((red * 255).rounded()),
             Int((green * 255).rounded()),
             Int((blue * 255).rounded())
+        )
+    }
+}
+
+enum PaletteColorPickerLayout {
+    enum GridKind {
+        case fixed
+        case flexible
+    }
+
+    static let columnCount = 6
+    static let fixedSwatchSize: CGFloat = 56
+    static let swatchSpacing: CGFloat = 12
+    static let fixedGridWidth = CGFloat(columnCount) * fixedSwatchSize
+        + CGFloat(columnCount - 1) * swatchSpacing
+
+    static func gridColumns(kind: GridKind) -> [GridItem] {
+        let size: GridItem.Size = switch kind {
+        case .fixed:
+            .fixed(fixedSwatchSize)
+        case .flexible:
+            .flexible()
+        }
+
+        return Array(
+            repeating: GridItem(size, spacing: swatchSpacing),
+            count: columnCount
         )
     }
 }

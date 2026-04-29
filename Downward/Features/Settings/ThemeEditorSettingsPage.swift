@@ -109,16 +109,26 @@ struct ThemeEditorSettingsPage: View {
                 }
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .contentMargins(.top, ThemeEditorPreviewLayout.listTopContentMargin, for: .scrollContent)
+        .overlay(alignment: .top) {
             SettingsMarkdownPreview(
-                font: editorAppearanceStore.editorUIFont,
+                font: ThemeEditorPreviewLayout.previewFont,
                 resolvedTheme: previewResolvedTheme,
                 syntaxMode: editorAppearanceStore.markdownSyntaxMode
             )
             .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
-            .background(.ultraThinMaterial)
+            .padding(.top, ThemeEditorPreviewLayout.topPadding)
+            .padding(.bottom, ThemeEditorPreviewLayout.bottomPadding)
+            .background {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .mask {
+                        Rectangle()
+                            .padding(16)
+                            .blur(radius: 16)
+                    }
+            }
+            .allowsHitTesting(false)
         }
         .navigationTitle(editing == nil ? "New Theme" : "Edit Theme")
         .navigationBarTitleDisplayMode(.inline)
@@ -314,6 +324,18 @@ enum ThemeEditorDraftExport {
     }
 }
 
+enum ThemeEditorPreviewLayout {
+    static let previewFontSize: CGFloat = 15
+    static let previewHeight: CGFloat = 270
+    static let topPadding: CGFloat = 8
+    static let bottomPadding: CGFloat = 8
+    static let listTopContentMargin = previewHeight + topPadding + bottomPadding
+
+    static var previewFont: UIFont {
+        UIFont.monospacedSystemFont(ofSize: previewFontSize, weight: .regular)
+    }
+}
+
 enum ThemeColorProperty: String, Identifiable, CaseIterable {
     case background
     case text
@@ -372,8 +394,12 @@ struct SettingsMarkdownPreview: View {
             resolvedTheme: resolvedTheme,
             syntaxMode: syntaxMode
         )
-        .frame(height: 270)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .frame(height: ThemeEditorPreviewLayout.previewHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(.quaternary, lineWidth: 1)
+        )
         .padding(.top, 4)
     }
 }
@@ -400,7 +426,7 @@ private struct SettingsMarkdownPreviewTextView: UIViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = false
         textView.isScrollEnabled = false
-        textView.adjustsFontForContentSizeCategory = true
+        textView.adjustsFontForContentSizeCategory = false
         textView.textContainerInset = UIEdgeInsets(top: 24, left: 24, bottom: 24, right: 24)
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         textView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
