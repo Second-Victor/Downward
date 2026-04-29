@@ -106,7 +106,7 @@ struct ExtraThemesSettingsPage: View {
 
                     push(.newTheme)
                 } label: {
-                    SettingsHomeLabel(title: "New Theme", systemName: "plus.circle.fill", colors: [.green])
+                    NewThemeSettingsLabel()
                 }
 
                 Button {
@@ -117,7 +117,7 @@ struct ExtraThemesSettingsPage: View {
 
                     isImportingTheme = true
                 } label: {
-                    SettingsHomeLabel(title: "Import Theme", systemName: "square.and.arrow.down.fill", colors: [.blue])
+                    ImportThemeSettingsLabel()
                 }
 
                 if themeStore.canRestoreThemePurchases {
@@ -196,6 +196,45 @@ struct ExtraThemesSettingsPage: View {
             hasUnlockedThemes: themeStore.hasUnlockedThemes
         ) { url in
             try await themeImportService.loadThemes(from: url)
+        }
+    }
+}
+
+private struct ImportThemeSettingsLabel: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "square.and.arrow.down")
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(squareOutlineGradient, .green)
+                .frame(width: 22)
+                .accessibilityHidden(true)
+
+            Text("Import Theme")
+        }
+    }
+
+    private var squareOutlineGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(uiColor: .label),
+                Color(uiColor: .label).opacity(0.7)
+            ],
+            startPoint: .bottom,
+            endPoint: .top
+        )
+    }
+}
+
+private struct NewThemeSettingsLabel: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "plus.circle.fill")
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, .green)
+                .frame(width: 22)
+                .accessibilityHidden(true)
+
+            Text("New Theme")
         }
     }
 }
