@@ -151,14 +151,23 @@ struct EditorScreen: View {
     @ViewBuilder
     private func savedDateHeader(topViewportInset: CGFloat) -> some View {
         if savedDateHeaderPullDistance > 0, viewModel.savedDateHeaderText.isEmpty == false {
-            Text(viewModel.savedDateHeaderText)
-                .font(.system(size: 13, weight: .regular, design: .rounded))
-                .foregroundStyle(Color(uiColor: resolvedTheme.secondaryText))
-                .opacity(savedDateHeaderOpacity)
-                .frame(maxWidth: .infinity, alignment: .top)
-                .offset(y: savedDateHeaderTopPadding(topViewportInset: topViewportInset))
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+            VStack(spacing: 2) {
+                Text(viewModel.title)
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(Color(uiColor: resolvedTheme.primaryText).opacity(0.72))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Text(viewModel.savedDateHeaderText)
+                    .font(.system(size: 13, weight: .regular, design: .rounded))
+                    .foregroundStyle(Color(uiColor: resolvedTheme.secondaryText))
+            }
+            .padding(.horizontal, 20)
+            .opacity(savedDateHeaderOpacity)
+            .frame(maxWidth: .infinity, alignment: .top)
+            .offset(y: savedDateHeaderTopPadding(topViewportInset: topViewportInset))
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
     }
 

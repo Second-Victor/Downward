@@ -7,6 +7,35 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 ## Latest QA run
 
 - Date: 2026-04-29
+- Branch/commit at start of run: `main` / `a72e0f2`
+- Xcode: Xcode 26.4 (17E192)
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`)
+- Commands run:
+  - `rg -n "savedDateHeader|displayName|currentRouteDocument|documentName|OpenDocument" Downward/Features/Editor Tests -g '*.swift'`
+  - `sed -n '1,260p' Downward/Features/Editor/EditorViewModel.swift`
+  - `sed -n '1,130p' Downward/Features/Editor/EditorScreen.swift`
+  - `git status --short`
+  - `sed -n '560,620p' Tests/EditorAutosaveTests.swift`
+  - `git diff --check`
+  - `git diff -- Downward/Features/Editor/EditorScreen.swift`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-EditorHeaderName -resultBundlePath /tmp/Downward-EditorHeaderName.xcresult -only-testing:DownwardTests/EditorAutosaveTests`
+  - `sed -n '1,120p' Downward/Features/Editor/ResolvedEditorTheme.swift`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-EditorHeaderName2 -resultBundlePath /tmp/Downward-EditorHeaderName2.xcresult -only-testing:DownwardTests/EditorAutosaveTests`
+  - `git diff --stat`
+  - `git rev-parse --short HEAD`
+- Result:
+  - First focused EditorAutosave run failed at compile because `EditorScreen` referenced a non-existent `ResolvedEditorTheme.text` property.
+  - The header title color was corrected to use `ResolvedEditorTheme.primaryText`.
+  - Final focused EditorAutosave run passed on iPhone 17 Pro simulator: 27 passed, 0 skipped, 0 failed.
+  - `git diff --check` passed.
+- Editor pull-down header decision:
+  - Pulling down in an open document now shows the document name above the saved timestamp.
+  - The document name uses slightly larger rounded semibold text and truncates long filenames in the middle.
+- Notes/failures:
+  - No manual visual pull-down QA was performed in this pass.
+
+- Date: 2026-04-29
 - Branch/commit at start of run: `main` / `3802212`
 - Xcode: Xcode 26.4 (17E192)
 - Simulator/device:
