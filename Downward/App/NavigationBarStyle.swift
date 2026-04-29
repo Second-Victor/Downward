@@ -83,29 +83,60 @@ enum NavigationBarStyle {
 }
 
 private struct NavigationBarConfigurator: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> UIViewController {
-        let viewController = UIViewController()
-        viewController.view.isHidden = true
-        viewController.view.isUserInteractionEnabled = false
-        return viewController
+    func makeUIViewController(context: Context) -> NavigationBarStylingViewController {
+        NavigationBarStylingViewController()
     }
 
-    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
-        applyNavigationBarStyle(for: uiViewController)
-        Task { @MainActor [weak uiViewController] in
-            guard let uiViewController else { return }
-            applyNavigationBarStyle(for: uiViewController)
+    func updateUIViewController(_ uiViewController: NavigationBarStylingViewController, context: Context) {
+        uiViewController.reapplyNavigationBarStyle()
+    }
+}
+
+private final class NavigationBarStylingViewController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.isHidden = true
+        view.isUserInteractionEnabled = false
+        reapplyNavigationBarStyle()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        reapplyNavigationBarStyle()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        reapplyNavigationBarStyle()
+    }
+
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
+        reapplyNavigationBarStyle()
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        reapplyNavigationBarStyle()
+    }
+
+    func reapplyNavigationBarStyle() {
+        applyNavigationBarStyle()
+
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            self?.applyNavigationBarStyle()
         }
     }
 
-    private func applyNavigationBarStyle(for uiViewController: UIViewController) {
-        guard let navigationBar = uiViewController.navigationController?.navigationBar else {
+    private func applyNavigationBarStyle() {
+        guard let navigationBar = navigationController?.navigationBar else {
             return
         }
 
         NavigationBarStyle.apply(
             to: navigationBar,
-            preferredContentSizeCategory: uiViewController.traitCollection.preferredContentSizeCategory
+            preferredContentSizeCategory: traitCollection.preferredContentSizeCategory
         )
     }
 }

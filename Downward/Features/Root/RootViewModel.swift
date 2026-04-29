@@ -12,8 +12,15 @@ final class RootViewModel {
     let editorAppearanceStore: EditorAppearanceStore
     let themeStore: ThemeStore
     var isShowingFolderPicker = false
+    private(set) var isRestoringWorkspace = false
+    private(set) var shouldShowRestoreSpinner = false
+    private(set) var shouldShowSlowRestoreMessage = false
+    private(set) var restoreStartedAt: Date?
 
     private let coordinator: AppCoordinator
+    @ObservationIgnored private var restorePresentationTask: Task<Void, Never>?
+    private let restoreSpinnerDelay: Duration = .milliseconds(300)
+    private let slowRestoreMessageDelay: Duration = .milliseconds(1_800)
 
     init(
         session: AppSession,
@@ -33,6 +40,10 @@ final class RootViewModel {
 
     var launchState: RootLaunchState {
         session.launchState
+    }
+
+    var shouldShowInitialRestoreShell: Bool {
+        session.hasBootstrapped == false || isRestoringWorkspace
     }
 
     var workspaceAccessState: WorkspaceAccessState {
@@ -60,7 +71,13 @@ final class RootViewModel {
     }
 
     func handleFirstAppear() async {
+        guard session.hasBootstrapped == false else {
+            return
+        }
+
+        beginLaunchWorkspaceRestorePresentation()
         await coordinator.bootstrapIfNeeded()
+        finishLaunchWorkspaceRestorePresentation()
     }
 
     func presentFolderPicker() {
@@ -115,5 +132,47 @@ final class RootViewModel {
 
     func dismissAlert() {
         session.workspaceAlertError = nil
+    }
+
+    private func beginLaunchWorkspaceRestorePresentation() {
+        restorePresentationTask?.cancel()
+        restoreStartedAt = Date()
+        isRestoringWorkspace = true
+        shouldShowRestoreSpinner = false
+        shouldShowSlowRestoreMessage = false
+
+        // The delay prevents one-frame or fractional-second restore flashes during normal launch.
+        // Fast bookmark restores should move straight from a quiet shell to app content.
+        restorePresentationTask = Task { @MainActor in
+            try? await Task.sleep(for: restoreSpinnerDelay)
+            guard Task.isCancelled == false, isRestoringWorkspace else {
+                return
+            }
+
+            withAnimation(.easeInOut(duration: 0.18)) {
+                shouldShowRestoreSpinner = true
+            }
+
+            try? await Task.sleep(for: slowRestoreMessageDelay)
+            guard Task.isCancelled == false, isRestoringWorkspace else {
+                return
+            }
+
+            withAnimation(.easeInOut(duration: 0.18)) {
+                shouldShowSlowRestoreMessage = true
+            }
+        }
+    }
+
+    private func finishLaunchWorkspaceRestorePresentation() {
+        restorePresentationTask?.cancel()
+        restorePresentationTask = nil
+        restoreStartedAt = nil
+        isRestoringWorkspace = false
+
+        withAnimation(.easeInOut(duration: 0.18)) {
+            shouldShowRestoreSpinner = false
+            shouldShowSlowRestoreMessage = false
+        }
     }
 }

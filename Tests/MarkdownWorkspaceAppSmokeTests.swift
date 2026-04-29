@@ -34,6 +34,54 @@ final class MarkdownWorkspaceAppSmokeTests: MarkdownWorkspaceAppTestCase {
     }
 
     @MainActor
+    func testFastLaunchWorkspaceRestoreDoesNotShowDelayedSpinner() async {
+        let container = makeBootstrapContainer(
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: PreviewSampleData.nestedWorkspace,
+                forcedRestoreResult: .ready(PreviewSampleData.nestedWorkspace)
+            )
+        )
+
+        await container.rootViewModel.handleFirstAppear()
+
+        XCTAssertEqual(container.session.launchState, .workspaceReady)
+        XCTAssertFalse(container.rootViewModel.isRestoringWorkspace)
+        XCTAssertFalse(container.rootViewModel.shouldShowRestoreSpinner)
+        XCTAssertFalse(container.rootViewModel.shouldShowSlowRestoreMessage)
+    }
+
+    @MainActor
+    func testSlowLaunchWorkspaceRestoreShowsDelayedMinimalSpinner() async {
+        let workspaceManager = DelayedRestoreWorkspaceManager(
+            result: .ready(PreviewSampleData.nestedWorkspace),
+            delay: .milliseconds(500),
+            fallbackSnapshot: PreviewSampleData.nestedWorkspace
+        )
+        let container = makeBootstrapContainer(workspaceManager: workspaceManager)
+
+        let restoreTask = Task { @MainActor in
+            await container.rootViewModel.handleFirstAppear()
+        }
+
+        XCTAssertTrue(container.rootViewModel.shouldShowInitialRestoreShell)
+        XCTAssertFalse(container.rootViewModel.shouldShowRestoreSpinner)
+
+        try? await Task.sleep(for: .milliseconds(350))
+
+        XCTAssertTrue(container.rootViewModel.shouldShowInitialRestoreShell)
+        XCTAssertTrue(container.rootViewModel.shouldShowRestoreSpinner)
+        XCTAssertFalse(container.rootViewModel.shouldShowSlowRestoreMessage)
+
+        await restoreTask.value
+
+        XCTAssertEqual(container.session.launchState, .workspaceReady)
+        XCTAssertFalse(container.rootViewModel.shouldShowInitialRestoreShell)
+        XCTAssertFalse(container.rootViewModel.shouldShowRestoreSpinner)
+        XCTAssertFalse(container.rootViewModel.shouldShowSlowRestoreMessage)
+    }
+
+    @MainActor
     func testPreviewContainerInjectsReadyState() {
         let container = AppContainer.preview(
             launchState: .workspaceReady,
@@ -815,6 +863,20 @@ final class MarkdownWorkspaceAppSmokeTests: MarkdownWorkspaceAppTestCase {
         return directoryURL.appending(path: "themes.json")
     }
 
+    @MainActor
+    private func makeBootstrapContainer(workspaceManager: any WorkspaceManager) -> AppContainer {
+        AppContainer(
+            logger: DebugLogger(),
+            bookmarkStore: StubBookmarkStore(),
+            recentFilesStore: RecentFilesStore(initialItems: []),
+            editorAppearanceStore: EditorAppearanceStore(),
+            workspaceManager: workspaceManager,
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge()
+        )
+    }
+
     private static func makeTheme(id: UUID = UUID(), name: String) -> CustomTheme {
         CustomTheme(
             id: id,
@@ -831,4 +893,86 @@ final class MarkdownWorkspaceAppSmokeTests: MarkdownWorkspaceAppTestCase {
             checkboxChecked: HexColor(hex: "#6A9955")
         )
     }
+}
+
+private actor DelayedRestoreWorkspaceManager: WorkspaceManager {
+    private let result: WorkspaceRestoreResult
+    private let delay: Duration
+    private let fallbackSnapshot: WorkspaceSnapshot
+
+    init(result: WorkspaceRestoreResult, delay: Duration, fallbackSnapshot: WorkspaceSnapshot) {
+        self.result = result
+        self.delay = delay
+        self.fallbackSnapshot = fallbackSnapshot
+    }
+
+    func restoreWorkspace() async -> WorkspaceRestoreResult {
+        try? await Task.sleep(for: delay)
+        return result
+    }
+
+    func selectWorkspace(at url: URL) async -> WorkspaceRestoreResult {
+        result
+    }
+
+    func refreshCurrentWorkspace() async throws -> WorkspaceSnapshot {
+        fallbackSnapshot
+    }
+
+    func createFile(
+        named proposedName: String,
+        in folderURL: URL?,
+        initialContent: WorkspaceCreatedFileInitialContent
+    ) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: fallbackSnapshot,
+            outcome: .createdFile(
+                url: (folderURL ?? fallbackSnapshot.rootURL).appending(path: proposedName),
+                displayName: proposedName
+            )
+        )
+    }
+
+    func createFolder(named proposedName: String, in folderURL: URL?) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: fallbackSnapshot,
+            outcome: .createdFolder(
+                url: (folderURL ?? fallbackSnapshot.rootURL).appending(path: proposedName),
+                displayName: proposedName
+            )
+        )
+    }
+
+    func renameFile(at url: URL, to proposedName: String) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: fallbackSnapshot,
+            outcome: .renamedFile(
+                oldURL: url,
+                newURL: url.deletingLastPathComponent().appending(path: proposedName),
+                displayName: proposedName,
+                relativePath: proposedName
+            )
+        )
+    }
+
+    func moveItem(at url: URL, toFolder destinationFolderURL: URL?) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: fallbackSnapshot,
+            outcome: .renamedFile(
+                oldURL: url,
+                newURL: (destinationFolderURL ?? fallbackSnapshot.rootURL).appending(path: url.lastPathComponent),
+                displayName: url.lastPathComponent,
+                relativePath: url.lastPathComponent
+            )
+        )
+    }
+
+    func deleteFile(at url: URL) async throws -> WorkspaceMutationResult {
+        WorkspaceMutationResult(
+            snapshot: fallbackSnapshot,
+            outcome: .deletedFile(url: url, displayName: url.lastPathComponent)
+        )
+    }
+
+    func clearWorkspaceSelection() async throws {}
 }

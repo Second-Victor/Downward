@@ -7,6 +7,79 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 ## Latest QA run
 
 - Date: 2026-04-29
+- Branch/commit at start of run: `main` / `3802212`
+- Xcode: Xcode 26.4 (17E192)
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`)
+- Commands run:
+  - `git status --short`
+  - `sed -n '1,260p' Downward/App/NavigationBarStyle.swift`
+  - `sed -n '1,360p' Downward/Features/Editor/EditorScreen.swift`
+  - `rg -n "toolbarColorScheme|roundedNavigationBarTitles|editorSystemChrome|NavigationBarConfigurator|NavigationBarStyle" Downward Tests -g '*.swift'`
+  - `sed -n '1,130p' Tests/NavigationBarStyleTests.swift`
+  - `git diff --check`
+  - `git diff -- Downward/App/NavigationBarStyle.swift Downward/Features/Editor/EditorScreen.swift Tests/NavigationBarStyleTests.swift`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-NavBarLifecycle -resultBundlePath /tmp/Downward-NavBarLifecycle.xcresult -only-testing:DownwardTests/NavigationBarStyleTests`
+  - `git rev-parse --short HEAD`
+  - `xcodebuild -version`
+  - `git diff --stat`
+- Result:
+  - Focused navigation bar style tests passed on iPhone 17 Pro simulator: 3 passed, 0 skipped, 0 failed.
+  - `git diff --check` passed.
+- Navigation bar style decision:
+  - The hidden navigation bar configurator is now a custom `UIViewController` subclass that reapplies rounded title appearances during view-controller lifecycle events and again after the current main-actor transaction yields.
+  - Editor navigation chrome keeps `.toolbarColorScheme(..., for: .navigationBar)` and also applies `.roundedNavigationBarTitles()` after the editor chrome modifier.
+  - Existing navigation bar colors remain preserved while fonts are reapplied.
+- Notes/failures:
+  - No manual launch-restore pop/back QA, light/dark theme pass, match-system-chrome pass, or Dynamic Type device/simulator walkthrough was performed in this pass.
+
+- Date: 2026-04-29
+- Branch/commit at start of run: `main` / `3802212`
+- Xcode: Xcode 26.4 (17E192)
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator (`CC62C76C-307C-47B0-A4FD-B9F886C3138C`)
+- Commands run:
+  - `rg -n "Workspace Restore|WorkspaceRestore|restore workspace|Restoring|restore.*workspace|workspace restore|restoreWorkspace|Workspace.*Restore|WorkspaceAccess|selectedWorkspace|restore" Downward Tests -g '*.swift'`
+  - `git status --short`
+  - `sed -n '1,260p' Downward/App/AppCoordinator.swift`
+  - `sed -n '1,240p' Downward/App/MarkdownWorkspaceApp.swift`
+  - `sed -n '1,340p' Downward/Features/Root/RootScreen.swift`
+  - `sed -n '1,180p' Downward/Features/Root/RootViewModel.swift`
+  - `sed -n '1,120p' Downward/App/AppSession.swift`
+  - `sed -n '1,160p' Downward/Shared/Models/AppLaunchState.swift`
+  - `sed -n '1,220p' Downward/App/AppContainer.swift`
+  - `rg -n "hasBootstrapped|launchState" Downward/App Downward/Features Tests -g '*.swift'`
+  - `sed -n '1,120p' Tests/MarkdownWorkspaceAppSmokeTests.swift`
+  - `rg -n "RootViewModel|RootScreen|LaunchStateView" Tests Downward -g '*.swift'`
+  - `rg -n "Color\\(\\.systemBackground\\)|systemBackground" Downward -g '*.swift'`
+  - `tail -n 80 Tests/MarkdownWorkspaceAppSmokeTests.swift`
+  - `rg -n "make.*Container|AppContainer\\(" Tests/MarkdownWorkspaceAppSmokeTests.swift`
+  - `sed -n '360,420p' Tests/MarkdownWorkspaceAppSmokeTests.swift`
+  - `git diff --check`
+  - `git diff -- Downward/Features/Root/RootViewModel.swift Downward/Features/Root/RootScreen.swift Downward/App/AppContainer.swift Tests/MarkdownWorkspaceAppSmokeTests.swift`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-WorkspaceRestoreLaunch -resultBundlePath /tmp/Downward-WorkspaceRestoreLaunch.xcresult -only-testing:DownwardTests/MarkdownWorkspaceAppSmokeTests`
+  - `sed -n '60,95p' Downward/Domain/Workspace/WorkspaceManager.swift`
+  - `rg -n "class .*WorkspaceManager|struct .*WorkspaceManager|actor .*WorkspaceManager" Tests Downward -g '*.swift'`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-WorkspaceRestoreLaunch -resultBundlePath /tmp/Downward-WorkspaceRestoreLaunch.xcresult -only-testing:DownwardTests/MarkdownWorkspaceAppSmokeTests`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-WorkspaceRestoreLaunch2 -resultBundlePath /tmp/Downward-WorkspaceRestoreLaunch2.xcresult -only-testing:DownwardTests/MarkdownWorkspaceAppSmokeTests`
+  - `tail -n 60 RELEASE_QA.md`
+  - `git diff --stat`
+  - `git rev-parse --short HEAD`
+- Result:
+  - The first focused smoke-test run failed at compile because the new delayed restore test double accessed main-actor preview fixtures from an actor-isolated type.
+  - The test double was adjusted to receive a fallback snapshot at initialization instead of reading preview fixtures from actor methods.
+  - A rerun against `/tmp/Downward-WorkspaceRestoreLaunch.xcresult` failed immediately because that result bundle already existed after the failed build.
+  - The final focused smoke-test run passed on iPhone 17 Pro simulator: 23 passed, 0 skipped, 0 failed.
+  - `git diff --check` passed.
+- Workspace restore launch decision:
+  - Initial app bootstrap now renders a quiet shell first.
+  - A minimal restore spinner appears only after a 300ms delay if bootstrap is still restoring.
+  - Fast restores move directly from the quiet shell to restored app content without showing restore UI.
+  - The full recovery-style views remain for no workspace, invalid access, and failed restore states.
+- Notes/failures:
+  - No real-device launch timing, Files-provider restore, archive validation, or TestFlight validation was performed in this pass.
+
+- Date: 2026-04-29
 - Branch/commit at start of run: `main` / `4586602`
 - Xcode: Xcode 26.4 (17E192)
 - Simulator/device:

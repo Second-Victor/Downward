@@ -6,53 +6,15 @@ struct RootScreen: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        Group {
-            switch viewModel.launchState {
-            case .noWorkspaceSelected:
-                LaunchStateView(
-                    title: "Choose a Workspace",
-                    message: "Choose one folder from Files to browse and edit Markdown and text files inside it.",
-                    symbolName: "folder.badge.plus",
-                    isLoading: false,
-                    primaryActionTitle: "Open Folder",
-                    primaryAction: viewModel.presentFolderPicker,
-                    secondaryActionTitle: nil,
-                    secondaryAction: nil
-                )
-            case .restoringWorkspace:
-                LaunchStateView(
-                    title: "Restoring Workspace",
-                    message: "Checking whether a previous workspace can be restored.",
-                    symbolName: "arrow.trianglehead.2.clockwise.rotate.90",
-                    isLoading: true,
-                    primaryActionTitle: nil,
-                    primaryAction: {},
-                    secondaryActionTitle: nil,
-                    secondaryAction: nil
-                )
-            case .workspaceReady:
-                if horizontalSizeClass == .regular {
-                    RegularWorkspaceShell(viewModel: viewModel)
-                } else {
-                    CompactWorkspaceShell(viewModel: viewModel)
-                }
-            case .workspaceAccessInvalid:
-                ReconnectWorkspaceView(
-                    workspaceName: viewModel.workspaceName ?? PreviewSampleData.nestedWorkspace.displayName,
-                    error: viewModel.reconnectError,
-                    reconnectAction: viewModel.presentFolderPicker,
-                    clearAction: viewModel.clearWorkspace
-                )
-            case let .failed(error):
-                LaunchStateView(
-                    title: error.title,
-                    message: error.message,
-                    symbolName: "exclamationmark.triangle",
-                    isLoading: false,
-                    primaryActionTitle: "Retry Restore",
-                    primaryAction: viewModel.retryRestore,
-                    secondaryActionTitle: "Open Folder",
-                    secondaryAction: viewModel.presentFolderPicker
+        ZStack {
+            if shouldMountLaunchContentBehindRestoreShell || viewModel.shouldShowInitialRestoreShell == false {
+                launchContent
+            }
+
+            if viewModel.shouldShowInitialRestoreShell {
+                WorkspaceRestoreLoadingView(
+                    showsSpinner: viewModel.shouldShowRestoreSpinner,
+                    showsSlowMessage: viewModel.shouldShowSlowRestoreMessage
                 )
             }
         }
@@ -82,6 +44,52 @@ struct RootScreen: View {
         }
     }
 
+    @ViewBuilder
+    private var launchContent: some View {
+        switch viewModel.launchState {
+        case .noWorkspaceSelected:
+            LaunchStateView(
+                title: "Choose a Workspace",
+                message: "Choose one folder from Files to browse and edit Markdown and text files inside it.",
+                symbolName: "folder.badge.plus",
+                isLoading: false,
+                primaryActionTitle: "Open Folder",
+                primaryAction: viewModel.presentFolderPicker,
+                secondaryActionTitle: nil,
+                secondaryAction: nil
+            )
+        case .restoringWorkspace:
+            WorkspaceRestoreLoadingView(
+                showsSpinner: true,
+                showsSlowMessage: false
+            )
+        case .workspaceReady:
+            if horizontalSizeClass == .regular {
+                RegularWorkspaceShell(viewModel: viewModel)
+            } else {
+                CompactWorkspaceShell(viewModel: viewModel)
+            }
+        case .workspaceAccessInvalid:
+            ReconnectWorkspaceView(
+                workspaceName: viewModel.workspaceName ?? PreviewSampleData.nestedWorkspace.displayName,
+                error: viewModel.reconnectError,
+                reconnectAction: viewModel.presentFolderPicker,
+                clearAction: viewModel.clearWorkspace
+            )
+        case let .failed(error):
+            LaunchStateView(
+                title: error.title,
+                message: error.message,
+                symbolName: "exclamationmark.triangle",
+                isLoading: false,
+                primaryActionTitle: "Retry Restore",
+                primaryAction: viewModel.retryRestore,
+                secondaryActionTitle: "Open Folder",
+                secondaryAction: viewModel.presentFolderPicker
+            )
+        }
+    }
+
     private var bindablePickerVisibility: Binding<Bool> {
         Binding(
             get: { viewModel.isShowingFolderPicker },
@@ -94,6 +102,47 @@ struct RootScreen: View {
             get: { viewModel.alertError },
             set: { _ in viewModel.dismissAlert() }
         )
+    }
+
+    private var shouldMountLaunchContentBehindRestoreShell: Bool {
+        guard viewModel.shouldShowInitialRestoreShell else {
+            return false
+        }
+
+        // Keep the real workspace/navigation shell alive underneath the opaque restore shell once
+        // the workspace is ready. Otherwise a restored editor can be the NavigationStack's first
+        // visible layout, and the browser performs its first title/list layout during the initial
+        // back-pop transition.
+        if case .workspaceReady = viewModel.launchState {
+            return true
+        }
+
+        return false
+    }
+}
+
+private struct WorkspaceRestoreLoadingView: View {
+    let showsSpinner: Bool
+    let showsSlowMessage: Bool
+
+    var body: some View {
+        ZStack {
+            Color(.systemBackground)
+                .ignoresSafeArea()
+
+            if showsSpinner {
+                VStack(spacing: 10) {
+                    ProgressView()
+
+                    Text(showsSlowMessage ? "Still restoring workspace…" : "Restoring workspace…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.18), value: showsSpinner)
+        .animation(.easeInOut(duration: 0.18), value: showsSlowMessage)
     }
 }
 

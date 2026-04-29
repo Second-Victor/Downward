@@ -173,6 +173,7 @@ final class AppContainer {
         container.session.workspaceSnapshot = snapshot
         container.session.openDocument = document
         container.session.path = path
+        container.session.hasBootstrapped = true
 
         if let accessState {
             container.session.workspaceAccessState = accessState

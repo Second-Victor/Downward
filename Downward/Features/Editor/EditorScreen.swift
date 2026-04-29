@@ -33,6 +33,7 @@ struct EditorScreen: View {
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .editorSystemChrome(colorScheme: editorChromeColorScheme)
+                .roundedNavigationBarTitles()
                 .task(id: documentURL) {
                     savedDateHeaderPullDistance = 0
                     viewModel.handleAppear(for: documentURL)

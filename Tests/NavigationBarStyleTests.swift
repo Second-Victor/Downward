@@ -63,10 +63,20 @@ final class NavigationBarStyleTests: XCTestCase {
         appearance.titleTextAttributes = [.foregroundColor: UIColor.systemYellow]
         appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.systemGreen]
         navigationBar.standardAppearance = appearance
+        let scrollEdgeAppearance = UINavigationBarAppearance()
+        scrollEdgeAppearance.configureWithTransparentBackground()
+        scrollEdgeAppearance.backgroundColor = .systemTeal
+        navigationBar.scrollEdgeAppearance = scrollEdgeAppearance
+        let compactAppearance = UINavigationBarAppearance()
+        compactAppearance.configureWithOpaqueBackground()
+        compactAppearance.backgroundColor = .systemIndigo
+        navigationBar.compactAppearance = compactAppearance
 
         NavigationBarStyle.apply(to: navigationBar, preferredContentSizeCategory: .large)
 
         XCTAssertEqual(navigationBar.standardAppearance.backgroundColor, .systemPink)
+        XCTAssertEqual(navigationBar.scrollEdgeAppearance?.backgroundColor, .systemTeal)
+        XCTAssertEqual(navigationBar.compactAppearance?.backgroundColor, .systemIndigo)
         XCTAssertEqual(
             navigationBar.standardAppearance.titleTextAttributes[.foregroundColor] as? UIColor,
             .systemYellow
