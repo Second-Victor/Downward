@@ -96,6 +96,11 @@ final class ThemeEditorSettingsPageTests: XCTestCase {
     }
 
     @MainActor
+    func testThemePreviewUsesSofterRoundedCorners() {
+        XCTAssertEqual(ThemeEditorPreviewLayout.cornerRadius, 16)
+    }
+
+    @MainActor
     func testPaletteColorPickerUsesCompactFixedGridOnlyWhenItFits() {
         XCTAssertEqual(PaletteColorPickerLayout.columnCount, 6)
         XCTAssertEqual(PaletteColorPickerLayout.fixedSwatchSize, 56)

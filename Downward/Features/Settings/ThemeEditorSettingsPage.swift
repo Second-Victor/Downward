@@ -327,6 +327,7 @@ enum ThemeEditorDraftExport {
 enum ThemeEditorPreviewLayout {
     static let previewFontSize: CGFloat = 15
     static let previewHeight: CGFloat = 270
+    static let cornerRadius: CGFloat = 16
     static let topPadding: CGFloat = 8
     static let bottomPadding: CGFloat = 8
     static let listTopContentMargin = previewHeight + topPadding + bottomPadding
@@ -395,9 +396,9 @@ struct SettingsMarkdownPreview: View {
             syntaxMode: syntaxMode
         )
         .frame(height: ThemeEditorPreviewLayout.previewHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: ThemeEditorPreviewLayout.cornerRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: ThemeEditorPreviewLayout.cornerRadius, style: .continuous)
                 .strokeBorder(.quaternary, lineWidth: 1)
         )
         .padding(.top, 4)
