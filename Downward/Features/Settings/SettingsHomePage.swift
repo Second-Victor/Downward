@@ -127,6 +127,7 @@ struct SettingsHomeLabel: View {
     let title: String
     let systemName: String
     let colors: [Color]
+    var usesDiscreteColorDots = false
     var usesMulticolor = false
 
     var body: some View {
@@ -134,6 +135,7 @@ struct SettingsHomeLabel: View {
             SettingsHomeSymbol(
                 systemName: systemName,
                 colors: colors,
+                usesDiscreteColorDots: usesDiscreteColorDots,
                 usesMulticolor: usesMulticolor
             )
             Text(title)
@@ -144,17 +146,31 @@ struct SettingsHomeLabel: View {
 struct SettingsHomeSymbol: View {
     let systemName: String
     let colors: [Color]
+    var usesDiscreteColorDots = false
     var usesMulticolor = false
 
+    @ViewBuilder
     var body: some View {
-        Image(systemName: systemName)
-            .symbolRenderingMode(usesMulticolor ? .multicolor : .hierarchical)
-            .foregroundStyle(gradient)
-            .frame(width: 22)
-            .accessibilityHidden(true)
+        if usesDiscreteColorDots {
+            SettingsColorDotCluster(colors: colors)
+                .frame(width: 22, height: 22)
+                .accessibilityHidden(true)
+        } else {
+            Image(systemName: systemName)
+                .symbolRenderingMode(usesMulticolor ? .multicolor : .hierarchical)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: resolvedColors,
+                        startPoint: .bottom,
+                        endPoint: .top
+                    )
+                )
+                .frame(width: 22)
+                .accessibilityHidden(true)
+        }
     }
 
-    private var gradient: LinearGradient {
+    private var resolvedColors: [Color] {
         let resolvedColors: [Color]
 
         if colors.isEmpty {
@@ -165,10 +181,37 @@ struct SettingsHomeSymbol: View {
             resolvedColors = colors
         }
 
-        return LinearGradient(
-            colors: resolvedColors,
-            startPoint: .bottom,
-            endPoint: .top
-        )
+        return resolvedColors
+    }
+}
+
+private struct SettingsColorDotCluster: View {
+    let colors: [Color]
+
+    var body: some View {
+        ZStack {
+            dot(at: CGPoint(x: 7, y: 4.5), color: color(at: 0, fallback: .orange))
+            dot(at: CGPoint(x: 15, y: 4.5), color: color(at: 1, fallback: .pink))
+            dot(at: CGPoint(x: 3.5, y: 11), color: color(at: 2, fallback: Color(uiColor: .label)))
+            dot(at: CGPoint(x: 11, y: 11), color: color(at: 3, fallback: .green))
+            dot(at: CGPoint(x: 18.5, y: 11), color: color(at: 4, fallback: .purple))
+            dot(at: CGPoint(x: 7, y: 17.5), color: color(at: 5, fallback: .blue))
+            dot(at: CGPoint(x: 15, y: 17.5), color: color(at: 6, fallback: .yellow))
+        }
+    }
+
+    private func dot(at point: CGPoint, color: Color) -> some View {
+        Circle()
+            .fill(color)
+            .frame(width: 7.5, height: 7.5)
+            .position(point)
+    }
+
+    private func color(at index: Int, fallback: Color) -> Color {
+        guard colors.indices.contains(index) else {
+            return fallback
+        }
+
+        return colors[index]
     }
 }

@@ -25,7 +25,21 @@ struct ThemeSettingsPage: View {
 
             Section {
                 NavigationLink(value: SettingsPage.extraThemes) {
-                    SettingsHomeLabel(title: "Extra Themes", systemName: "sparkles", colors: [.purple, .pink])
+                    SettingsHomeLabel(
+                        title: "Extra Themes",
+                        systemName: "circle.hexagongrid.fill",
+                        colors: [
+                            .orange,
+                            .pink,
+                            .teal,
+//                            Color(uiColor: .label),
+                            .yellow,
+                            .purple,
+                            .blue,
+                            .green
+                        ],
+                        usesDiscreteColorDots: true
+                    )
                 }
             } footer: {
                 Text("Support the app development and unlock themes")
