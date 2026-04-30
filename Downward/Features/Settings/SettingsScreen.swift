@@ -243,10 +243,10 @@ enum SettingsPage: Hashable {
 }
 
 @MainActor
-func makePreviewThemeStore() -> ThemeStore {
+func makePreviewThemeStore(hasUnlockedThemes: Bool = true) -> ThemeStore {
     ThemeStore(
         fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-themes-\(UUID().uuidString).json"),
-        entitlements: ThemeEntitlementStore(hasUnlockedThemes: true)
+        entitlements: ThemeEntitlementStore(hasUnlockedThemes: hasUnlockedThemes)
     )
 }
 
@@ -258,4 +258,85 @@ func makePreviewImportedFontManager() -> ImportedFontManager {
             directoryHint: .isDirectory
         )
     )
+}
+
+#Preview("Settings Home - Workspace Loaded") {
+    SettingsScreen(
+        workspaceName: PreviewSampleData.nestedWorkspace.displayName,
+        accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+        editorAppearanceStore: EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 15,
+                markdownSyntaxMode: .visible
+            )
+        ),
+        themeStore: makePreviewThemeStore(),
+        importedFontManager: makePreviewImportedFontManager(),
+        reconnectWorkspaceAction: {},
+        clearWorkspaceAction: {}
+    )
+}
+
+#Preview("Settings Home - Not Supporter") {
+    SettingsScreen(
+        workspaceName: PreviewSampleData.nestedWorkspace.displayName,
+        accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+        editorAppearanceStore: EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 15,
+                markdownSyntaxMode: .visible
+            )
+        ),
+        themeStore: makePreviewThemeStore(hasUnlockedThemes: false),
+        importedFontManager: makePreviewImportedFontManager(),
+        reconnectWorkspaceAction: {},
+        clearWorkspaceAction: {}
+    )
+}
+
+#Preview("Settings Home - No Workspace") {
+    SettingsScreen(
+        workspaceName: nil,
+        accessState: .noneSelected,
+        editorAppearanceStore: EditorAppearanceStore(),
+        themeStore: makePreviewThemeStore(),
+        importedFontManager: makePreviewImportedFontManager(),
+        reconnectWorkspaceAction: {},
+        clearWorkspaceAction: {}
+    )
+}
+
+#Preview("Settings Large Type") {
+    SettingsScreen(
+        workspaceName: PreviewSampleData.nestedWorkspace.displayName,
+        accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+        editorAppearanceStore: EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 20,
+                markdownSyntaxMode: .hiddenOutsideCurrentLine
+            )
+        ),
+        themeStore: makePreviewThemeStore(),
+        importedFontManager: makePreviewImportedFontManager(),
+        reconnectWorkspaceAction: {},
+        clearWorkspaceAction: {}
+    )
+    .environment(\.dynamicTypeSize, .accessibility3)
+}
+
+#Preview("iPad Settings Sheet") {
+    SettingsScreen(
+        workspaceName: PreviewSampleData.nestedWorkspace.displayName,
+        accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
+        editorAppearanceStore: EditorAppearanceStore(),
+        themeStore: makePreviewThemeStore(),
+        importedFontManager: makePreviewImportedFontManager(),
+        reconnectWorkspaceAction: {},
+        clearWorkspaceAction: {},
+        dismissAction: {}
+    )
+    .frame(width: 720, height: 920)
 }

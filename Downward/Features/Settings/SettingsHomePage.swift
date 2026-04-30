@@ -81,7 +81,7 @@ struct SettingsHomePage: View {
                     SettingsHomeRow(
                         systemName: "circle.hexagongrid.fill",
                         colors: [.accentColor],
-                        title: hasUnlockedThemes ? "Thanks for being a supporter" : "Supporter Unlock",
+                        title: hasUnlockedThemes ? "Thanks for being a supporter" : "Supporter",
                         detail: hasUnlockedThemes ? nil : "Themes & fonts",
                         usesMulticolor: true
                     )

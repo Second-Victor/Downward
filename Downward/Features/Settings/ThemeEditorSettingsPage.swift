@@ -501,3 +501,12 @@ private struct SettingsMarkdownPreviewTextView: UIViewRepresentable {
         }
     }
 }
+
+#Preview("New Theme") {
+    ThemeEditorSettingsPage(
+        editorAppearanceStore: EditorAppearanceStore(),
+        themeStore: makePreviewThemeStore(),
+        editing: nil,
+        backAction: {}
+    )
+}

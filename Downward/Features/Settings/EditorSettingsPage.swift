@@ -680,3 +680,17 @@ private enum ImportedFontImportType {
         return types
     }
 }
+
+#Preview("Editor Settings") {
+    EditorSettingsPage(
+        editorAppearanceStore: EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 15
+            )
+        ),
+        themeStore: makePreviewThemeStore(),
+        importedFontManager: makePreviewImportedFontManager(),
+        backAction: {}
+    )
+}

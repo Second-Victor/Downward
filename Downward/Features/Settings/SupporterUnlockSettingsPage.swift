@@ -130,9 +130,8 @@ private struct SupporterBenefitRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: benefit.systemName)
+            benefitIcon
                 .font(.body.weight(.semibold))
-                .symbolGradient(benefit.color)
                 .frame(width: 28)
                 .accessibilityHidden(true)
 
@@ -147,6 +146,17 @@ private struct SupporterBenefitRow: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var benefitIcon: some View {
+        if benefit.id == "themes" {
+            Image(systemName: benefit.systemName)
+                .symbolRenderingMode(.multicolor)
+        } else {
+            Image(systemName: benefit.systemName)
+                .symbolGradient(benefit.color)
+        }
     }
 }
 
@@ -202,4 +212,26 @@ private struct SupporterPurchaseBar: View {
 
         return "Unlock Supporter Perks"
     }
+}
+
+#Preview("Supporter Unlock Settings") {
+    SupporterUnlockSettingsPage(
+        editorAppearanceStore: EditorAppearanceStore(),
+        themeStore: ThemeStore(
+            fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-supporter-\(UUID().uuidString).json"),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: false)
+        ),
+        backAction: {}
+    )
+}
+
+#Preview("Supporter Thanks Settings") {
+    SupporterUnlockSettingsPage(
+        editorAppearanceStore: EditorAppearanceStore(),
+        themeStore: ThemeStore(
+            fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-supporter-thanks-\(UUID().uuidString).json"),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: true)
+        ),
+        backAction: {}
+    )
 }

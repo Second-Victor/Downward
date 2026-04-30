@@ -73,6 +73,10 @@ struct AboutSettingsPage: View {
     }
 }
 
+#Preview("About Settings") {
+    AboutSettingsPage(backAction: {})
+}
+
 private struct AboutLinkRow: View {
     let systemName: String
     let title: String

@@ -94,31 +94,19 @@ struct ExtraThemesSettingsPage: View {
                     }
                 }
 
-                if themeStore.hasUnlockedThemes == false {
-                    ThemeLockedRow()
-                }
-
                 Button {
-                    guard ThemeEntitlementGate.canCreateCustomTheme(hasUnlockedThemes: themeStore.hasUnlockedThemes) else {
-                        themeStore.lastError = ThemeEntitlementGate.lockedMessage
-                        return
-                    }
-
                     push(.newTheme)
                 } label: {
                     NewThemeSettingsLabel()
                 }
+                .disabled(ThemeEntitlementGate.canCreateCustomTheme(hasUnlockedThemes: themeStore.hasUnlockedThemes) == false)
 
                 Button {
-                    guard ThemeEntitlementGate.canImportCustomThemes(hasUnlockedThemes: themeStore.hasUnlockedThemes) else {
-                        themeStore.lastError = ThemeEntitlementGate.lockedMessage
-                        return
-                    }
-
                     isImportingTheme = true
                 } label: {
                     ImportThemeSettingsLabel()
                 }
+                .disabled(ThemeEntitlementGate.canImportCustomThemes(hasUnlockedThemes: themeStore.hasUnlockedThemes) == false)
 
                 if themeStore.canRestoreThemePurchases {
                     Button {
@@ -146,6 +134,7 @@ struct ExtraThemesSettingsPage: View {
                         set: { editorAppearanceStore.setMatchSystemChromeToTheme($0) }
                     )
                 )
+                .disabled(themeStore.hasUnlockedThemes == false)
             } footer: {
                 Text("When enabled, editor menus and keyboard controls follow the selected editor theme instead of the app appearance.")
                     .settingsFooterStyle()
@@ -282,21 +271,29 @@ struct ThemeSelectionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Button(action: action) {
+            Button {
+                guard isEnabled else {
+                    return
+                }
+
+                action()
+            } label: {
                 HStack {
                     ThemePreviewSwatch(theme: theme)
                     Text(theme.label)
+                        .opacity(isEnabled ? 1 : 0.55)
                     Spacer()
                     if isSelected {
                         Image(systemName: "checkmark")
                             .symbolGradient(.accentColor)
                             .bold()
+                            .opacity(isEnabled ? 1 : 0.55)
                     }
                 }
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .disabled(isEnabled == false)
+            .accessibilityAddTraits(isEnabled ? [] : .isStaticText)
 
             if let onEdit {
                 Button(action: onEdit) {
@@ -309,27 +306,6 @@ struct ThemeSelectionRow: View {
                 .buttonStyle(.plain)
             }
         }
-        .opacity(isEnabled ? 1 : 0.55)
-    }
-}
-
-private struct ThemeLockedRow: View {
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "lock.fill")
-                .symbolGradient(.secondary)
-                .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Extra Themes")
-                    .foregroundStyle(.primary)
-
-                Text("Unlock to select, edit, create, import, and export extra themes.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
     }
 }
 
@@ -351,4 +327,13 @@ struct ThemePreviewSwatch: View {
                 .strokeBorder(.quaternary, lineWidth: 1)
         )
     }
+}
+
+#Preview("Theme Settings") {
+    ThemeSettingsPage(
+        editorAppearanceStore: EditorAppearanceStore(),
+        themeStore: makePreviewThemeStore(),
+        push: { _ in },
+        backAction: {}
+    )
 }

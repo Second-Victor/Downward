@@ -81,3 +81,15 @@ struct MarkdownSettingsPage: View {
         .navigationTitle("Markdown")
     }
 }
+
+#Preview("Markdown Settings") {
+    MarkdownSettingsPage(
+        editorAppearanceStore: EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .systemMonospaced,
+                fontSize: 15
+            )
+        ),
+        backAction: {}
+    )
+}

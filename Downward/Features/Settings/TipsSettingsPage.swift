@@ -39,11 +39,11 @@ struct TipsSettingsPage: View {
                     }
                 }
             } footer: {
-                Text("Tips help support the ongoing development of Downward. Thank you.")
+                Text("Tips help support the ongoing development and maintainance of Downward. Thank you for your support!")
                     .settingsFooterStyle()
             }
         }
-        .navigationTitle("Tips")
+        .navigationTitle("Tip Jar")
         .task {
             await tipJarManager.loadProducts()
         }
@@ -161,4 +161,8 @@ struct SettingsTipProductRow: View {
             return .red.opacity(0.7)
         }
     }
+}
+
+#Preview("Tips Settings") {
+    TipsSettingsPage(backAction: {})
 }
