@@ -1,13 +1,23 @@
 import Foundation
 import Observation
 
+typealias ThemeEntitlementChangeHandler = @MainActor @Sendable () -> Void
+
 @MainActor
 protocol ThemeEntitlementProviding: AnyObject {
     var hasUnlockedThemes: Bool { get }
     var canRestoreThemePurchases: Bool { get }
+    var supporterProductDisplayName: String? { get }
+    var supporterProductDisplayPrice: String? { get }
+    var isLoadingSupporterProduct: Bool { get }
+    var isPurchasingSupporterUnlock: Bool { get }
+    var supporterPurchaseErrorMessage: String? { get }
 
+    func loadSupporterProduct() async
     func purchaseSupporterUnlock() async
     func restoreThemePurchases() async
+    func clearSupporterPurchaseError()
+    func setEntitlementChangeHandler(_ handler: ThemeEntitlementChangeHandler?)
 }
 
 @MainActor
@@ -15,25 +25,51 @@ protocol ThemeEntitlementProviding: AnyObject {
 final class ThemeEntitlementStore: ThemeEntitlementProviding {
     private(set) var hasUnlockedThemes: Bool
     private(set) var canRestoreThemePurchases: Bool
+    private(set) var supporterProductDisplayName: String?
+    private(set) var supporterProductDisplayPrice: String?
+    private(set) var isLoadingSupporterProduct = false
+    private(set) var isPurchasingSupporterUnlock = false
+    private(set) var supporterPurchaseErrorMessage: String?
+    @ObservationIgnored private var entitlementChangeHandler: ThemeEntitlementChangeHandler?
 
     init(
         hasUnlockedThemes: Bool = false,
-        canRestoreThemePurchases: Bool = false
+        canRestoreThemePurchases: Bool = false,
+        supporterProductDisplayName: String? = nil,
+        supporterProductDisplayPrice: String? = nil
     ) {
         self.hasUnlockedThemes = hasUnlockedThemes
         self.canRestoreThemePurchases = canRestoreThemePurchases
+        self.supporterProductDisplayName = supporterProductDisplayName
+        self.supporterProductDisplayPrice = supporterProductDisplayPrice
     }
 
     func setHasUnlockedThemes(_ isUnlocked: Bool) {
         hasUnlockedThemes = isUnlocked
+        entitlementChangeHandler?()
+    }
+
+    func loadSupporterProduct() async {
     }
 
     func purchaseSupporterUnlock() async {
-        // StoreKit purchase wiring belongs here when theme purchases are implemented.
+        guard hasUnlockedThemes == false else {
+            supporterPurchaseErrorMessage = nil
+            return
+        }
+
+        supporterPurchaseErrorMessage = "Supporter purchases are not available yet."
     }
 
     func restoreThemePurchases() async {
-        // StoreKit restore wiring belongs here when theme purchases are implemented.
+    }
+
+    func clearSupporterPurchaseError() {
+        supporterPurchaseErrorMessage = nil
+    }
+
+    func setEntitlementChangeHandler(_ handler: ThemeEntitlementChangeHandler?) {
+        entitlementChangeHandler = handler
     }
 }
 

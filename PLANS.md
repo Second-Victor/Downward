@@ -24,7 +24,7 @@ The highest-risk areas are:
 3. large-document editor performance and line-number rendering,
 4. keyboard accessory and formatter/undo/redo behaviour,
 5. theme/status-bar/readability behaviour,
-6. placeholder Settings surfaces for tips, ratings, privacy, and terms,
+6. remaining Settings release polish for ratings, privacy, terms, and purchase walkthroughs,
 7. final App Store project/archive configuration.
 
 The previous completed backlog has been compressed out of this file. The current source already includes the major stabilisation work around formatter extraction, CRLF preservation, semantic heading/task formatting, line-number viewport rendering, theme-aware chrome, and broad XCTest coverage. Keep the active plan short and current.
@@ -71,8 +71,8 @@ The previous completed backlog has been compressed out of this file. The current
 ## 3. Resolve visible placeholder Settings surfaces
 
 - [x] Decide whether Tips ships in 1.0.
-- [ ] If Tips ships, implement real StoreKit products and purchase handling.
-- [x] If Tips does not ship, hide the Tips page and remove visible prices from release builds.
+- [x] If Tips ships, implement real StoreKit products and purchase handling.
+- [x] Add real StoreKit handling for the one-time Supporter unlock and remove the temporary auto-unlocked live entitlement.
 - [x] Decide whether “Rate the App” ships in 1.0.
 - [x] Hide “Rate the App” until a direct App Store review URL is configured.
 - [ ] If using a direct App Store review URL, confirm the final App Store ID.

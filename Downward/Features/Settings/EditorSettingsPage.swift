@@ -92,56 +92,50 @@ struct EditorSettingsPage: View {
                     .settingsFooterStyle()
             }
 
-            if selectedCategory == .monospaced {
-                Section {
-                    Toggle("Line Numbers", isOn: lineNumbersBinding)
-                        .disabled(
-                            editorAppearanceStore.selectedImportedFontFamilyName != nil
-                                || editorAppearanceStore.selectedFontChoice.isMonospaced == false
-                                || editorAppearanceStore.effectiveLargerHeadingText
-                        )
-                        .accessibilityHint("Shows line numbers along the left edge of monospaced editor text.")
+            Section {
+                Toggle("Line Numbers", isOn: lineNumbersBinding)
+                    .disabled(editorAppearanceStore.effectiveLargerHeadingText)
+                    .accessibilityHint("Shows line numbers along the left edge of editor text.")
 
-                    if editorAppearanceStore.effectiveShowLineNumbers {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack(spacing: 16) {
-                                SettingsHomeLabel(
-                                    title: "Line Number Opacity",
-                                    systemName: "circle.lefthalf.filled",
-                                    colors: [.blue]
-                                )
-
-                                Spacer(minLength: 12)
-
-                                HStack(spacing: 4) {
-                                    TextField(
-                                        "85",
-                                        value: lineNumberOpacityPercentBinding,
-                                        format: .number.precision(.fractionLength(0))
-                                    )
-                                    .keyboardType(.numberPad)
-                                    .multilineTextAlignment(.trailing)
-                                    .monospacedDigit()
-                                    .frame(width: 48)
-
-                                    Text("%")
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-
-                            Slider(
-                                value: lineNumberOpacityBinding,
-                                in: 0...1,
-                                step: 0.05
+                if editorAppearanceStore.effectiveShowLineNumbers {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 16) {
+                            SettingsHomeLabel(
+                                title: "Line Number Opacity",
+                                systemName: "circle.lefthalf.filled",
+                                colors: [.blue]
                             )
-                            .accessibilityLabel("Line number opacity")
-                            .accessibilityValue("\(Int((editorAppearanceStore.lineNumberOpacity * 100).rounded())) percent")
+
+                            Spacer(minLength: 12)
+
+                            HStack(spacing: 4) {
+                                TextField(
+                                    "85",
+                                    value: lineNumberOpacityPercentBinding,
+                                    format: .number.precision(.fractionLength(0))
+                                )
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing)
+                                .monospacedDigit()
+                                .frame(width: 48)
+
+                                Text("%")
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+
+                        Slider(
+                            value: lineNumberOpacityBinding,
+                            in: 0...1,
+                            step: 0.05
+                        )
+                        .accessibilityLabel("Line number opacity")
+                        .accessibilityValue("\(Int((editorAppearanceStore.lineNumberOpacity * 100).rounded())) percent")
                     }
-                } footer: {
-                    Text(lineNumbersHelperText)
-                        .settingsFooterStyle()
                 }
+            } footer: {
+                Text(lineNumbersHelperText)
+                    .settingsFooterStyle()
             }
 
             Section {
@@ -338,10 +332,6 @@ struct EditorSettingsPage: View {
     }
 
     private var lineNumbersHelperText: String {
-        if editorAppearanceStore.selectedImportedFontFamilyName != nil {
-            return "Line numbers are available with built-in monospaced fonts."
-        }
-
         if editorAppearanceStore.effectiveLargerHeadingText {
             return "Line numbers are disabled while larger heading text is enabled."
         }

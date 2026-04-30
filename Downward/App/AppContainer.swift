@@ -98,9 +98,15 @@ final class AppContainer {
         let importedFontManager = ImportedFontManager()
         importedFontManager.registerAllFonts()
         let editorAppearanceStore = EditorAppearanceStore()
-        // StoreKit is not wired yet. Keep themes unlocked in live builds so premium
-        // theme selection and editing can be exercised before purchase plumbing lands.
-        let themeStore = ThemeStore(entitlements: ThemeEntitlementStore(hasUnlockedThemes: true))
+        let themeStore = ThemeStore(entitlements: StoreKitThemeEntitlementStore())
+        themeStore.setEntitlementChangeHandler { [weak editorAppearanceStore, weak themeStore] in
+            guard let themeStore else {
+                return
+            }
+
+            editorAppearanceStore?.setImportedFontsUnlocked(themeStore.hasUnlockedThemes)
+            editorAppearanceStore?.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+        }
         let workspaceManager = LiveWorkspaceManager(
             bookmarkStore: bookmarkStore,
             securityScopedAccess: securityScopedAccess,

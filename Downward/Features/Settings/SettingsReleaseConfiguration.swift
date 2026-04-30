@@ -25,7 +25,7 @@ struct SettingsReleaseConfiguration: Equatable, Sendable {
     }
 
     static let current = SettingsReleaseConfiguration(
-        tipsPurchasesEnabled: false,
+        tipsPurchasesEnabled: true,
         rateTheAppEnabled: false,
         appStoreReviewURL: nil,
         projectURL: URL(string: "https://secondvictor.com/public/projects/downward/downward.html"),

@@ -1,0 +1,117 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "4A9CF3D5",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "6761652188",
+      "localizations" : [
+        {
+          "description" : "Buy me dinner",
+          "displayName" : "Dinner",
+          "locale" : "en_GB"
+        }
+      ],
+      "productID" : "com.secondvictor.downward.tip.xlarge",
+      "referenceName" : "Dinner",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "6761652087",
+      "localizations" : [
+        {
+          "description" : "Buy me a large coffee",
+          "displayName" : "Large Coffee",
+          "locale" : "en_GB"
+        }
+      ],
+      "productID" : "com.secondvictor.downward.tip.medium",
+      "referenceName" : "Large Coffee",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "6761651943",
+      "localizations" : [
+        {
+          "description" : "Buy me Lunch",
+          "displayName" : "Lunch",
+          "locale" : "en_GB"
+        }
+      ],
+      "productID" : "com.secondvictor.downward.tip.large",
+      "referenceName" : "Lunch",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "6761652045",
+      "localizations" : [
+        {
+          "description" : "Buy me a small coffee",
+          "displayName" : "Small Coffee",
+          "locale" : "en_GB"
+        }
+      ],
+      "productID" : "com.secondvictor.downward.tip.small",
+      "referenceName" : "Small Coffee",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : true,
+      "internalID" : "6764818112",
+      "localizations" : [
+        {
+          "description" : "Support the App",
+          "displayName" : "Supporter",
+          "locale" : "en_GB"
+        }
+      ],
+      "productID" : "com.secondvictor.downward.supporter",
+      "referenceName" : "Supporter",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6761651950",
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_developerTeamID" : "7DHWCFL5P9",
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 799240376.56160104,
+    "_locale" : "en_US",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "GBR",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 5,
+    "minor" : 0
+  }
+}

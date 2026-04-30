@@ -68,7 +68,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testLineNumbersPersistForMonospacedFonts() throws {
+    func testLineNumbersPersistForAnyFont() throws {
         let suiteName = "EditorAppearanceStoreTests.\(UUID().uuidString)"
         let userDefaults = try makeIsolatedUserDefaults(suiteName: suiteName)
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
@@ -76,7 +76,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
             userDefaults: userDefaults,
             preferencesKey: "test.editor.appearance",
             initialPreferences: EditorAppearancePreferences(
-                fontChoice: .systemMonospaced,
+                fontChoice: .default,
                 fontSize: 16
             )
         )
@@ -167,7 +167,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testSwitchingToProportionalFontDisablesAndPersistsLineNumbers() throws {
+    func testSwitchingToProportionalFontPreservesLineNumbers() throws {
         let suiteName = "EditorAppearanceStoreTests.\(UUID().uuidString)"
         let userDefaults = try makeIsolatedUserDefaults(suiteName: suiteName)
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
@@ -183,15 +183,15 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         store.setFontChoice(.default)
 
-        XCTAssertFalse(store.showLineNumbers)
-        XCTAssertFalse(store.effectiveShowLineNumbers)
+        XCTAssertTrue(store.showLineNumbers)
+        XCTAssertTrue(store.effectiveShowLineNumbers)
 
         let reloadedStore = EditorAppearanceStore(
             userDefaults: userDefaults,
             preferencesKey: "test.editor.appearance"
         )
-        XCTAssertFalse(reloadedStore.showLineNumbers)
-        XCTAssertFalse(reloadedStore.effectiveShowLineNumbers)
+        XCTAssertTrue(reloadedStore.showLineNumbers)
+        XCTAssertTrue(reloadedStore.effectiveShowLineNumbers)
     }
 
     @MainActor
@@ -543,6 +543,41 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         XCTAssertEqual(store.selectedImportedFontFamilyName, "Readable")
         XCTAssertEqual(store.selectedImportedFontFamilyDisplayName, "Readable")
+    }
+
+    @MainActor
+    func testImportedFontSelectionPreservesLineNumbersWhenHeadingsAreNormal() {
+        let resolver = EditorFontResolver(isRuntimeFontAvailable: { $0 == "Readable-Regular" })
+        let store = EditorAppearanceStore(
+            resolver: resolver,
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 16,
+                showLineNumbers: true
+            )
+        )
+        let family = ImportedFontFamily(
+            familyName: "Readable",
+            displayName: "Readable",
+            records: [
+                ImportedFontRecord(
+                    displayName: "Readable Regular",
+                    familyName: "Readable",
+                    postScriptName: "Readable-Regular",
+                    styleName: "Regular",
+                    relativePath: "Readable.ttf",
+                    importDate: Date(),
+                    symbolicTraitsRawValue: 0
+                )
+            ]
+        )
+
+        store.setImportedFontsUnlocked(true)
+        store.setImportedFontFamily(family)
+
+        XCTAssertEqual(store.selectedImportedFontFamilyName, "Readable")
+        XCTAssertTrue(store.showLineNumbers)
+        XCTAssertTrue(store.effectiveShowLineNumbers)
     }
 
     @MainActor

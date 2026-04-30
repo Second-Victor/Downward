@@ -12,6 +12,21 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 - Simulator/device:
   - iPhone 17 Pro, iOS 26.4 Simulator
 - Commands run:
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-StoreKitSupporterTips-2 -resultBundlePath /tmp/Downward-StoreKitSupporterTips-2.xcresult -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests -only-testing:DownwardTests/EditorAppearanceStoreTests`
+- Result:
+  - Added StoreKit 2 loading, purchase, restore, current-entitlement refresh, and transaction-update handling for the non-consumable Supporter unlock product `com.secondvictor.downward.supporter`.
+  - Removed the temporary live-build auto-unlock; simulator builds now start locked unless StoreKit reports the supporter entitlement.
+  - Added StoreKit 2 consumable tip purchases for the four configured `com.secondvictor.downward.tip.*` products.
+  - Focused Settings/theme/editor appearance tests passed.
+- Notes/failures:
+  - Manual StoreKit simulator purchase, restore, cancellation, and already-purchased flows still need to be exercised through Xcode's StoreKit configuration UI.
+
+- Date: 2026-04-30
+- Branch/commit at start of run: working tree on `main` with local changes
+- Xcode: Xcode 26.4 (17E192)
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator
+- Commands run:
   - `git diff --check`
   - `git diff --stat`
   - `git status --short`
@@ -254,7 +269,7 @@ This file is the release/runtime QA checklist for Downward. It records command-l
   - Focused Settings model tests passed on iPhone 17 Pro simulator: 15 passed, 0 skipped, 0 failed.
   - `git diff --check` passed.
 - Release Settings decision update:
-  - Tips remain disabled and hidden for 1.0 until StoreKit products and purchase handling exist.
+  - Superseded on 2026-04-30: Tips were later enabled with StoreKit products and purchase handling.
   - Superseded later on 2026-04-29: “Rate the App” is now hidden until a direct App Store review URL is configured.
   - About now links to the configured Downward project page, Privacy Policy, and Terms & Conditions URLs:
     - `https://secondvictor.com/public/projects/downward/downward.html`
@@ -399,7 +414,7 @@ This file is the release/runtime QA checklist for Downward. It records command-l
   - Supported devices: iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`).
   - Orientations: iPhone portrait only; iPad landscape left/right, portrait, and portrait upside down.
 - Release Settings decision:
-  - Tips do not ship in 1.0. `SettingsReleaseConfiguration.current` disables tips, and the Settings home Tips entry plus hidden destination are not shown while StoreKit products are unavailable.
+  - Superseded on 2026-04-30: Tips now ship in 1.0 through StoreKit consumable products.
   - “Rate the App” does not ship until an App Store review URL is configured.
   - Privacy Policy and Terms rows are hidden until final URLs are configured.
 - Release logging decision:
@@ -907,12 +922,12 @@ Expected result when disabled: app appearance controls chrome as before.
 
 - [ ] Settings sheet hierarchy inspected on compact width.
 - [ ] Settings sheet hierarchy inspected on regular width.
-- [ ] Release build Settings walkthrough confirms Tips entry is hidden, Rate the App is hidden until the App Store review URL is configured, and Website, Privacy Policy, and Terms & Conditions rows are visible with configured release backing.
+- [ ] Release build Settings walkthrough confirms Tips and Supporter purchases load from StoreKit, Rate the App is hidden until the App Store review URL is configured, and Website, Privacy Policy, and Terms & Conditions rows are visible with configured release backing.
 - [ ] Built-in theme switching observed.
 - [ ] Locked custom theme create/import/edit/export/selection affordances observed.
 - [ ] Custom theme create/edit/delete/import/export observed after a test entitlement unlock or StoreKit wiring.
 - [ ] Low-contrast theme warning observed.
-- [x] Automated Settings/theme tests confirm StoreKit tips are hidden, Rate the App is hidden without an App Store URL, legal About actions are visible with the current release configuration, and custom theme gates enforce `hasUnlockedThemes`.
+- [x] Automated Settings/theme tests confirm StoreKit tips are enabled, Rate the App is hidden without an App Store URL, legal About actions are visible with the current release configuration, and custom theme gates enforce `hasUnlockedThemes`.
 
 ## Theme Import/Export
 
@@ -942,9 +957,9 @@ Expected result when disabled: app appearance controls chrome as before.
 
 ## Known Limitations and Deferred Future Features
 
-- [x] StoreKit tips are disabled and hidden for 1.0 until real products and purchase handling are implemented.
+- [x] StoreKit tips are enabled for 1.0 with real consumable product loading and purchase handling.
 - [x] App Store review/rating is hidden for 1.0 until the final direct App Store review URL is configured; Settings no longer calls StoreKit `requestReview()` directly.
 - [x] Legal/privacy rows are enabled for 1.0 with configured final URLs.
-- [x] Custom themes are gated behind a lightweight entitlement abstraction; StoreKit wiring remains deferred.
+- [x] Custom themes and imported fonts are gated behind the StoreKit-backed Supporter unlock entitlement.
 - [ ] Richer markdown constructs such as tables and footnotes remain future work.
 - [ ] Deeper theme marketplace/sharing behavior remains future work.

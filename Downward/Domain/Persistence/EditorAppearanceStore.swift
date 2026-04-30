@@ -209,7 +209,6 @@ final class EditorAppearanceStore {
         preferences.importedFontFamilyDisplayName = family.displayName
         preferences.importedFontPostScriptName = nil
         preferences.importedFontDisplayName = nil
-        preferences.showLineNumbers = false
         persist()
     }
 
@@ -229,7 +228,6 @@ final class EditorAppearanceStore {
         preferences.importedFontFamilyDisplayName = record.familyName
         preferences.importedFontPostScriptName = record.postScriptName
         preferences.importedFontDisplayName = record.displayName
-        preferences.showLineNumbers = false
         persist()
     }
 
@@ -273,10 +271,7 @@ final class EditorAppearanceStore {
     }
 
     func setShowLineNumbers(_ isEnabled: Bool) {
-        let normalizedValue = selectedImportedFontFamilyName == nil
-            && selectedFontChoice.isMonospaced
-            && effectiveLargerHeadingText == false
-            && isEnabled
+        let normalizedValue = effectiveLargerHeadingText == false && isEnabled
         guard preferences.showLineNumbers != normalizedValue else {
             return
         }
@@ -422,18 +417,10 @@ final class EditorAppearanceStore {
     private static func normalize(
         _ preferences: EditorAppearancePreferences,
         using resolver: EditorFontResolver,
-        importedFontsUnlocked: Bool
+        importedFontsUnlocked _: Bool
     ) -> EditorAppearancePreferences {
         let normalizedChoice = resolver.normalizedChoice(preferences.fontChoice)
-        let usesImportedFont = importedFontsUnlocked
-            && (preferences.importedFontFamilyName != nil
-                || resolver.canUseImportedFont(
-                    preferences.importedFontPostScriptName,
-                    importedFontsUnlocked: importedFontsUnlocked
-                ))
-        let normalizedShowLineNumbers = usesImportedFont == false
-            && normalizedChoice.isMonospaced
-            && preferences.largerHeadingText == false
+        let normalizedShowLineNumbers = preferences.largerHeadingText == false
             ? preferences.showLineNumbers
             : false
 

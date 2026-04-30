@@ -30,9 +30,9 @@ struct SupporterUnlockSettingsPage: View {
                     SupporterBenefitRow(benefit: benefit)
                 }
             } header: {
-                Text("Supporter Benefits")
+                Text("Benefits")
             } footer: {
-                Text("A one-time supporter unlock helps fund Downward and unlocks the same perks used by Themes.")
+                Text("A one-time supporter unlock helps fund Downward and unlocks some nice perks.")
                     .settingsFooterStyle()
             }
 
@@ -56,7 +56,12 @@ struct SupporterUnlockSettingsPage: View {
         .navigationTitle(themeStore.hasUnlockedThemes ? "Supporter" : "Supporter Unlock")
         .safeAreaInset(edge: .bottom) {
             if themeStore.hasUnlockedThemes == false {
-                SupporterPurchaseBar {
+                SupporterPurchaseBar(
+                    productName: themeStore.supporterProductDisplayName,
+                    price: themeStore.supporterProductDisplayPrice,
+                    isLoading: themeStore.isLoadingSupporterProduct,
+                    isPurchasing: themeStore.isPurchasingSupporterUnlock
+                ) {
                     Task {
                         await themeStore.purchaseSupporterUnlock()
                         editorAppearanceStore.setImportedFontsUnlocked(themeStore.hasUnlockedThemes)
@@ -64,8 +69,11 @@ struct SupporterUnlockSettingsPage: View {
                 }
             }
         }
+        .task {
+            await themeStore.loadSupporterProduct()
+        }
         .alert("Supporter Unlock", isPresented: supporterErrorBinding) {
-            Button("OK") { themeStore.lastError = nil }
+            Button("OK") { themeStore.clearSupporterPurchaseError() }
         } message: {
             if let error = themeStore.lastError {
                 Text(error)
@@ -78,7 +86,7 @@ struct SupporterUnlockSettingsPage: View {
             get: { themeStore.lastError != nil },
             set: { isPresented in
                 if isPresented == false {
-                    themeStore.lastError = nil
+                    themeStore.clearSupporterPurchaseError()
                 }
             }
         )
@@ -143,6 +151,10 @@ private struct SupporterBenefitRow: View {
 }
 
 private struct SupporterPurchaseBar: View {
+    let productName: String?
+    let price: String?
+    let isLoading: Bool
+    let isPurchasing: Bool
     let action: () -> Void
 
     var body: some View {
@@ -150,16 +162,44 @@ private struct SupporterPurchaseBar: View {
             Divider()
 
             Button(action: action) {
-                Label("Unlock Supporter Perks", systemImage: "heart.circle.fill")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 10) {
+                    if isPurchasing {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "heart.circle.fill")
+                    }
+
+                    Text(buttonTitle)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                }
+                .font(.headline)
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+            .disabled(isLoading || isPurchasing)
             .padding(.horizontal, 20)
             .padding(.top, 12)
             .padding(.bottom, 10)
         }
         .background(.bar)
+    }
+
+    private var buttonTitle: String {
+        if isLoading {
+            return "Loading Supporter Unlock..."
+        }
+
+        if let productName, let price {
+            return "\(productName) - \(price)"
+        }
+
+        if let price {
+            return "Unlock Supporter Perks - \(price)"
+        }
+
+        return "Unlock Supporter Perks"
     }
 }

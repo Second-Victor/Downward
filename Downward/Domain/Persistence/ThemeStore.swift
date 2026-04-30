@@ -25,6 +25,8 @@ final class ThemeStore {
     private var loadTask: Task<Void, Never>?
     private var persistenceTask: Task<PersistenceResult, Never>?
     private var persistenceGeneration = 0
+    private var entitlementVersion = 0
+    @ObservationIgnored private var entitlementChangeHandler: ThemeEntitlementChangeHandler?
 
     private enum PersistenceResult: Sendable {
         case success
@@ -75,6 +77,14 @@ final class ThemeStore {
                 self.lastError = result.errorMessage
                 self.loadState = result.errorMessage == nil ? .loaded : .failed
             }
+        }
+        self.entitlements.setEntitlementChangeHandler { [weak self] in
+            guard let self else {
+                return
+            }
+
+            self.entitlementVersion += 1
+            self.entitlementChangeHandler?()
         }
     }
 
@@ -182,25 +192,74 @@ final class ThemeStore {
     }
 
     var hasUnlockedThemes: Bool {
-        entitlements.hasUnlockedThemes
+        _ = entitlementVersion
+        return entitlements.hasUnlockedThemes
     }
 
     var canRestoreThemePurchases: Bool {
-        entitlements.canRestoreThemePurchases
+        _ = entitlementVersion
+        return entitlements.canRestoreThemePurchases
+    }
+
+    var supporterProductDisplayName: String? {
+        _ = entitlementVersion
+        return entitlements.supporterProductDisplayName
+    }
+
+    var supporterProductDisplayPrice: String? {
+        _ = entitlementVersion
+        return entitlements.supporterProductDisplayPrice
+    }
+
+    var isLoadingSupporterProduct: Bool {
+        _ = entitlementVersion
+        return entitlements.isLoadingSupporterProduct
+    }
+
+    var isPurchasingSupporterUnlock: Bool {
+        _ = entitlementVersion
+        return entitlements.isPurchasingSupporterUnlock
+    }
+
+    func setEntitlementChangeHandler(_ handler: ThemeEntitlementChangeHandler?) {
+        entitlementChangeHandler = handler
+    }
+
+    func loadSupporterProduct() async {
+        await entitlements.loadSupporterProduct()
+        entitlementVersion += 1
+
+        if let errorMessage = entitlements.supporterPurchaseErrorMessage {
+            lastError = errorMessage
+        }
     }
 
     func purchaseSupporterUnlock() async {
         await entitlements.purchaseSupporterUnlock()
+        entitlementVersion += 1
 
-        if hasUnlockedThemes {
+        if let errorMessage = entitlements.supporterPurchaseErrorMessage {
+            lastError = errorMessage
+        } else if hasUnlockedThemes {
             lastError = nil
-        } else {
-            lastError = "Supporter purchases are not available yet."
         }
     }
 
     func restoreThemePurchases() async {
         await entitlements.restoreThemePurchases()
+        entitlementVersion += 1
+
+        if let errorMessage = entitlements.supporterPurchaseErrorMessage {
+            lastError = errorMessage
+        } else if hasUnlockedThemes {
+            lastError = nil
+        }
+    }
+
+    func clearSupporterPurchaseError() {
+        entitlements.clearSupporterPurchaseError()
+        lastError = nil
+        entitlementVersion += 1
     }
 
     func canSelectTheme(withID rawValue: String) -> Bool {

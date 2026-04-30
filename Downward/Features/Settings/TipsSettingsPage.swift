@@ -1,20 +1,42 @@
 import SwiftUI
+import StoreKit
 
 struct TipsSettingsPage: View {
     let backAction: () -> Void
 
-    private let tips = [
-        TipRow(icon: "cup.and.saucer.fill", tint: Color.brown.opacity(0.65), title: "Small Coffee", caption: "Buy me a small coffee", price: "£0.99"),
-        TipRow(icon: "mug.fill", tint: .orange.opacity(0.75), title: "Large Coffee", caption: "Buy me a large coffee", price: "£2.99"),
-        TipRow(icon: "fork.knife", tint: .teal.opacity(0.65), title: "Lunch", caption: "Buy me Lunch", price: "£4.99"),
-        TipRow(icon: "wineglass.fill", tint: .red.opacity(0.7), title: "Dinner", caption: "Buy me dinner", price: "£9.99")
-    ]
+    @State private var tipJarManager = TipJarManager()
 
     var body: some View {
         Form {
             Section {
-                ForEach(tips) { tip in
-                    SettingsTipRow(tip: tip)
+                if tipJarManager.isLoadingProducts {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading tips...")
+                            .foregroundStyle(.secondary)
+                    }
+                } else if tipJarManager.products.isEmpty {
+                    ContentUnavailableView(
+                        "Tips Unavailable",
+                        systemImage: "heart.slash",
+                        description: Text("Tip purchases could not be loaded.")
+                    )
+                } else {
+                    ForEach(tipJarManager.products, id: \.id) { product in
+                        Button {
+                            Task {
+                                await tipJarManager.purchase(product)
+                            }
+                        } label: {
+                            SettingsTipProductRow(
+                                product: product,
+                                purchaseInProgress: tipJarManager.purchaseInProgress
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(tipJarManager.purchaseInProgress)
+                    }
                 }
             } footer: {
                 Text("Tips help support the ongoing development of Downward. Thank you.")
@@ -22,52 +44,121 @@ struct TipsSettingsPage: View {
             }
         }
         .navigationTitle("Tips")
+        .task {
+            await tipJarManager.loadProducts()
+        }
+        .alert(purchaseAlertTitle, isPresented: purchaseAlertBinding) {
+            Button(purchaseAlertButtonLabel) {
+                tipJarManager.resetPurchaseState()
+            }
+        } message: {
+            switch tipJarManager.purchaseState {
+            case let .success(productName):
+                Text("Your \(productName) tip is greatly appreciated.")
+            case let .failed(error):
+                Text(error)
+            case .idle, .purchasing:
+                EmptyView()
+            }
+        }
+    }
+
+    private var purchaseAlertTitle: String {
+        switch tipJarManager.purchaseState {
+        case .success:
+            "Thank You"
+        case .failed:
+            "Purchase Failed"
+        case .idle, .purchasing:
+            ""
+        }
+    }
+
+    private var purchaseAlertButtonLabel: String {
+        switch tipJarManager.purchaseState {
+        case .success:
+            "You're Welcome"
+        case .failed, .idle, .purchasing:
+            "OK"
+        }
+    }
+
+    private var purchaseAlertBinding: Binding<Bool> {
+        Binding(
+            get: {
+                switch tipJarManager.purchaseState {
+                case .success, .failed:
+                    true
+                case .idle, .purchasing:
+                    false
+                }
+            },
+            set: { isPresented in
+                if isPresented == false {
+                    tipJarManager.resetPurchaseState()
+                }
+            }
+        )
     }
 }
 
-struct TipRow: Identifiable, Equatable {
-    let icon: String
-    let tint: Color
-    let title: String
-    let caption: String
-    let price: String
-
-    var id: String {
-        title
-    }
-
-    static func == (lhs: TipRow, rhs: TipRow) -> Bool {
-        lhs.id == rhs.id
-    }
-}
-
-struct SettingsTipRow: View {
-    let tip: TipRow
+struct SettingsTipProductRow: View {
+    let product: Product
+    let purchaseInProgress: Bool
 
     var body: some View {
         HStack(spacing: 20) {
-            Image(systemName: tip.icon)
+            Image(systemName: symbolName)
                 .font(.body.weight(.semibold))
-                .symbolGradient(tip.tint)
+                .symbolGradient(color)
                 .frame(width: 34)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(tip.title)
+                Text(product.displayName)
                     .font(.body)
                     .foregroundStyle(.primary)
 
-                Text(tip.caption)
+                Text(product.description)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 12)
 
-            Text(tip.price)
-                .font(.body.weight(.bold))
-                .monospacedDigit()
+            if purchaseInProgress {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Text(product.displayPrice)
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.blue)
+                    .monospacedDigit()
+            }
         }
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .accessibilityHint("StoreKit purchases are not implemented yet.")
+    }
+
+    private var symbolName: String {
+        if product.price < 2 {
+            return "cup.and.saucer.fill"
+        } else if product.price < 4 {
+            return "mug.fill"
+        } else if product.price < 8 {
+            return "fork.knife"
+        } else {
+            return "wineglass.fill"
+        }
+    }
+
+    private var color: Color {
+        if product.price < 2 {
+            return .brown.opacity(0.65)
+        } else if product.price < 4 {
+            return .orange.opacity(0.75)
+        } else if product.price < 8 {
+            return .teal.opacity(0.65)
+        } else {
+            return .red.opacity(0.7)
+        }
     }
 }

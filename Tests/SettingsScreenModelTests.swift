@@ -164,10 +164,10 @@ final class SettingsScreenModelTests: XCTestCase {
     }
 
     @MainActor
-    func testLineNumberSettingUpdatesStoreForMonospacedFonts() {
+    func testLineNumberSettingUpdatesStoreForAnyFont() {
         let store = EditorAppearanceStore(
             initialPreferences: EditorAppearancePreferences(
-                fontChoice: .systemMonospaced,
+                fontChoice: .default,
                 fontSize: 16
             )
         )
@@ -215,13 +215,13 @@ final class SettingsScreenModelTests: XCTestCase {
     func testReleaseConfigurationShowsImplementedSettingsSurfaces() {
         let configuration = SettingsReleaseConfiguration.current
 
-        XCTAssertFalse(configuration.showsTipsPage)
+        XCTAssertTrue(configuration.showsTipsPage)
         XCTAssertFalse(configuration.showsRateTheApp)
         XCTAssertTrue(configuration.showsLegalLinks)
         XCTAssertEqual(configuration.projectURL?.absoluteString, "https://secondvictor.com/public/projects/downward/downward.html")
         XCTAssertEqual(configuration.privacyPolicyURL?.absoluteString, "https://secondvictor.com/public/projects/downward/downward-policy.html")
         XCTAssertEqual(configuration.termsAndConditionsURL?.absoluteString, "https://secondvictor.com/public/projects/downward/downward-terms.html")
-        XCTAssertFalse(SettingsPlaceholderFeature.tipsPurchases.isVisible(in: configuration))
+        XCTAssertTrue(SettingsPlaceholderFeature.tipsPurchases.isVisible(in: configuration))
         XCTAssertFalse(SettingsPlaceholderFeature.rateTheApp.isVisible(in: configuration))
         XCTAssertTrue(SettingsPlaceholderFeature.legalLinks.isVisible(in: configuration))
         XCTAssertTrue(SettingsPlaceholderFeature.lineNumbers.isVisible(in: configuration))
@@ -261,15 +261,11 @@ final class SettingsScreenModelTests: XCTestCase {
         XCTAssertFalse(SettingsPlaceholderFeature.rateTheApp.isVisible(in: configuration))
     }
 
-    func testPlaceholderSettingsAreNotMarkedImplemented() {
-        let placeholders: [SettingsPlaceholderFeature] = [
-            .tipsPurchases
-        ]
-
-        XCTAssertTrue(placeholders.allSatisfy { $0.isImplemented == false })
+    func testSettingsSurfacesAreMarkedImplemented() {
         XCTAssertTrue(SettingsPlaceholderFeature.lineNumbers.isImplemented)
         XCTAssertTrue(SettingsPlaceholderFeature.largerHeadingText.isImplemented)
         XCTAssertTrue(SettingsPlaceholderFeature.tapToToggleTasks.isImplemented)
+        XCTAssertTrue(SettingsPlaceholderFeature.tipsPurchases.isImplemented)
         XCTAssertTrue(SettingsPlaceholderFeature.rateTheApp.isImplemented)
         XCTAssertTrue(SettingsPlaceholderFeature.legalLinks.isImplemented)
     }

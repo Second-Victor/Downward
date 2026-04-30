@@ -110,8 +110,10 @@ Settings pages should use existing stores and app actions rather than creating p
 - editor font, font size, markdown syntax visibility, selected theme identity, and match-menu preference flow through `EditorAppearanceStore`,
 - imported font face records, family grouping, and runtime registration flow through `ImportedFontManager`, gated by the same extra-theme entitlement,
 - custom themes load and persist through `ThemeStore`/`ThemePersistenceService`; JSON import/export flows through `ThemeImportService` and `ThemeExchangeDocument`,
+- StoreKit supporter unlock state flows through `StoreKitThemeEntitlementStore` into `ThemeStore`, which owns the shared `hasUnlockedThemes` entitlement used by extra themes and custom fonts,
+- consumable tip products load and purchase through `TipJarManager`,
 - workspace reconnect/clear still delegate to root/coordinator actions,
-- Supporter unlock purchase actions, Tips, and About may expose disabled or placeholder-backed controls until the backing StoreKit, review, and URL infrastructure exists.
+- About may expose disabled or placeholder-backed controls until the backing review and URL infrastructure exists.
 
 It should stay declarative and lightweight.
 It is not the place for file-system rules.
