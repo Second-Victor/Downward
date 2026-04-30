@@ -391,9 +391,11 @@ struct SettingsFontOption: Identifiable, Equatable {
         case .systemMonospaced:
             return .system(.body, design: .monospaced)
         case .menlo:
-            return .custom("Menlo", size: size)
-        case .courier, .courierNew:
-            return .custom("Courier New", size: size)
+            return .custom("Menlo-Regular", size: size)
+        case .courier:
+            return .custom("Courier", size: size)
+        case .courierNew:
+            return .custom("CourierNewPSMT", size: size)
         case .newYork:
             return .system(.body, design: .serif)
         case .georgia:
@@ -536,9 +538,7 @@ private struct ImportedFontStyleStatusRow: View {
                 Text(style.displayName)
                     .font(previewFont)
 
-                Text(statusText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                statusView
             }
 
             Spacer()
@@ -552,12 +552,25 @@ private struct ImportedFontStyleStatusRow: View {
         }
     }
 
-    private var statusText: String {
+    @ViewBuilder
+    private var statusView: some View {
         if let record {
-            return "Installed as \(record.displayName)"
-        }
+            HStack(spacing: 4) {
+                Text("Installed as")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-        return "Not installed"
+                Text(record.displayName)
+                    .font(.custom(record.postScriptName, size: UIFont.preferredFont(forTextStyle: .caption1).pointSize))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+        } else {
+            Text("Not installed")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var previewFont: Font {
