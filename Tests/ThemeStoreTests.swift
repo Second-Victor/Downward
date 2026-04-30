@@ -742,6 +742,19 @@ final class ThemeStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDownwardOrangeIsFreeBuiltInThemeBelowDefault() async throws {
+        let store = makeThemeStore(fileURL: try makeTemporaryThemeURL(), hasUnlockedThemes: false)
+
+        XCTAssertEqual(EditorTheme.builtIn.map(\.id), [
+            EditorTheme.adaptive.id,
+            EditorTheme.downwardOrange.id,
+            EditorTheme.greyAdaptive.id
+        ])
+        XCTAssertTrue(store.canSelectTheme(withID: EditorTheme.downwardOrange.id))
+        XCTAssertEqual(store.resolve(EditorTheme.downwardOrange.id), EditorTheme.downwardOrange)
+    }
+
+    @MainActor
     func testSettingsImportHandlerDoesNotLoadFileWhenThemesAreLocked() async throws {
         let store = makeThemeStore(fileURL: try makeTemporaryThemeURL(), hasUnlockedThemes: false)
         let selectedURL = URL(filePath: "/tmp/LockedTheme.json")

@@ -1441,6 +1441,27 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorAccessoryTaskInsertsOnCollapsedBlankLine() {
+        let textBox = MutableBox("one\n\ntwo")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.selectedRange = NSRange(location: 4, length: 0)
+        coordinator.applyLineMarkdownPrefixForTesting("- [ ] ", in: textView)
+
+        XCTAssertEqual(textBox.value, "one\n- [ ] \ntwo")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 10, length: 0))
+    }
+
+    @MainActor
     func testCoordinatorAccessoryHeaderPrefixesSelectedLines() {
         let textBox = MutableBox("one\ntwo")
         let coordinator = makeCoordinator(text: textBox)

@@ -295,8 +295,20 @@ nonisolated struct MarkdownTaskListPlan: Equatable {
             tracking: selectedRangeInSelectedText
         ) { segment, cursorLocal in
             let content = segment.content
-            guard content.trimmingCharacters(in: .whitespaces).isEmpty == false else {
-                return (segment, cursorLocal)
+            if content.trimmingCharacters(in: .whitespaces).isEmpty {
+                guard cursorLocal != nil else {
+                    return (segment, cursorLocal)
+                }
+
+                let prefixLength = (uncheckedPrefix as NSString).length
+                let contentLength = (content as NSString).length
+                return (
+                    MarkdownLineSegment(
+                        content: content + uncheckedPrefix,
+                        lineEnding: segment.lineEnding
+                    ),
+                    contentLength + prefixLength
+                )
             }
 
             if let task = MarkdownTaskLine.parse(content) {

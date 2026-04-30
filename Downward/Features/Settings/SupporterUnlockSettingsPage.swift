@@ -9,6 +9,17 @@ struct SupporterUnlockSettingsPage: View {
 
     var body: some View {
         Form {
+            Section {
+                SupporterThemePreviewStrip(
+                    themes: ThemeStore.bundledPremiumThemes.prefix(5).map(EditorTheme.init(from:))
+                )
+            } header: {
+                Text("Themes")
+            } footer: {
+                Text("These themes and more are available to supporters. Supporters can also import, export and edit themes.")
+                    .settingsFooterStyle()
+            }
+
             if themeStore.hasUnlockedThemes {
                 Section {
                     Label {
@@ -30,10 +41,11 @@ struct SupporterUnlockSettingsPage: View {
                     SupporterBenefitRow(benefit: benefit)
                 }
             } header: {
-                Text("Benefits")
-            } footer: {
-                Text("A one-time supporter unlock helps fund Downward and unlocks some nice perks.")
-                    .settingsFooterStyle()
+                Text("Fonts")
+            }
+
+            Section {
+                SupporterFundingMessage()
             }
 
             if themeStore.canRestoreThemePurchases {
@@ -93,6 +105,68 @@ struct SupporterUnlockSettingsPage: View {
     }
 }
 
+private struct SupporterFundingMessage: View {
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "heart.fill")
+                .font(.body.weight(.semibold))
+                .symbolGradient(.pink)
+                .frame(width: 28)
+                .accessibilityHidden(true)
+
+            Text({
+                var s = AttributedString("One-time supporter unlock helps fund Downward and unlocks some nice perks. The App works great without it, but these are nice to have.")
+                if let range = s.range(of: "One-time") {
+                    s[range].font = .system(.body, design: .default).weight(.semibold)
+                }
+                return s
+            }())
+                .font(.body)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct SupporterThemePreviewStrip: View {
+    let themes: [EditorTheme]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(themes.enumerated()), id: \.element.id) { index, theme in
+                SupporterThemePreviewTile(theme: theme)
+
+                if index < themes.count - 1 {
+                    Divider()
+                        .padding(.leading, 72)
+                }
+            }
+        }
+        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+    }
+}
+
+private struct SupporterThemePreviewTile: View {
+    let theme: EditorTheme
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ThemePreviewSwatch(theme: theme)
+
+            Text(theme.label)
+                .font(.body)
+                .foregroundStyle(.primary)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(theme.label)
+    }
+}
+
 struct SupporterBenefit: Identifiable {
     let id: String
     let systemName: String
@@ -102,25 +176,11 @@ struct SupporterBenefit: Identifiable {
 
     static let all = [
         SupporterBenefit(
-            id: "themes",
-            systemName: "paintpalette.fill",
-            color: .accentColor,
-            title: "Extra Themes",
-            detail: "Select, edit, create, import, and export custom editor themes."
-        ),
-        SupporterBenefit(
             id: "fonts",
             systemName: "textformat",
             color: .blue,
             title: "Custom Fonts",
-            detail: "Import font families and use them throughout the editor."
-        ),
-        SupporterBenefit(
-            id: "support",
-            systemName: "heart.fill",
-            color: .pink,
-            title: "Support Development",
-            detail: "Help keep Downward polished, maintained, and improving."
+            detail: "Import .ttf and .otf font families and use them throughout the editor."
         )
     ]
 }
@@ -137,6 +197,7 @@ private struct SupporterBenefitRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(benefit.title)
+                    .font(.body)
                     .foregroundStyle(.primary)
 
                 Text(benefit.detail)
@@ -150,13 +211,8 @@ private struct SupporterBenefitRow: View {
 
     @ViewBuilder
     private var benefitIcon: some View {
-        if benefit.id == "themes" {
-            Image(systemName: benefit.systemName)
-                .symbolRenderingMode(.multicolor)
-        } else {
-            Image(systemName: benefit.systemName)
-                .symbolGradient(benefit.color)
-        }
+        Image(systemName: benefit.systemName)
+            .symbolGradient(benefit.color)
     }
 }
 

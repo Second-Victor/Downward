@@ -76,6 +76,28 @@ final class MarkdownFormattingPlanTests: XCTestCase {
         )
     }
 
+    func testTaskPlanInsertsMarkerOnCollapsedBlankLine() {
+        let plan = MarkdownLinePrefixPlan.make(
+            prefix: "- [ ] ",
+            selectedText: "\n",
+            selectedRangeInSelectedText: NSRange(location: 0, length: 0)
+        )
+
+        XCTAssertEqual(plan.replacement, "- [ ] \n")
+        XCTAssertEqual(plan.selectedRangeInReplacement, NSRange(location: 6, length: 0))
+    }
+
+    func testTaskPlanPreservesIndentedCollapsedBlankLine() {
+        let plan = MarkdownLinePrefixPlan.make(
+            prefix: "- [ ] ",
+            selectedText: "   \n",
+            selectedRangeInSelectedText: NSRange(location: 0, length: 0)
+        )
+
+        XCTAssertEqual(plan.replacement, "   - [ ] \n")
+        XCTAssertEqual(plan.selectedRangeInReplacement, NSRange(location: 9, length: 0))
+    }
+
     func testTaskPlanTogglesExistingTasksOffWithoutStacking() {
         XCTAssertEqual(MarkdownTaskListPlan.make(selectedText: "- [ ] text").replacement, "text")
         XCTAssertEqual(MarkdownTaskListPlan.make(selectedText: "- [x] text").replacement, "text")

@@ -48,6 +48,7 @@ struct EditorSettingsPage: View {
                     } label: {
                         ImportFontSettingsLabel(title: "Import Font")
                     }
+                    .listRowInsets(importedFontRowInsets)
 
                     ForEach(importedFontManager.families) { family in
                         ImportedFontFamilyRow(
@@ -65,11 +66,12 @@ struct EditorSettingsPage: View {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
+                        .listRowInsets(importedFontRowInsets)
                     }
                 } header: {
                     Text("Imported Fonts")
                 } footer: {
-                    Text("Import .ttf or .otf fonts to use in the editor. Swipe an imported family to delete it.")
+                    Text("Import .ttf or .otf fonts to use in the editor.")
                         .settingsFooterStyle()
                 }
             }
@@ -132,11 +134,13 @@ struct EditorSettingsPage: View {
                         .accessibilityLabel("Line number opacity")
                         .accessibilityValue("\(Int((editorAppearanceStore.lineNumberOpacity * 100).rounded())) percent")
                     }
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
             } footer: {
                 Text(lineNumbersHelperText)
                     .settingsFooterStyle()
             }
+            .animation(.snappy(duration: 0.22), value: editorAppearanceStore.effectiveShowLineNumbers)
 
             Section {
                 Toggle("Larger Heading Text", isOn: largerHeadingTextBinding)
@@ -220,7 +224,11 @@ struct EditorSettingsPage: View {
     private var lineNumbersBinding: Binding<Bool> {
         Binding(
             get: { editorAppearanceStore.showLineNumbers },
-            set: { editorAppearanceStore.setShowLineNumbers($0) }
+            set: { isEnabled in
+                withAnimation(.snappy(duration: 0.22)) {
+                    editorAppearanceStore.setShowLineNumbers(isEnabled)
+                }
+            }
         )
     }
 
@@ -241,7 +249,11 @@ struct EditorSettingsPage: View {
     private var largerHeadingTextBinding: Binding<Bool> {
         Binding(
             get: { editorAppearanceStore.largerHeadingText },
-            set: { editorAppearanceStore.setLargerHeadingText($0) }
+            set: { isEnabled in
+                withAnimation(.snappy(duration: 0.22)) {
+                    editorAppearanceStore.setLargerHeadingText(isEnabled)
+                }
+            }
         )
     }
 
@@ -283,6 +295,10 @@ struct EditorSettingsPage: View {
         }
 
         return importedFontManager.family(named: presentedImportedFontFamilyName)
+    }
+
+    private var importedFontRowInsets: EdgeInsets {
+        EdgeInsets(top: 7, leading: 20, bottom: 7, trailing: 20)
     }
 
     private var availableFontOptions: [SettingsFontOption] {
@@ -391,15 +407,26 @@ struct SettingsFontOption: Identifiable, Equatable {
         case .systemMonospaced:
             return .system(.body, design: .monospaced)
         case .menlo:
-            return .custom("Menlo-Regular", size: size)
+            return .custom("Menlo", size: size)
         case .courier:
             return .custom("Courier", size: size)
         case .courierNew:
-            return .custom("CourierNewPSMT", size: size)
+            return .custom("Courier New", size: size)
         case .newYork:
             return .system(.body, design: .serif)
         case .georgia:
             return .custom("Georgia", size: size)
+        }
+    }
+
+    var previewFontDesign: Font.Design {
+        switch choice {
+        case .systemMonospaced, .menlo, .courier, .courierNew:
+            .monospaced
+        case .newYork:
+            .serif
+        case .default, .georgia:
+            .default
         }
     }
 
@@ -433,6 +460,7 @@ struct SettingsFontRow: View {
             HStack {
                 Text(option.displayName)
                     .font(option.previewFont)
+                    .fontDesign(option.previewFontDesign)
 
                 Spacer()
 
@@ -455,12 +483,13 @@ private struct ImportedFontFamilyRow: View {
     let detailAction: () -> Void
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             Button(action: action) {
-                HStack(alignment: .firstTextBaseline) {
+                HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(family.displayName)
                             .font(previewFont)
+                            .fontDesign(nil)
 
                         Text(family.styleSummary)
                             .font(.caption)
@@ -478,12 +507,13 @@ private struct ImportedFontFamilyRow: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Button(action: detailAction) {
                 Image(systemName: "list.bullet.rectangle")
                     .imageScale(.medium)
                     .foregroundStyle(.secondary)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 30, height: 30)
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -537,6 +567,7 @@ private struct ImportedFontStyleStatusRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(style.displayName)
                     .font(previewFont)
+                    .fontDesign(record == nil ? .default : nil)
 
                 statusView
             }
@@ -562,6 +593,7 @@ private struct ImportedFontStyleStatusRow: View {
 
                 Text(record.displayName)
                     .font(.custom(record.postScriptName, size: UIFont.preferredFont(forTextStyle: .caption1).pointSize))
+                    .fontDesign(nil)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)

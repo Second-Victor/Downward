@@ -29,6 +29,21 @@ struct EditorTheme: Identifiable, Equatable {
         checkboxChecked: .systemGreen
     )
 
+    static let downwardOrange = EditorTheme(
+        id: "downward-orange",
+        label: "Downward Orange",
+        background: .systemBackground,
+        text: .label,
+        tint: .systemOrange,
+        boldItalicMarker: .secondaryLabel,
+        strikethrough: .label.withAlphaComponent(0.62),
+        inlineCode: .label,
+        codeBackground: .secondarySystemFill,
+        horizontalRule: .tertiaryLabel,
+        checkboxUnchecked: .systemRed,
+        checkboxChecked: .systemGreen
+    )
+
     static let greyAdaptive = EditorTheme(
         id: "grey-adaptive",
         label: "Grey Adaptive",
@@ -44,7 +59,7 @@ struct EditorTheme: Identifiable, Equatable {
         checkboxChecked: .systemGreen
     )
 
-    static let builtIn = [adaptive, greyAdaptive]
+    static let builtIn = [adaptive, downwardOrange, greyAdaptive]
 
     static func loadingCustomTheme(id: String) -> EditorTheme {
         EditorTheme(

@@ -19,27 +19,70 @@ struct ThemeSettingsPage: View {
                     }
                 }
             } footer: {
-                Text("Follows the system appearance automatically.")
+                Text(builtInThemesFooter)
                     .settingsFooterStyle()
             }
 
-            Section {
-                NavigationLink(value: SettingsPage.extraThemes) {
-                    SettingsHomeLabel(
-                        title: "Extra Themes",
-                        systemName: "circle.hexagongrid.fill",
-                        colors: [.accentColor],
-                        usesMulticolor: true
-                    )
+            if themeStore.hasUnlockedThemes {
+                Section {
+                    NavigationLink(value: SettingsPage.extraThemes) {
+                        ExtraThemesNavigationLabel(
+                            selectedTheme: selectedExtraTheme
+                        )
+                    }
+                } footer: {
+                    Text("Create, import, edit and select supporter themes.")
+                        .settingsFooterStyle()
                 }
-            } footer: {
-                Text("Support the app development and unlock themes")
-                    .settingsFooterStyle()
             }
         }
         .navigationTitle("Theme")
         .onAppear {
             editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+        }
+    }
+
+    private var builtInThemesFooter: String {
+        if themeStore.hasUnlockedThemes {
+            return "Follows the system appearance automatically."
+        }
+
+        return "Follows the system appearance automatically. More themes are available for supporters."
+    }
+
+    private var selectedExtraTheme: EditorTheme? {
+        guard
+            themeStore.hasUnlockedThemes,
+            let selectedThemeID = UUID(uuidString: editorAppearanceStore.selectedThemeID),
+            let customTheme = themeStore.theme(withID: selectedThemeID)
+        else {
+            return nil
+        }
+
+        return EditorTheme(from: customTheme)
+    }
+}
+
+private struct ExtraThemesNavigationLabel: View {
+    let selectedTheme: EditorTheme?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            SettingsHomeSymbol(
+                systemName: "circle.hexagongrid.fill",
+                colors: [.accentColor],
+                usesMulticolor: true
+            )
+
+            Text("Extra Themes")
+
+            Spacer(minLength: 12)
+
+            if let selectedTheme {
+                Text(selectedTheme.label)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
     }
 }
@@ -108,17 +151,6 @@ struct ExtraThemesSettingsPage: View {
                 }
                 .disabled(ThemeEntitlementGate.canImportCustomThemes(hasUnlockedThemes: themeStore.hasUnlockedThemes) == false)
 
-                if themeStore.canRestoreThemePurchases {
-                    Button {
-                        Task {
-                            await themeStore.restoreThemePurchases()
-                            editorAppearanceStore.setImportedFontsUnlocked(themeStore.hasUnlockedThemes)
-                            editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
-                        }
-                    } label: {
-                        SettingsHomeLabel(title: "Restore Purchases", systemName: "arrow.clockwise.circle.fill", colors: [.purple])
-                    }
-                }
             } header: {
                 Text("Themes")
             } footer: {

@@ -79,11 +79,10 @@ struct SettingsHomePage: View {
             Section {
                 NavigationLink(value: SettingsPage.supporterUnlock) {
                     SettingsHomeRow(
-                        systemName: "circle.hexagongrid.fill",
-                        colors: [.accentColor],
+                        systemName: "heart.fill",
+                        colors: [.pink, Color(red: 1.0, green: 0.31, blue: 0.58)],
                         title: hasUnlockedThemes ? "Thanks for being a supporter" : "Supporter",
-                        detail: hasUnlockedThemes ? nil : "Themes & fonts",
-                        usesMulticolor: true
+                        detail: hasUnlockedThemes ? nil : "Perks"
                     )
                 }
 
@@ -169,9 +168,17 @@ struct SettingsHomeSymbol: View {
         } else {
             Image(systemName: systemName)
                 .symbolRenderingMode(.hierarchical)
-                .symbolGradient(colors.first ?? .primary)
+                .foregroundStyle(symbolGradient)
                 .frame(width: 22)
                 .accessibilityHidden(true)
         }
+    }
+
+    private var symbolGradient: LinearGradient {
+        LinearGradient(
+            colors: colors.isEmpty ? [.primary] : colors,
+            startPoint: .bottomLeading,
+            endPoint: .topTrailing
+        )
     }
 }
