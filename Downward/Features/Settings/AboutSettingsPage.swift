@@ -19,7 +19,7 @@ struct AboutSettingsPage: View {
             VStack {
                 Spacer()
 
-                Image("DownwardBrandedIcon")
+                Image("Downward_Icon")
                     .resizable()
                     .frame(width: iconFrameSize, height: iconFrameSize)
 

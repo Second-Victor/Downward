@@ -9,58 +9,48 @@ struct SupporterUnlockSettingsPage: View {
 
     var body: some View {
         Form {
-            Section {
-                SupporterThemePreviewStrip(
-                    themes: ThemeStore.bundledPremiumThemes.prefix(5).map(EditorTheme.init(from:))
-                )
-            } header: {
-                Text("Themes")
-            } footer: {
-                Text("These themes and more are available to supporters. Supporters can also import, export and edit themes.")
-                    .settingsFooterStyle()
-            }
-
             if themeStore.hasUnlockedThemes {
                 Section {
-                    Label {
-                        Text("Thanks for being a supporter")
-                            .font(.headline)
-                    } icon: {
-                        Image(systemName: "heart.circle.fill")
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, .pink)
-                    }
+                    SupporterThanksMessage()
+                }
+            } else {
+                Section {
+                    SupporterThemePreviewStrip(
+                        themes: ThemeStore.bundledPremiumThemes.prefix(5).map(EditorTheme.init(from:))
+                    )
+                } header: {
+                    Text("Themes")
                 } footer: {
-                    Text("Your supporter unlock is active on this device.")
+                    Text("These themes and more are available to supporters. Supporters can also import, export and edit themes.")
                         .settingsFooterStyle()
                 }
-            }
 
-            Section {
-                ForEach(benefits) { benefit in
-                    SupporterBenefitRow(benefit: benefit)
-                }
-            } header: {
-                Text("Fonts")
-            }
-
-            Section {
-                SupporterFundingMessage()
-            }
-
-            if themeStore.canRestoreThemePurchases {
                 Section {
-                    Button {
-                        Task {
-                            await themeStore.restoreThemePurchases()
-                            editorAppearanceStore.setImportedFontsUnlocked(themeStore.hasUnlockedThemes)
+                    ForEach(benefits) { benefit in
+                        SupporterBenefitRow(benefit: benefit)
+                    }
+                } header: {
+                    Text("Fonts")
+                }
+
+                Section {
+                    SupporterFundingMessage()
+                }
+
+                if themeStore.canRestoreThemePurchases {
+                    Section {
+                        Button {
+                            Task {
+                                await themeStore.restoreThemePurchases()
+                                editorAppearanceStore.setImportedFontsUnlocked(themeStore.hasUnlockedThemes)
+                            }
+                        } label: {
+                            SettingsHomeLabel(
+                                title: "Restore Purchases",
+                                systemName: "arrow.clockwise.circle.fill",
+                                colors: [.purple]
+                            )
                         }
-                    } label: {
-                        SettingsHomeLabel(
-                            title: "Restore Purchases",
-                            systemName: "arrow.clockwise.circle.fill",
-                            colors: [.purple]
-                        )
                     }
                 }
             }
@@ -101,6 +91,40 @@ struct SupporterUnlockSettingsPage: View {
                     themeStore.clearSupporterPurchaseError()
                 }
             }
+        )
+    }
+}
+
+private struct SupporterThanksMessage: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "heart.circle.fill")
+                .font(.system(size: 46, weight: .semibold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, heartGradient)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 5) {
+                Text("Thanks for being a supporter")
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+
+                Text("Your supporter unlock is active on this device.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 150)
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var heartGradient: LinearGradient {
+        LinearGradient(
+            colors: [.pink, .red],
+            startPoint: .bottomLeading,
+            endPoint: .topTrailing
         )
     }
 }

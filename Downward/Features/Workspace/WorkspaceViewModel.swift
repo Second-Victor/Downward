@@ -55,7 +55,7 @@ enum WorkspaceCreateItemKind: Equatable {
 struct WorkspaceMoveDestination: Identifiable, Equatable {
     let relativePath: String?
     let title: String
-    let subtitle: String?
+    let nestingLevel: Int
 
     var id: String {
         relativePath ?? "__workspace_root__"
@@ -833,7 +833,7 @@ final class WorkspaceViewModel {
                 WorkspaceMoveDestination(
                     relativePath: nil,
                     title: workspaceTitle,
-                    subtitle: "Workspace Root"
+                    nestingLevel: 0
                 )
             )
         }
@@ -1024,7 +1024,7 @@ final class WorkspaceViewModel {
                     WorkspaceMoveDestination(
                         relativePath: currentPath,
                         title: folder.displayName,
-                        subtitle: currentPath
+                        nestingLevel: folderNestingLevel(for: currentPath)
                     )
                 )
             }
@@ -1041,6 +1041,10 @@ final class WorkspaceViewModel {
         }
 
         return destinations
+    }
+
+    private func folderNestingLevel(for relativePath: String) -> Int {
+        max(relativePath.split(separator: "/", omittingEmptySubsequences: true).count - 1, 0)
     }
 
     private func observeSearchSnapshotChanges() {

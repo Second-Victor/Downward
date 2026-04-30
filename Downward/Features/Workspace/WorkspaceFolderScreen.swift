@@ -121,15 +121,18 @@ struct WorkspaceFolderScreen: View {
                     Button {
                         viewModel.moveItem(toFolderRelativePath: destination.relativePath)
                     } label: {
-                        VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 10) {
+                            if destination.nestingLevel > 0 {
+                                Color.clear
+                                    .frame(width: CGFloat(destination.nestingLevel) * 18)
+                            }
+
                             Text(destination.title)
                                 .foregroundStyle(.primary)
-                            if let subtitle = destination.subtitle {
-                                Text(subtitle)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
+
+                            Spacer(minLength: 0)
                         }
+                        .frame(minHeight: 32, alignment: .leading)
                     }
                     .disabled(viewModel.isBusy)
                     .buttonStyle(.plain)

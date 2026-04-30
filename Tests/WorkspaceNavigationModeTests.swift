@@ -156,6 +156,26 @@ final class WorkspaceNavigationModeTests: XCTestCase {
     }
 
     @MainActor
+    func testMoveDestinationsExposeFolderNestingWithoutPathSubtitles() throws {
+        let (session, viewModel) = makeWorkspaceViewModel()
+        let inboxNode = try XCTUnwrap(
+            session.workspaceSnapshot?.rootNodes.first(where: { $0.url == PreviewSampleData.inboxDocumentURL })
+        )
+
+        viewModel.presentMove(for: inboxNode)
+
+        XCTAssertEqual(
+            viewModel.moveDestinations.map { "\($0.relativePath ?? "<root>")|\($0.title)|\($0.nestingLevel)" },
+            [
+                "Journal|Journal|0",
+                "Journal/2026|2026|1",
+                "References|References|0",
+                "Archive|Archive|0",
+            ]
+        )
+    }
+
+    @MainActor
     func testRenamedExpandedFolderStaysExpanded() async throws {
         let renamedFolderURL = PreviewSampleData.workspaceRootURL.appending(path: "Logbook")
         let renamedSnapshot = makeWorkspaceSnapshotReplacingJournalFolder(
