@@ -44,7 +44,9 @@ final class AppContainer {
         self.errorReporter = errorReporter
         self.folderPickerBridge = folderPickerBridge
         editorAppearanceStore.setImportedFontsUnlocked(themeStore.hasUnlockedThemes)
-        editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+        if themeStore.hasResolvedThemeEntitlements {
+            editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+        }
 
         let session = AppSession()
         self.session = session
@@ -105,7 +107,9 @@ final class AppContainer {
             }
 
             editorAppearanceStore?.setImportedFontsUnlocked(themeStore.hasUnlockedThemes)
-            editorAppearanceStore?.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+            if themeStore.hasResolvedThemeEntitlements {
+                editorAppearanceStore?.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+            }
         }
         let workspaceManager = LiveWorkspaceManager(
             bookmarkStore: bookmarkStore,

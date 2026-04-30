@@ -34,6 +34,74 @@ final class MarkdownWorkspaceAppSmokeTests: MarkdownWorkspaceAppTestCase {
     }
 
     @MainActor
+    func testContainerDoesNotOverwriteSavedCustomThemeBeforeEntitlementsResolve() throws {
+        let selectedThemeID = UUID()
+        let editorAppearanceStore = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 16,
+                selectedThemeID: selectedThemeID.uuidString
+            )
+        )
+        let themeStore = ThemeStore(
+            fileURL: try makeTemporaryThemeURL(),
+            entitlements: UnresolvedSmokeThemeEntitlementStore(),
+            bundledPremiumThemes: []
+        )
+
+        _ = AppContainer(
+            logger: DebugLogger(),
+            bookmarkStore: StubBookmarkStore(),
+            recentFilesStore: RecentFilesStore(initialItems: []),
+            editorAppearanceStore: editorAppearanceStore,
+            themeStore: themeStore,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: PreviewSampleData.emptyWorkspace
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge()
+        )
+
+        XCTAssertEqual(editorAppearanceStore.selectedThemeID, selectedThemeID.uuidString)
+    }
+
+    @MainActor
+    func testContainerFallsBackFromSavedCustomThemeAfterResolvedLockedEntitlements() throws {
+        let selectedThemeID = UUID()
+        let editorAppearanceStore = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 16,
+                selectedThemeID: selectedThemeID.uuidString
+            )
+        )
+        let themeStore = ThemeStore(
+            fileURL: try makeTemporaryThemeURL(),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: false),
+            bundledPremiumThemes: []
+        )
+
+        _ = AppContainer(
+            logger: DebugLogger(),
+            bookmarkStore: StubBookmarkStore(),
+            recentFilesStore: RecentFilesStore(initialItems: []),
+            editorAppearanceStore: editorAppearanceStore,
+            themeStore: themeStore,
+            workspaceManager: StubWorkspaceManager(
+                bookmarkStore: StubBookmarkStore(),
+                readySnapshot: PreviewSampleData.emptyWorkspace
+            ),
+            documentManager: StubDocumentManager(sampleDocuments: PreviewSampleData.sampleDocumentsByURL),
+            errorReporter: DefaultErrorReporter(logger: DebugLogger()),
+            folderPickerBridge: StubFolderPickerBridge()
+        )
+
+        XCTAssertEqual(editorAppearanceStore.selectedThemeID, EditorTheme.adaptive.id)
+    }
+
+    @MainActor
     func testFastLaunchWorkspaceRestoreDoesNotShowDelayedSpinner() async {
         let container = makeBootstrapContainer(
             workspaceManager: StubWorkspaceManager(
@@ -934,6 +1002,33 @@ final class MarkdownWorkspaceAppSmokeTests: MarkdownWorkspaceAppTestCase {
             checkboxUnchecked: HexColor(hex: "#F44747"),
             checkboxChecked: HexColor(hex: "#6A9955")
         )
+    }
+}
+
+@MainActor
+private final class UnresolvedSmokeThemeEntitlementStore: ThemeEntitlementProviding {
+    private(set) var hasUnlockedThemes = false
+    private(set) var hasResolvedThemeEntitlements = false
+    private(set) var canRestoreThemePurchases = false
+    private(set) var supporterProductDisplayName: String?
+    private(set) var supporterProductDisplayPrice: String?
+    private(set) var isLoadingSupporterProduct = false
+    private(set) var isPurchasingSupporterUnlock = false
+    private(set) var supporterPurchaseErrorMessage: String?
+    private var entitlementChangeHandler: ThemeEntitlementChangeHandler?
+
+    func loadSupporterProduct() async {}
+
+    func purchaseSupporterUnlock() async {}
+
+    func restoreThemePurchases() async {}
+
+    func clearSupporterPurchaseError() {
+        supporterPurchaseErrorMessage = nil
+    }
+
+    func setEntitlementChangeHandler(_ handler: ThemeEntitlementChangeHandler?) {
+        entitlementChangeHandler = handler
     }
 }
 

@@ -121,18 +121,7 @@ struct WorkspaceFolderScreen: View {
                     Button {
                         viewModel.moveItem(toFolderRelativePath: destination.relativePath)
                     } label: {
-                        HStack(spacing: 10) {
-                            if destination.nestingLevel > 0 {
-                                Color.clear
-                                    .frame(width: CGFloat(destination.nestingLevel) * 18)
-                            }
-
-                            Text(destination.title)
-                                .foregroundStyle(.primary)
-
-                            Spacer(minLength: 0)
-                        }
-                        .frame(minHeight: 32, alignment: .leading)
+                        MoveDestinationRow(destination: destination)
                     }
                     .disabled(viewModel.isBusy)
                     .buttonStyle(.plain)
@@ -219,6 +208,39 @@ struct WorkspaceFolderScreen: View {
         .refreshable {
             await viewModel.refreshFromPullToRefresh()
         }
+    }
+}
+
+private struct MoveDestinationRow: View {
+    let destination: WorkspaceMoveDestination
+
+    private let indentUnit: CGFloat = 12
+    private let iconColumnWidth: CGFloat = 28
+    private let iconToTitleSpacing: CGFloat = 10
+    private let trailingSpacing: CGFloat = 12
+    private let verticalPadding: CGFloat = 2
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Color.clear
+                .frame(width: CGFloat(destination.nestingLevel) * indentUnit)
+
+            HStack(alignment: .center, spacing: iconToTitleSpacing) {
+                Image(systemName: "folder")
+                    .font(.title2)
+                    .symbolGradient(.accentColor)
+                    .frame(width: iconColumnWidth, alignment: .center)
+
+                Text(destination.title)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: trailingSpacing)
+        }
+        .padding(.vertical, verticalPadding)
+        .contentShape(Rectangle())
     }
 }
 

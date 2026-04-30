@@ -356,6 +356,10 @@ final class EditorAppearanceStore {
     }
 
     func fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using themeStore: ThemeStore) {
+        guard themeStore.hasResolvedThemeEntitlements else {
+            return
+        }
+
         let entitledThemeID = ThemeEntitlementGate.entitledThemeID(
             for: selectedThemeID,
             hasUnlockedThemes: themeStore.hasUnlockedThemes

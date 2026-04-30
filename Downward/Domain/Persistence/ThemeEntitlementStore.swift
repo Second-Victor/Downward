@@ -6,6 +6,7 @@ typealias ThemeEntitlementChangeHandler = @MainActor @Sendable () -> Void
 @MainActor
 protocol ThemeEntitlementProviding: AnyObject {
     var hasUnlockedThemes: Bool { get }
+    var hasResolvedThemeEntitlements: Bool { get }
     var canRestoreThemePurchases: Bool { get }
     var supporterProductDisplayName: String? { get }
     var supporterProductDisplayPrice: String? { get }
@@ -24,6 +25,7 @@ protocol ThemeEntitlementProviding: AnyObject {
 @Observable
 final class ThemeEntitlementStore: ThemeEntitlementProviding {
     private(set) var hasUnlockedThemes: Bool
+    private(set) var hasResolvedThemeEntitlements = true
     private(set) var canRestoreThemePurchases: Bool
     private(set) var supporterProductDisplayName: String?
     private(set) var supporterProductDisplayPrice: String?

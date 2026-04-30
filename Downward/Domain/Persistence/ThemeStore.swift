@@ -196,6 +196,11 @@ final class ThemeStore {
         return entitlements.hasUnlockedThemes
     }
 
+    var hasResolvedThemeEntitlements: Bool {
+        _ = entitlementVersion
+        return entitlements.hasResolvedThemeEntitlements
+    }
+
     var canRestoreThemePurchases: Bool {
         _ = entitlementVersion
         return entitlements.canRestoreThemePurchases

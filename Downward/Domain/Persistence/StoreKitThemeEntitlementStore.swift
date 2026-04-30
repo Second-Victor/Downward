@@ -8,6 +8,7 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
     static let supporterProductID = "com.secondvictor.downward.supporter"
 
     private(set) var hasUnlockedThemes = false
+    private(set) var hasResolvedThemeEntitlements = false
     private(set) var canRestoreThemePurchases = true
     private(set) var supporterProductDisplayName: String?
     private(set) var supporterProductDisplayPrice: String?
@@ -140,7 +141,7 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
             }
         }
 
-        setHasUnlockedThemes(isUnlocked)
+        setHasUnlockedThemes(isUnlocked, markingEntitlementsResolved: true)
     }
 
     private func listenForTransactions() -> Task<Void, Never> {
@@ -173,13 +174,21 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
         setHasUnlockedThemes(true)
     }
 
-    private func setHasUnlockedThemes(_ isUnlocked: Bool) {
-        guard hasUnlockedThemes != isUnlocked else {
-            return
-        }
+    private func setHasUnlockedThemes(
+        _ isUnlocked: Bool,
+        markingEntitlementsResolved: Bool = false
+    ) {
+        let didChangeUnlockState = hasUnlockedThemes != isUnlocked
+        let didResolveEntitlements = markingEntitlementsResolved && hasResolvedThemeEntitlements == false
 
         hasUnlockedThemes = isUnlocked
-        entitlementChangeHandler?()
+        if markingEntitlementsResolved {
+            hasResolvedThemeEntitlements = true
+        }
+
+        if didChangeUnlockState || didResolveEntitlements {
+            entitlementChangeHandler?()
+        }
     }
 
     private nonisolated static func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {

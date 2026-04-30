@@ -377,6 +377,27 @@ final class EditorAppearanceStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testEditorAppearanceStorePreservesCustomThemeUntilEntitlementsResolve() {
+        let selectedThemeID = UUID()
+        let themeStore = ThemeStore(
+            fileURL: FileManager.default.temporaryDirectory.appending(path: "unresolved-editor-theme-\(UUID().uuidString).json"),
+            entitlements: UnresolvedEditorAppearanceThemeEntitlementStore(),
+            bundledPremiumThemes: []
+        )
+        let store = EditorAppearanceStore(
+            initialPreferences: EditorAppearancePreferences(
+                fontChoice: .default,
+                fontSize: 16,
+                selectedThemeID: selectedThemeID.uuidString
+            )
+        )
+
+        store.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+
+        XCTAssertEqual(store.selectedThemeID, selectedThemeID.uuidString)
+    }
+
+    @MainActor
     func testColorFormattedTextMapsHeadingToAccentAndEmphasisToSyntaxMarkerColor() async {
         let customTheme = CustomTheme(
             id: UUID(),
@@ -677,4 +698,28 @@ final class EditorAppearanceStoreTests: XCTestCase {
             line: line
         )
     }
+}
+
+@MainActor
+private final class UnresolvedEditorAppearanceThemeEntitlementStore: ThemeEntitlementProviding {
+    private(set) var hasUnlockedThemes = false
+    private(set) var hasResolvedThemeEntitlements = false
+    private(set) var canRestoreThemePurchases = false
+    private(set) var supporterProductDisplayName: String?
+    private(set) var supporterProductDisplayPrice: String?
+    private(set) var isLoadingSupporterProduct = false
+    private(set) var isPurchasingSupporterUnlock = false
+    private(set) var supporterPurchaseErrorMessage: String?
+
+    func loadSupporterProduct() async {}
+
+    func purchaseSupporterUnlock() async {}
+
+    func restoreThemePurchases() async {}
+
+    func clearSupporterPurchaseError() {
+        supporterPurchaseErrorMessage = nil
+    }
+
+    func setEntitlementChangeHandler(_ handler: ThemeEntitlementChangeHandler?) {}
 }
