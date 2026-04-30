@@ -189,6 +189,16 @@ final class ThemeStore {
         entitlements.canRestoreThemePurchases
     }
 
+    func purchaseSupporterUnlock() async {
+        await entitlements.purchaseSupporterUnlock()
+
+        if hasUnlockedThemes {
+            lastError = nil
+        } else {
+            lastError = "Supporter purchases are not available yet."
+        }
+    }
+
     func restoreThemePurchases() async {
         await entitlements.restoreThemePurchases()
     }

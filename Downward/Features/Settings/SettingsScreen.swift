@@ -72,6 +72,7 @@ struct SettingsScreen: View {
             SettingsHomePage(
                 summary: summary,
                 appColorScheme: appColorSchemeBinding,
+                hasUnlockedThemes: themeStore.hasUnlockedThemes,
                 doneAction: done,
                 releaseConfiguration: releaseConfiguration
             )
@@ -111,6 +112,13 @@ struct SettingsScreen: View {
                 editorAppearanceStore: editorAppearanceStore,
                 themeStore: themeStore,
                 push: push,
+                backAction: pop
+            )
+            .roundedNavigationBarTitles()
+        case .supporterUnlock:
+            SupporterUnlockSettingsPage(
+                editorAppearanceStore: editorAppearanceStore,
+                themeStore: themeStore,
                 backAction: pop
             )
             .roundedNavigationBarTitles()
@@ -164,19 +172,8 @@ struct SettingsScreen: View {
             )
             .roundedNavigationBarTitles()
         case .tips:
-            if releaseConfiguration.showsTipsPage {
-                TipsSettingsPage(backAction: pop)
-                    .roundedNavigationBarTitles()
-            } else {
-                EmptyView()
-            }
-        case .information:
-            InformationSettingsPage(
-                push: push,
-                backAction: pop,
-                releaseConfiguration: releaseConfiguration
-            )
-            .roundedNavigationBarTitles()
+            TipsSettingsPage(backAction: pop)
+                .roundedNavigationBarTitles()
         case .about:
             AboutSettingsPage(
                 backAction: pop,
@@ -238,12 +235,12 @@ enum SettingsPage: Hashable {
     case editor
     case theme
     case extraThemes
+    case supporterUnlock
     case workspace
     case newTheme
     case editTheme(UUID)
     case markdown
     case tips
-    case information
     case about
 }
 

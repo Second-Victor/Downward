@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsHomePage: View {
     let summary: SettingsHomeSummary
     @Binding var appColorScheme: AppColorScheme
+    let hasUnlockedThemes: Bool
     let doneAction: () -> Void
     var releaseConfiguration: SettingsReleaseConfiguration = .current
 
@@ -65,25 +66,37 @@ struct SettingsHomePage: View {
             }
 
             Section {
-                if releaseConfiguration.showsTipsPage {
-                    NavigationLink(value: SettingsPage.tips) {
-                        SettingsHomeRow(
-                            systemName: "banknote.fill",
-                            colors: [.green],
-                            title: "Tips",
-                            detail: nil
-                        )
-                    }
-                }
-
-                NavigationLink(value: SettingsPage.information) {
+                NavigationLink(value: SettingsPage.about) {
                     SettingsHomeRow(
                         systemName: "info.circle",
                         colors: [.blue],
-                        title: "Information",
+                        title: "About",
                         detail: nil
                     )
                 }
+            }
+
+            Section {
+                NavigationLink(value: SettingsPage.supporterUnlock) {
+                    SettingsHomeRow(
+                        systemName: "circle.hexagongrid.fill",
+                        colors: [.accentColor],
+                        title: hasUnlockedThemes ? "Thanks for being a supporter" : "Supporter Unlock",
+                        detail: hasUnlockedThemes ? nil : "Themes & fonts",
+                        usesMulticolor: true
+                    )
+                }
+
+                NavigationLink(value: SettingsPage.tips) {
+                    SettingsHomeRow(
+                        systemName: "banknote.fill",
+                        colors: [.green],
+                        title: "Tips",
+                        detail: nil
+                    )
+                }
+            } header: {
+                Text("Support the App")
             }
         }
         .listStyle(.insetGrouped)

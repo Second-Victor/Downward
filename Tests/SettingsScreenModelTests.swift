@@ -133,6 +133,20 @@ final class SettingsScreenModelTests: XCTestCase {
     }
 
     @MainActor
+    func testSupporterPurchaseUsesExistingThemeUnlockEntitlementPlaceholder() async {
+        let store = ThemeStore(
+            fileURL: FileManager.default.temporaryDirectory.appending(path: "supporter-test-\(UUID().uuidString).json"),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: false)
+        )
+
+        await store.waitForInitialLoad()
+        await store.purchaseSupporterUnlock()
+
+        XCTAssertFalse(store.hasUnlockedThemes)
+        XCTAssertEqual(store.lastError, "Supporter purchases are not available yet.")
+    }
+
+    @MainActor
     func testMarkdownDisplaySettingUpdatesStore() {
         let store = EditorAppearanceStore(initialPreferences: .default)
 
@@ -198,7 +212,7 @@ final class SettingsScreenModelTests: XCTestCase {
     }
 
     @MainActor
-    func testReleaseConfigurationShowsImplementedInformationSurfaces() {
+    func testReleaseConfigurationShowsImplementedSettingsSurfaces() {
         let configuration = SettingsReleaseConfiguration.current
 
         XCTAssertFalse(configuration.showsTipsPage)

@@ -111,7 +111,7 @@ Settings pages should use existing stores and app actions rather than creating p
 - imported font face records, family grouping, and runtime registration flow through `ImportedFontManager`, gated by the same extra-theme entitlement,
 - custom themes load and persist through `ThemeStore`/`ThemePersistenceService`; JSON import/export flows through `ThemeImportService` and `ThemeExchangeDocument`,
 - workspace reconnect/clear still delegate to root/coordinator actions,
-- Tips, Information, and About may expose disabled or placeholder-backed controls until the backing StoreKit, review, and URL infrastructure exists.
+- Supporter unlock purchase actions, Tips, and About may expose disabled or placeholder-backed controls until the backing StoreKit, review, and URL infrastructure exists.
 
 It should stay declarative and lightweight.
 It is not the place for file-system rules.

@@ -97,8 +97,26 @@ import SwiftUI
     TipsSettingsPage(backAction: {})
 }
 
-#Preview("Information Settings") {
-    InformationSettingsPage(push: { _ in }, backAction: {})
+#Preview("Supporter Unlock Settings") {
+    SupporterUnlockSettingsPage(
+        editorAppearanceStore: EditorAppearanceStore(),
+        themeStore: ThemeStore(
+            fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-supporter-\(UUID().uuidString).json"),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: false)
+        ),
+        backAction: {}
+    )
+}
+
+#Preview("Supporter Thanks Settings") {
+    SupporterUnlockSettingsPage(
+        editorAppearanceStore: EditorAppearanceStore(),
+        themeStore: ThemeStore(
+            fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-supporter-thanks-\(UUID().uuidString).json"),
+            entitlements: ThemeEntitlementStore(hasUnlockedThemes: true)
+        ),
+        backAction: {}
+    )
 }
 
 #Preview("About Settings") {

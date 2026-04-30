@@ -6,6 +6,7 @@ protocol ThemeEntitlementProviding: AnyObject {
     var hasUnlockedThemes: Bool { get }
     var canRestoreThemePurchases: Bool { get }
 
+    func purchaseSupporterUnlock() async
     func restoreThemePurchases() async
 }
 
@@ -25,6 +26,10 @@ final class ThemeEntitlementStore: ThemeEntitlementProviding {
 
     func setHasUnlockedThemes(_ isUnlocked: Bool) {
         hasUnlockedThemes = isUnlocked
+    }
+
+    func purchaseSupporterUnlock() async {
+        // StoreKit purchase wiring belongs here when theme purchases are implemented.
     }
 
     func restoreThemePurchases() async {
