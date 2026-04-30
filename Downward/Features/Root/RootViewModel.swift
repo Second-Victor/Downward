@@ -11,6 +11,7 @@ final class RootViewModel {
     let editorViewModel: EditorViewModel
     let editorAppearanceStore: EditorAppearanceStore
     let themeStore: ThemeStore
+    let importedFontManager: ImportedFontManager
     var isShowingFolderPicker = false
     private(set) var isRestoringWorkspace = false
     private(set) var shouldShowRestoreSpinner = false
@@ -28,7 +29,8 @@ final class RootViewModel {
         workspaceViewModel: WorkspaceViewModel,
         editorViewModel: EditorViewModel,
         editorAppearanceStore: EditorAppearanceStore,
-        themeStore: ThemeStore
+        themeStore: ThemeStore,
+        importedFontManager: ImportedFontManager
     ) {
         self.session = session
         self.coordinator = coordinator
@@ -36,6 +38,7 @@ final class RootViewModel {
         self.editorViewModel = editorViewModel
         self.editorAppearanceStore = editorAppearanceStore
         self.themeStore = themeStore
+        self.importedFontManager = importedFontManager
     }
 
     var launchState: RootLaunchState {

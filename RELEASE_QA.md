@@ -6,6 +6,35 @@ This file is the release/runtime QA checklist for Downward. It records command-l
 
 ## Latest QA run
 
+- Date: 2026-04-30
+- Branch/commit at start of run: working tree on `main` with local changes
+- Xcode: Xcode 26.4 (17E192)
+- Simulator/device:
+  - iPhone 17 Pro, iOS 26.4 Simulator
+- Commands run:
+  - `git diff --check`
+  - `git diff --stat`
+  - `git status --short`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ImportedFonts -resultBundlePath /tmp/Downward-ImportedFonts.xcresult -only-testing:DownwardTests/ImportedFontManagerTests -only-testing:DownwardTests/EditorAppearanceStoreTests -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ImportedFonts2 -resultBundlePath /tmp/Downward-ImportedFonts2.xcresult -only-testing:DownwardTests/ImportedFontManagerTests -only-testing:DownwardTests/EditorAppearanceStoreTests -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ImportedFonts3 -resultBundlePath /tmp/Downward-ImportedFonts3.xcresult -only-testing:DownwardTests/ImportedFontManagerTests -only-testing:DownwardTests/EditorAppearanceStoreTests -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ImportedFontFamilies2 -resultBundlePath /tmp/Downward-ImportedFontFamilies2.xcresult -only-testing:DownwardTests/ImportedFontManagerTests -only-testing:DownwardTests/EditorAppearanceStoreTests -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests -only-testing:DownwardTests/MarkdownSyntaxStyleApplicatorTests`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ImportedFontDelete -resultBundlePath /tmp/Downward-ImportedFontDelete.xcresult -only-testing:DownwardTests/ImportedFontManagerTests -only-testing:DownwardTests/EditorAppearanceStoreTests -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests -only-testing:DownwardTests/MarkdownSyntaxStyleApplicatorTests`
+  - `xcodebuild test -project Downward.xcodeproj -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' -derivedDataPath /tmp/DownwardDerivedData-ImportedFontStyles -resultBundlePath /tmp/Downward-ImportedFontStyles.xcresult -only-testing:DownwardTests/ImportedFontManagerTests -only-testing:DownwardTests/EditorAppearanceStoreTests -only-testing:DownwardTests/SettingsScreenModelTests -only-testing:DownwardTests/ThemeStoreTests -only-testing:DownwardTests/MarkdownSyntaxStyleApplicatorTests`
+- Result:
+  - Added supporter-gated imported custom fonts behind the existing `hasUnlockedThemes` entitlement. Non-paying users do not see custom font UI, and locked editor resolution falls back to the built-in default while preserving any saved imported-font selection.
+  - Added `ImportedFontManager` for app-support font storage, metadata JSON, security-scoped multi-file import copying, CoreText process-scope registration, launch folder scanning, duplicate suppression by PostScript name, and graceful missing-file handling.
+  - Added Settings import UI for multiple `.ttf`/`.otf` files, imported family selection, user-facing import errors, and editor application through the selected family's base PostScript face.
+  - Added a right-side imported-family styles button. The detail sheet reports Regular, Bold, Italic, and Bold Italic as installed or missing, and missing styles can launch the font importer for that family/style.
+  - Added swipe-to-delete for imported font families; deletion removes every app-owned face file and metadata record for the family, attempts process-scope unregister, and clears the active imported font selection back to a built-in font when needed.
+  - Imported font metadata now persists individual faces with display, family, PostScript, style/subfamily, path, import date, and symbolic trait data; Settings groups faces into families and shows style counts.
+  - Markdown styling can use matching imported bold, italic, and bold-italic faces from the selected family when available, falling back gracefully to the base face or existing system styling.
+  - Focused simulator tests passed on the final run: ImportedFontManagerTests, EditorAppearanceStoreTests, SettingsScreenModelTests, ThemeStoreTests, and MarkdownSyntaxStyleApplicatorTests.
+- Notes/failures:
+  - The first two focused test runs failed at compile due to Swift 6 actor/default-argument and XCTest `await` autoclosure issues in the new code/tests; those were fixed before the final passing run.
+  - A later focused test attempt failed only because `/tmp/Downward-ImportedFontFamilies.xcresult` already existed; rerunning with `/tmp/Downward-ImportedFontFamilies2.xcresult` passed.
+  - Manual multi-file `.ttf`/`.otf` import, missing-style install, delete, editor rendering, app restart, and non-paying UI walkthrough still need real-device or simulator UI validation.
+
 - Date: 2026-04-29
 - Branch/commit at start of run: `main` / `a72e0f2`
 - Xcode: Xcode 26.4 (17E192)

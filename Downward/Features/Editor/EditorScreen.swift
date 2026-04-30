@@ -79,6 +79,7 @@ struct EditorScreen: View {
                     documentIdentity: documentURL,
                     topViewportInset: topViewportInset,
                     font: viewModel.editorUIFont,
+                    importedFontStyleSet: viewModel.importedFontStyleSet,
                     resolvedTheme: resolvedTheme,
                     chromeColorScheme: editorChromeColorScheme,
                     syntaxMode: viewModel.markdownSyntaxMode,

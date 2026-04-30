@@ -521,6 +521,96 @@ final class EditorAppearanceStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testImportedFontSelectionRequiresThemeUnlock() {
+        let resolver = EditorFontResolver(isRuntimeFontAvailable: { $0 == "Readable-Regular" })
+        let store = EditorAppearanceStore(resolver: resolver, initialPreferences: .default)
+        let record = ImportedFontRecord(
+            displayName: "Readable",
+            familyName: "Readable",
+            postScriptName: "Readable-Regular",
+            styleName: "Regular",
+            relativePath: "Readable.ttf",
+            importDate: Date(),
+            symbolicTraitsRawValue: 0
+        )
+
+        store.setImportedFont(record)
+        XCTAssertNil(store.selectedImportedFontFamilyName)
+        XCTAssertEqual(store.selectedFontChoice, .default)
+
+        store.setImportedFontsUnlocked(true)
+        store.setImportedFont(record)
+
+        XCTAssertEqual(store.selectedImportedFontFamilyName, "Readable")
+        XCTAssertEqual(store.selectedImportedFontFamilyDisplayName, "Readable")
+    }
+
+    @MainActor
+    func testSelectedImportedFontPersistsButFallsBackWhenLocked() throws {
+        let suiteName = "EditorAppearanceStoreTests.\(UUID().uuidString)"
+        let userDefaults = try makeIsolatedUserDefaults(suiteName: suiteName)
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        let resolver = EditorFontResolver(isRuntimeFontAvailable: { $0 == "Readable-Regular" })
+        let record = ImportedFontRecord(
+            displayName: "Readable",
+            familyName: "Readable",
+            postScriptName: "Readable-Regular",
+            styleName: "Regular",
+            relativePath: "Readable.ttf",
+            importDate: Date(),
+            symbolicTraitsRawValue: 0
+        )
+        let store = EditorAppearanceStore(
+            userDefaults: userDefaults,
+            preferencesKey: "test.editor.appearance",
+            resolver: resolver
+        )
+        store.setImportedFontsUnlocked(true)
+        store.setImportedFont(record)
+
+        let lockedReload = EditorAppearanceStore(
+            userDefaults: userDefaults,
+            preferencesKey: "test.editor.appearance",
+            resolver: resolver
+        )
+        XCTAssertNil(lockedReload.selectedImportedFontFamilyName)
+        XCTAssertEqual(lockedReload.selectedFontChoice, .default)
+
+        lockedReload.setImportedFontsUnlocked(true)
+        XCTAssertEqual(lockedReload.selectedImportedFontFamilyName, "Readable")
+        XCTAssertEqual(lockedReload.selectedImportedFontFamilyDisplayName, "Readable")
+    }
+
+    @MainActor
+    func testClearingDeletedImportedFontFamilyFallsBackToBuiltInFont() {
+        let resolver = EditorFontResolver(isRuntimeFontAvailable: { $0 == "Readable-Regular" })
+        let store = EditorAppearanceStore(resolver: resolver, initialPreferences: .default)
+        let family = ImportedFontFamily(
+            familyName: "Readable",
+            displayName: "Readable",
+            records: [
+                ImportedFontRecord(
+                    displayName: "Readable Regular",
+                    familyName: "Readable",
+                    postScriptName: "Readable-Regular",
+                    styleName: "Regular",
+                    relativePath: "Readable.ttf",
+                    importDate: Date(),
+                    symbolicTraitsRawValue: 0
+                )
+            ]
+        )
+
+        store.setImportedFontsUnlocked(true)
+        store.setImportedFontFamily(family)
+        store.clearImportedFontFamilyIfSelected("Readable")
+
+        XCTAssertNil(store.selectedImportedFontFamilyName)
+        XCTAssertEqual(store.selectedFontChoice, .default)
+        XCTAssertEqual(store.selectedFontDisplayName, "SF Pro")
+    }
+
+    @MainActor
     private func makeIsolatedUserDefaults(suiteName: String) throws -> UserDefaults {
         guard let userDefaults = UserDefaults(suiteName: suiteName) else {
             throw XCTSkip("Unable to create isolated UserDefaults suite.")

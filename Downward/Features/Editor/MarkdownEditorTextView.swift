@@ -7,6 +7,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
     let documentIdentity: URL
     let topViewportInset: CGFloat
     let font: UIFont
+    let importedFontStyleSet: ImportedFontStyleSet?
     let resolvedTheme: ResolvedEditorTheme
     let chromeColorScheme: ColorScheme?
     let syntaxMode: MarkdownSyntaxMode
@@ -29,6 +30,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         documentIdentity: URL,
         topViewportInset: CGFloat,
         font: UIFont,
+        importedFontStyleSet: ImportedFontStyleSet? = nil,
         resolvedTheme: ResolvedEditorTheme,
         chromeColorScheme: ColorScheme? = nil,
         syntaxMode: MarkdownSyntaxMode,
@@ -52,6 +54,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
         self.documentIdentity = documentIdentity
         self.topViewportInset = topViewportInset
         self.font = font
+        self.importedFontStyleSet = importedFontStyleSet
         self.resolvedTheme = resolvedTheme
         self.chromeColorScheme = chromeColorScheme
         self.syntaxMode = syntaxMode
@@ -123,6 +126,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 text: text,
                 documentIdentity: documentIdentity,
                 font: font,
+                importedFontStyleSet: importedFontStyleSet,
                 resolvedTheme: resolvedTheme,
                 chromeColorScheme: chromeColorScheme,
                 syntaxMode: syntaxMode,
@@ -163,6 +167,7 @@ struct MarkdownEditorTextView: UIViewRepresentable {
                 text: text,
                 documentIdentity: documentIdentity,
                 font: font,
+                importedFontStyleSet: importedFontStyleSet,
                 resolvedTheme: resolvedTheme,
                 chromeColorScheme: chromeColorScheme,
                 syntaxMode: syntaxMode,
@@ -186,6 +191,7 @@ extension MarkdownEditorTextView {
         let text: String
         let documentIdentity: URL
         let font: UIFont
+        let importedFontStyleSet: ImportedFontStyleSet?
         let resolvedTheme: ResolvedEditorTheme
         let chromeColorScheme: ColorScheme?
         let syntaxMode: MarkdownSyntaxMode
@@ -199,6 +205,7 @@ extension MarkdownEditorTextView {
             text: String,
             documentIdentity: URL,
             font: UIFont,
+            importedFontStyleSet: ImportedFontStyleSet? = nil,
             resolvedTheme: ResolvedEditorTheme = .default,
             chromeColorScheme: ColorScheme? = nil,
             syntaxMode: MarkdownSyntaxMode,
@@ -211,6 +218,7 @@ extension MarkdownEditorTextView {
             self.text = text
             self.documentIdentity = documentIdentity
             self.font = font
+            self.importedFontStyleSet = importedFontStyleSet
             self.resolvedTheme = resolvedTheme
             self.chromeColorScheme = chromeColorScheme
             self.syntaxMode = syntaxMode

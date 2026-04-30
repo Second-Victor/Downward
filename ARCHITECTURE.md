@@ -108,6 +108,7 @@ Settings presentation still lives in the app/session navigation seam:
 Settings pages should use existing stores and app actions rather than creating parallel state:
 
 - editor font, font size, markdown syntax visibility, selected theme identity, and match-menu preference flow through `EditorAppearanceStore`,
+- imported font face records, family grouping, and runtime registration flow through `ImportedFontManager`, gated by the same extra-theme entitlement,
 - custom themes load and persist through `ThemeStore`/`ThemePersistenceService`; JSON import/export flows through `ThemeImportService` and `ThemeExchangeDocument`,
 - workspace reconnect/clear still delegate to root/coordinator actions,
 - Tips, Information, and About may expose disabled or placeholder-backed controls until the backing StoreKit, review, and URL infrastructure exists.
@@ -203,6 +204,7 @@ Main ownership sits in:
 - `SessionStore`
 - `RecentFilesStore`
 - `EditorAppearanceStore`
+- `ImportedFontManager`
 
 Persisted state is intentionally lightweight:
 
@@ -210,6 +212,24 @@ Persisted state is intentionally lightweight:
 - last-open session metadata,
 - recent files,
 - editor appearance preferences.
+- imported font files and lightweight font metadata.
+
+`ImportedFontManager` owns the app-support `ImportedFonts` folder, font metadata JSON,
+CoreText process-scope registration, launch re-registration by scanning that folder,
+and explicit multi-file `.ttf`/`.otf` imports from Settings. Each imported file is
+treated as one font face with display, family, PostScript, style/subfamily, file path,
+import date, and symbolic-trait metadata; Settings groups those records by family for
+selection and can delete an imported family by removing every app-owned face file and
+metadata record for that family. Each family row also exposes a style detail sheet for
+Regular, Bold, Italic, and Bold Italic availability, with install actions for missing
+faces that reuse the same import path and validate the selected file's extracted family
+and style metadata. Editor rendering uses the selected family's regular face when
+available, falls back to the first available face, and hands matching
+bold/italic/bold-italic faces to markdown styling when those faces exist. Imported custom
+fonts are a supporter unlock perk that uses the same `hasUnlockedThemes` entitlement as
+extra themes; when that entitlement is absent, custom-font UI is hidden and editor font
+resolution falls back to the built-in default without clearing the saved imported-font
+selection.
 
 The app does **not** persist a mirrored copy of workspace file contents as the primary editing model.
 

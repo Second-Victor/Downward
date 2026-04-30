@@ -3,18 +3,21 @@ import UIKit
 
 struct MarkdownSyntaxStyleApplicator {
     let baseFont: UIFont
+    let importedFontStyleSet: ImportedFontStyleSet?
     let resolvedTheme: ResolvedEditorTheme
     let usesLargerHeadingText: Bool
     private let visibilityPolicy: MarkdownSyntaxVisibilityPolicy
 
     init(
         baseFont: UIFont,
+        importedFontStyleSet: ImportedFontStyleSet? = nil,
         resolvedTheme: ResolvedEditorTheme,
         syntaxMode: MarkdownSyntaxMode,
         revealedRange: NSRange?,
         usesLargerHeadingText: Bool = false
     ) {
         self.baseFont = baseFont
+        self.importedFontStyleSet = importedFontStyleSet
         self.resolvedTheme = resolvedTheme
         self.usesLargerHeadingText = usesLargerHeadingText
         visibilityPolicy = MarkdownSyntaxVisibilityPolicy(
@@ -224,7 +227,8 @@ struct MarkdownSyntaxStyleApplicator {
                 range: span.contentRange,
                 in: attributed,
                 transform: { font in
-                    transformedFont(font, adding: [.traitBold, .traitItalic])
+                    importedStyleFont(.boldItalic, matching: font)
+                        ?? transformedFont(font, adding: [.traitBold, .traitItalic])
                         ?? UIFont.systemFont(ofSize: font.pointSize, weight: .bold)
                 },
                 additionalAttributes: [.foregroundColor: resolvedTheme.emphasisText]
@@ -235,7 +239,8 @@ struct MarkdownSyntaxStyleApplicator {
                 range: span.contentRange,
                 in: attributed,
                 transform: { font in
-                    transformedFont(font, adding: .traitBold)
+                    importedStyleFont(.bold, matching: font)
+                        ?? transformedFont(font, adding: .traitBold)
                         ?? UIFont.boldSystemFont(ofSize: font.pointSize)
                 },
                 additionalAttributes: [.foregroundColor: resolvedTheme.emphasisText]
@@ -246,7 +251,8 @@ struct MarkdownSyntaxStyleApplicator {
                 range: span.contentRange,
                 in: attributed,
                 transform: { font in
-                    transformedFont(font, adding: .traitItalic)
+                    importedStyleFont(.italic, matching: font)
+                        ?? transformedFont(font, adding: .traitItalic)
                         ?? UIFont.italicSystemFont(ofSize: font.pointSize)
                 },
                 additionalAttributes: [.foregroundColor: resolvedTheme.emphasisText]
@@ -392,13 +398,15 @@ struct MarkdownSyntaxStyleApplicator {
     }
 
     private var imageAltFont: UIFont {
-        transformedFont(baseFont, adding: .traitItalic)
+        importedStyleFont(.italic, matching: baseFont)
+            ?? transformedFont(baseFont, adding: .traitItalic)
             ?? UIFont.italicSystemFont(ofSize: baseFont.pointSize)
     }
 
     private func headingFont(level: Int) -> UIFont {
         let scale = usesLargerHeadingText ? max(1.0, 1.5 - CGFloat(level - 1) * 0.08) : 1.0
-        return transformedFont(baseFont, adding: .traitBold, size: baseFont.pointSize * scale)
+        return importedStyleFont(.bold, matching: baseFont, size: baseFont.pointSize * scale)
+            ?? transformedFont(baseFont, adding: .traitBold, size: baseFont.pointSize * scale)
             ?? UIFont.boldSystemFont(ofSize: baseFont.pointSize * scale)
     }
 
@@ -409,8 +417,21 @@ struct MarkdownSyntaxStyleApplicator {
         } else {
             scale = 1.0
         }
-        return transformedFont(baseFont, adding: .traitBold, size: baseFont.pointSize * scale)
+        return importedStyleFont(.bold, matching: baseFont, size: baseFont.pointSize * scale)
+            ?? transformedFont(baseFont, adding: .traitBold, size: baseFont.pointSize * scale)
             ?? UIFont.boldSystemFont(ofSize: baseFont.pointSize * scale)
+    }
+
+    private func importedStyleFont(
+        _ style: ImportedFontStyleRequest,
+        matching font: UIFont,
+        size: CGFloat? = nil
+    ) -> UIFont? {
+        guard let importedFontStyleSet else {
+            return nil
+        }
+
+        return importedFontStyleSet.uiFont(for: style, size: size ?? font.pointSize)
     }
 
     private func applyFontTransform(

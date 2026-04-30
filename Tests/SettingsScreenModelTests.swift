@@ -100,6 +100,39 @@ final class SettingsScreenModelTests: XCTestCase {
     }
 
     @MainActor
+    func testHomeSummaryUsesSelectedImportedFontWhenUnlocked() {
+        let store = EditorAppearanceStore(
+            resolver: EditorFontResolver(isRuntimeFontAvailable: { $0 == "Readable-Regular" }),
+            initialPreferences: .default
+        )
+        store.setImportedFontsUnlocked(true)
+        store.setImportedFont(
+            ImportedFontRecord(
+                displayName: "Readable",
+                familyName: "Readable",
+                postScriptName: "Readable-Regular",
+                styleName: "Regular",
+                relativePath: "Readable.ttf",
+                importDate: Date(),
+                symbolicTraitsRawValue: 0
+            )
+        )
+
+        let summary = SettingsHomeSummary(
+            workspaceName: "MarkDown",
+            editorAppearanceStore: store
+        )
+
+        XCTAssertEqual(summary.fontName, "Readable")
+    }
+
+    @MainActor
+    func testCustomFontSectionVisibilityFollowsThemeUnlockWithoutPlaceholder() {
+        XCTAssertFalse(ThemeEntitlementGate.canImportCustomFonts(hasUnlockedThemes: false))
+        XCTAssertTrue(ThemeEntitlementGate.canImportCustomFonts(hasUnlockedThemes: true))
+    }
+
+    @MainActor
     func testMarkdownDisplaySettingUpdatesStore() {
         let store = EditorAppearanceStore(initialPreferences: .default)
 

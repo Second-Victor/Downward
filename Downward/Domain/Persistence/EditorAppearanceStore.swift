@@ -13,6 +13,7 @@ final class EditorAppearanceStore {
     private let resolver: EditorFontResolver
 
     private(set) var preferences: EditorAppearancePreferences
+    private var areImportedFontsUnlocked = false
 
     init(
         userDefaults: UserDefaults = .standard,
@@ -31,7 +32,8 @@ final class EditorAppearanceStore {
         )
         let normalizedPreferences = Self.normalize(
             loadedPreferences,
-            using: resolver
+            using: resolver,
+            importedFontsUnlocked: false
         )
         self.preferences = normalizedPreferences
 
@@ -48,16 +50,52 @@ final class EditorAppearanceStore {
         resolver.normalizedChoice(preferences.fontChoice)
     }
 
+    var selectedImportedFontFamilyName: String? {
+        guard areImportedFontsUnlocked else {
+            return nil
+        }
+
+        return preferences.importedFontFamilyName
+    }
+
+    var selectedImportedFontFamilyDisplayName: String? {
+        guard selectedImportedFontFamilyName != nil else {
+            return nil
+        }
+
+        return preferences.importedFontFamilyDisplayName ?? preferences.importedFontFamilyName
+    }
+
+    var selectedFontDisplayName: String {
+        selectedImportedFontFamilyDisplayName ?? selectedFontChoice.displayName
+    }
+
     var fontSize: Double {
         preferences.fontSize
     }
 
     var editorFont: Font {
-        resolver.font(for: effectivePreferences)
+        editorFont(importedFamily: nil)
     }
 
     var editorUIFont: UIFont {
-        resolver.uiFont(for: effectivePreferences)
+        editorUIFont(importedFamily: nil)
+    }
+
+    func editorFont(importedFamily: ImportedFontFamily?) -> Font {
+        resolver.font(
+            for: effectivePreferences,
+            importedFontsUnlocked: areImportedFontsUnlocked,
+            importedFamily: importedFamily
+        )
+    }
+
+    func editorUIFont(importedFamily: ImportedFontFamily?) -> UIFont {
+        resolver.uiFont(
+            for: effectivePreferences,
+            importedFontsUnlocked: areImportedFontsUnlocked,
+            importedFamily: importedFamily
+        )
     }
 
     var markdownSyntaxMode: MarkdownSyntaxMode {
@@ -123,18 +161,96 @@ final class EditorAppearanceStore {
     }
 
     var effectivePreferences: EditorAppearancePreferences {
-        Self.normalize(preferences, using: resolver)
+        Self.normalize(
+            preferences,
+            using: resolver,
+            importedFontsUnlocked: areImportedFontsUnlocked
+        )
     }
 
     func setFontChoice(_ choice: EditorFontChoice) {
         let normalizedChoice = resolver.normalizedChoice(choice)
-        guard preferences.fontChoice != normalizedChoice else {
+        guard
+            preferences.fontChoice != normalizedChoice
+                || preferences.importedFontFamilyName != nil
+                || preferences.importedFontFamilyDisplayName != nil
+                || preferences.importedFontPostScriptName != nil
+                || preferences.importedFontDisplayName != nil
+        else {
             return
         }
 
         preferences.fontChoice = normalizedChoice
-        preferences = Self.normalize(preferences, using: resolver)
+        preferences.importedFontFamilyName = nil
+        preferences.importedFontFamilyDisplayName = nil
+        preferences.importedFontPostScriptName = nil
+        preferences.importedFontDisplayName = nil
+        preferences = Self.normalize(
+            preferences,
+            using: resolver,
+            importedFontsUnlocked: areImportedFontsUnlocked
+        )
         persist()
+    }
+
+    func setImportedFontFamily(_ family: ImportedFontFamily) {
+        guard areImportedFontsUnlocked else {
+            return
+        }
+
+        guard
+            preferences.importedFontFamilyName != family.familyName
+                || preferences.importedFontFamilyDisplayName != family.displayName
+        else {
+            return
+        }
+
+        preferences.importedFontFamilyName = family.familyName
+        preferences.importedFontFamilyDisplayName = family.displayName
+        preferences.importedFontPostScriptName = nil
+        preferences.importedFontDisplayName = nil
+        preferences.showLineNumbers = false
+        persist()
+    }
+
+    func setImportedFont(_ record: ImportedFontRecord) {
+        guard areImportedFontsUnlocked else {
+            return
+        }
+
+        guard
+            preferences.importedFontPostScriptName != record.postScriptName
+                || preferences.importedFontDisplayName != record.displayName
+        else {
+            return
+        }
+
+        preferences.importedFontFamilyName = record.familyName
+        preferences.importedFontFamilyDisplayName = record.familyName
+        preferences.importedFontPostScriptName = record.postScriptName
+        preferences.importedFontDisplayName = record.displayName
+        preferences.showLineNumbers = false
+        persist()
+    }
+
+    func clearImportedFontFamilyIfSelected(_ familyName: String) {
+        guard preferences.importedFontFamilyName == familyName else {
+            return
+        }
+
+        preferences.importedFontFamilyName = nil
+        preferences.importedFontFamilyDisplayName = nil
+        preferences.importedFontPostScriptName = nil
+        preferences.importedFontDisplayName = nil
+        persist()
+    }
+
+    func setImportedFontsUnlocked(_ isUnlocked: Bool) {
+        guard areImportedFontsUnlocked != isUnlocked else {
+            return
+        }
+
+        areImportedFontsUnlocked = isUnlocked
     }
 
     func setFontSize(_ size: Double) {
@@ -157,7 +273,10 @@ final class EditorAppearanceStore {
     }
 
     func setShowLineNumbers(_ isEnabled: Bool) {
-        let normalizedValue = selectedFontChoice.isMonospaced && effectiveLargerHeadingText == false && isEnabled
+        let normalizedValue = selectedImportedFontFamilyName == nil
+            && selectedFontChoice.isMonospaced
+            && effectiveLargerHeadingText == false
+            && isEnabled
         guard preferences.showLineNumbers != normalizedValue else {
             return
         }
@@ -272,7 +391,13 @@ final class EditorAppearanceStore {
     }
 
     private func persist() {
-        guard let data = try? encoder.encode(effectivePreferences) else {
+        let normalizedPreferences = Self.normalize(
+            preferences,
+            using: resolver,
+            importedFontsUnlocked: true
+        )
+
+        guard let data = try? encoder.encode(normalizedPreferences) else {
             return
         }
 
@@ -296,16 +421,27 @@ final class EditorAppearanceStore {
 
     private static func normalize(
         _ preferences: EditorAppearancePreferences,
-        using resolver: EditorFontResolver
+        using resolver: EditorFontResolver,
+        importedFontsUnlocked: Bool
     ) -> EditorAppearancePreferences {
-        EditorAppearancePreferences(
-            fontChoice: resolver.normalizedChoice(preferences.fontChoice),
+        let normalizedChoice = resolver.normalizedChoice(preferences.fontChoice)
+        let usesImportedFont = importedFontsUnlocked
+            && (preferences.importedFontFamilyName != nil
+                || resolver.canUseImportedFont(
+                    preferences.importedFontPostScriptName,
+                    importedFontsUnlocked: importedFontsUnlocked
+                ))
+        let normalizedShowLineNumbers = usesImportedFont == false
+            && normalizedChoice.isMonospaced
+            && preferences.largerHeadingText == false
+            ? preferences.showLineNumbers
+            : false
+
+        return EditorAppearancePreferences(
+            fontChoice: normalizedChoice,
             fontSize: clampFontSize(preferences.fontSize),
             markdownSyntaxMode: preferences.markdownSyntaxMode,
-            showLineNumbers: resolver.normalizedChoice(preferences.fontChoice).isMonospaced
-                && preferences.largerHeadingText == false
-                ? preferences.showLineNumbers
-                : false,
+            showLineNumbers: normalizedShowLineNumbers,
             lineNumberOpacity: clampLineNumberOpacity(preferences.lineNumberOpacity),
             largerHeadingText: preferences.largerHeadingText,
             colorFormattedText: preferences.colorFormattedText,
@@ -313,7 +449,11 @@ final class EditorAppearanceStore {
             createMarkdownTitleFromFilename: preferences.createMarkdownTitleFromFilename,
             selectedThemeID: preferences.selectedThemeID,
             matchSystemChromeToTheme: preferences.matchSystemChromeToTheme,
-            reopenLastDocumentOnLaunch: preferences.reopenLastDocumentOnLaunch
+            reopenLastDocumentOnLaunch: preferences.reopenLastDocumentOnLaunch,
+            importedFontFamilyName: preferences.importedFontFamilyName,
+            importedFontFamilyDisplayName: preferences.importedFontFamilyDisplayName,
+            importedFontPostScriptName: preferences.importedFontPostScriptName,
+            importedFontDisplayName: preferences.importedFontDisplayName
         )
     }
 

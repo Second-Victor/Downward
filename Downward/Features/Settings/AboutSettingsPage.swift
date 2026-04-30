@@ -4,76 +4,72 @@ struct AboutSettingsPage: View {
     let backAction: () -> Void
     var releaseConfiguration: SettingsReleaseConfiguration = .current
 
-    @ScaledMetric private var iconFrameSize: CGFloat = 116
-    @ScaledMetric private var iconCornerRadius: CGFloat = 26
+    private static let companyURL = URL(string: "https://secondvictor.com")!
+
+    @ScaledMetric(relativeTo: .largeTitle) private var iconFrameSize: CGFloat = 170
 
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [.clear, .gray.opacity(0.08)],
+                gradient: Gradient(colors: [.clear, .gray.opacity(0.1)]),
                 startPoint: .top,
                 endPoint: .bottomTrailing
             )
 
-            VStack(spacing: 0) {
-                Spacer(minLength: 28)
+            VStack {
+                Spacer()
 
                 Image("DownwardBrandedIcon")
                     .resizable()
-                    .scaledToFit()
                     .frame(width: iconFrameSize, height: iconFrameSize)
-                    .clipShape(RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous))
-                    .shadow(color: .black.opacity(0.08), radius: 16, y: 10)
-                    .padding(.bottom, 18)
 
-                Text("Downward")
-                    .font(.system(.largeTitle, design: .rounded).bold())
+                appTitle
 
                 Text(versionText)
-                    .font(.system(.callout, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
+                    .font(.system(.caption, design: .rounded))
 
-                Text("Second Victor Ltd.")
-                    .font(.system(.footnote, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 8)
+                Spacer()
 
-                Text("A calm markdown editor for real folders in Files.")
-                    .font(.system(.callout, design: .rounded))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 14)
+                Link("Second Victor Ltd.", destination: Self.companyURL)
+                    .font(.system(.body, design: .rounded).bold())
+                    .foregroundStyle(.primary)
+                    .padding(.bottom, 10)
+                    .accessibilityHint("Opens the Second Victor website in Safari")
 
-                Spacer(minLength: 28)
+                if let privacyPolicyURL = releaseConfiguration.privacyPolicyURL {
+                    AboutLinkRow(systemName: "lock", title: "Privacy Policy", destination: privacyPolicyURL)
+                        .padding(.bottom, 1)
+                }
 
-                VStack(spacing: 12) {
-                    if let projectURL = releaseConfiguration.projectURL {
-                        AboutLinkRow(systemName: "safari", title: "Website", destination: projectURL)
-                    }
-
-                    if let privacyPolicyURL = releaseConfiguration.privacyPolicyURL {
-                        AboutLinkRow(systemName: "lock", title: "Privacy Policy", destination: privacyPolicyURL)
-                    }
-
-                    if let termsAndConditionsURL = releaseConfiguration.termsAndConditionsURL {
-                        AboutLinkRow(systemName: "checkmark.seal", title: "Terms & Conditions", destination: termsAndConditionsURL)
-                    }
+                if let termsAndConditionsURL = releaseConfiguration.termsAndConditionsURL {
+                    AboutLinkRow(systemName: "checkmark.seal", title: "Terms & Conditions", destination: termsAndConditionsURL)
+                        .padding(.bottom, 10)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 32)
-            .padding(.vertical, 30)
+            .padding(.bottom, 30)
         }
         .navigationTitle("About")
+        .ignoresSafeArea(.all)
         .fontDesign(.rounded)
+    }
+
+    @ViewBuilder
+    private var appTitle: some View {
+        if let projectURL = releaseConfiguration.projectURL {
+            Link("Downward", destination: projectURL)
+                .font(.system(.largeTitle, design: .rounded).bold())
+                .foregroundStyle(.primary)
+                .accessibilityHint("Opens the Downward project page in Safari")
+        } else {
+            Text("Downward")
+                .font(.system(.largeTitle, design: .rounded).bold())
+        }
     }
 
     private var versionText: String {
         let infoDictionary = Bundle.main.infoDictionary
         let version = infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let build = infoDictionary?["CFBundleVersion"] as? String ?? "1"
-        return "v\(version) (\(build))"
+        return "v\(version) © 2026"
     }
 }
 
@@ -83,19 +79,12 @@ private struct AboutLinkRow: View {
     let destination: URL
 
     var body: some View {
-        Link(destination: destination) {
-            HStack(spacing: 10) {
-                Image(systemName: systemName)
-                    .symbolGradient(.primary)
-                    .frame(width: 18)
-                    .accessibilityHidden(true)
-
-                Text(title)
-            }
-            .font(.system(.callout, design: .rounded).weight(.semibold))
-            .foregroundStyle(.primary)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .contentShape(.rect)
+        HStack {
+            Image(systemName: systemName)
+            Link(title, destination: destination)
+                .foregroundStyle(.primary)
+                .accessibilityHint("Opens \(title) in Safari")
         }
+        .font(.system(.body, design: .rounded))
     }
 }

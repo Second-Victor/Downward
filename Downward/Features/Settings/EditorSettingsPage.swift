@@ -1,11 +1,17 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct EditorSettingsPage: View {
     let editorAppearanceStore: EditorAppearanceStore
+    let themeStore: ThemeStore
+    let importedFontManager: ImportedFontManager
     let backAction: () -> Void
 
     @State private var selectedCategory: SettingsFontCategory = .monospaced
+    @State private var isImportingFont = false
+    @State private var pendingImportTarget = ImportedFontImportTarget.general
+    @State private var presentedImportedFontFamilyName: String?
 
     var body: some View {
         Form {
@@ -23,7 +29,8 @@ struct EditorSettingsPage: View {
                 ForEach(availableFontOptions) { option in
                     SettingsFontRow(
                         option: option,
-                        isSelected: editorAppearanceStore.selectedFontChoice == option.choice
+                        isSelected: editorAppearanceStore.selectedImportedFontFamilyName == nil
+                            && editorAppearanceStore.selectedFontChoice == option.choice
                     ) {
                         editorAppearanceStore.setFontChoice(option.choice)
                     }
@@ -31,6 +38,40 @@ struct EditorSettingsPage: View {
             } footer: {
                 Text("Choose your favourite font.")
                     .settingsFooterStyle()
+            }
+
+            if ThemeEntitlementGate.canImportCustomFonts(hasUnlockedThemes: themeStore.hasUnlockedThemes) {
+                Section {
+                    Button {
+                        pendingImportTarget = .general
+                        isImportingFont = true
+                    } label: {
+                        ImportFontSettingsLabel(title: "Import Font")
+                    }
+
+                    ForEach(importedFontManager.families) { family in
+                        ImportedFontFamilyRow(
+                            family: family,
+                            isSelected: editorAppearanceStore.selectedImportedFontFamilyName == family.familyName
+                        ) {
+                            editorAppearanceStore.setImportedFontFamily(family)
+                        } detailAction: {
+                            presentedImportedFontFamilyName = family.familyName
+                        }
+                        .swipeActions {
+                            Button(role: .destructive) {
+                                deleteImportedFontFamily(family)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Imported Fonts")
+                } footer: {
+                    Text("Import .ttf or .otf fonts to use in the editor. Swipe an imported family to delete it.")
+                        .settingsFooterStyle()
+                }
             }
 
             Section {
@@ -55,7 +96,8 @@ struct EditorSettingsPage: View {
                 Section {
                     Toggle("Line Numbers", isOn: lineNumbersBinding)
                         .disabled(
-                            editorAppearanceStore.selectedFontChoice.isMonospaced == false
+                            editorAppearanceStore.selectedImportedFontFamilyName != nil
+                                || editorAppearanceStore.selectedFontChoice.isMonospaced == false
                                 || editorAppearanceStore.effectiveLargerHeadingText
                         )
                         .accessibilityHint("Shows line numbers along the left edge of monospaced editor text.")
@@ -119,7 +161,57 @@ struct EditorSettingsPage: View {
             }
         }
         .navigationTitle("Editor")
+        .fileImporter(
+            isPresented: $isImportingFont,
+            allowedContentTypes: ImportedFontImportType.allowedContentTypes,
+            allowsMultipleSelection: true
+        ) { result in
+            Task {
+                await ImportedFontSettingsImportHandler.handle(
+                    result: result,
+                    importedFontManager: importedFontManager,
+                    editorAppearanceStore: editorAppearanceStore,
+                    hasUnlockedThemes: themeStore.hasUnlockedThemes,
+                    target: pendingImportTarget
+                )
+                pendingImportTarget = .general
+            }
+        }
+        .sheet(isPresented: importedFontFamilyDetailBinding) {
+            if let family = presentedImportedFontFamily {
+                NavigationStack {
+                    ImportedFontFamilyDetailView(
+                        family: family,
+                        importAction: { style in
+                            pendingImportTarget = .familyStyle(
+                                familyName: family.familyName,
+                                style: style
+                            )
+                            presentedImportedFontFamilyName = nil
+                            isImportingFont = true
+                        }
+                    )
+                    .navigationTitle(family.displayName)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") {
+                                presentedImportedFontFamilyName = nil
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .alert("Font Error", isPresented: importedFontErrorBinding) {
+            Button("OK") { importedFontManager.lastError = nil }
+        } message: {
+            if let error = importedFontManager.lastError {
+                Text(error)
+            }
+        }
         .onAppear {
+            editorAppearanceStore.setImportedFontsUnlocked(themeStore.hasUnlockedThemes)
             selectedCategory = category(for: editorAppearanceStore.selectedFontChoice)
         }
     }
@@ -166,6 +258,39 @@ struct EditorSettingsPage: View {
         )
     }
 
+    private var importedFontErrorBinding: Binding<Bool> {
+        Binding(
+            get: { importedFontManager.lastError != nil },
+            set: { isPresented in
+                if isPresented == false {
+                    importedFontManager.lastError = nil
+                }
+            }
+        )
+    }
+
+    private var importedFontFamilyDetailBinding: Binding<Bool> {
+        Binding(
+            get: { presentedImportedFontFamily != nil },
+            set: { isPresented in
+                if isPresented == false {
+                    presentedImportedFontFamilyName = nil
+                }
+            }
+        )
+    }
+
+    private var presentedImportedFontFamily: ImportedFontFamily? {
+        guard
+            ThemeEntitlementGate.canImportCustomFonts(hasUnlockedThemes: themeStore.hasUnlockedThemes),
+            let presentedImportedFontFamilyName
+        else {
+            return nil
+        }
+
+        return importedFontManager.family(named: presentedImportedFontFamilyName)
+    }
+
     private var availableFontOptions: [SettingsFontOption] {
         options(for: selectedCategory).filter { option in
             editorAppearanceStore.availableFontChoices.contains(option.choice)
@@ -200,7 +325,23 @@ struct EditorSettingsPage: View {
         editorAppearanceStore.setFontChoice(first.choice)
     }
 
+    private func deleteImportedFontFamily(_ family: ImportedFontFamily) {
+        guard ThemeEntitlementGate.canImportCustomFonts(hasUnlockedThemes: themeStore.hasUnlockedThemes) else {
+            return
+        }
+
+        guard importedFontManager.deleteFamily(named: family.familyName) else {
+            return
+        }
+
+        editorAppearanceStore.clearImportedFontFamilyIfSelected(family.familyName)
+    }
+
     private var lineNumbersHelperText: String {
+        if editorAppearanceStore.selectedImportedFontFamilyName != nil {
+            return "Line numbers are available with built-in monospaced fonts."
+        }
+
         if editorAppearanceStore.effectiveLargerHeadingText {
             return "Line numbers are disabled while larger heading text is enabled."
         }
@@ -312,5 +453,240 @@ struct SettingsFontRow: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct ImportedFontFamilyRow: View {
+    let family: ImportedFontFamily
+    let isSelected: Bool
+    let action: () -> Void
+    let detailAction: () -> Void
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Button(action: action) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(family.displayName)
+                            .font(previewFont)
+
+                        Text(family.styleSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .symbolGradient(.accentColor)
+                            .bold()
+                    }
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: detailAction) {
+                Image(systemName: "list.bullet.rectangle")
+                    .imageScale(.medium)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, height: 36)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("View \(family.displayName) styles")
+        }
+    }
+
+    private var previewFont: Font {
+        guard let postScriptName = family.baseRecord?.postScriptName else {
+            return .body
+        }
+
+        return .custom(postScriptName, size: UIFont.preferredFont(forTextStyle: .body).pointSize)
+    }
+}
+
+private struct ImportedFontFamilyDetailView: View {
+    let family: ImportedFontFamily
+    let importAction: (ImportedFontStyleRequest) -> Void
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(ImportedFontStyleRequest.allCases) { style in
+                    ImportedFontStyleStatusRow(
+                        style: style,
+                        record: family.record(matching: style),
+                        importAction: {
+                            importAction(style)
+                        }
+                    )
+                }
+            } header: {
+                Text("Styles")
+            }
+        }
+    }
+}
+
+private struct ImportedFontStyleStatusRow: View {
+    let style: ImportedFontStyleRequest
+    let record: ImportedFontRecord?
+    let importAction: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: record == nil ? "circle" : "checkmark.circle.fill")
+                .symbolGradient(record == nil ? .secondary : .green)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(style.displayName)
+                    .font(previewFont)
+
+                Text(statusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if record == nil {
+                Button(action: importAction) {
+                    ImportFontSettingsLabel(title: "Install")
+                }
+                    .buttonStyle(.borderless)
+            }
+        }
+    }
+
+    private var statusText: String {
+        if let record {
+            return "Installed as \(record.displayName)"
+        }
+
+        return "Not installed"
+    }
+
+    private var previewFont: Font {
+        guard let record else {
+            return .body
+        }
+
+        return .custom(record.postScriptName, size: UIFont.preferredFont(forTextStyle: .body).pointSize)
+    }
+}
+
+private struct ImportFontSettingsLabel: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "square.and.arrow.down")
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(squareOutlineGradient, .green)
+                .frame(width: 22)
+                .accessibilityHidden(true)
+
+            Text(title)
+        }
+    }
+
+    private var squareOutlineGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(uiColor: .label),
+                Color(uiColor: .label).opacity(0.7)
+            ],
+            startPoint: .bottom,
+            endPoint: .top
+        )
+    }
+}
+
+enum ImportedFontImportTarget: Equatable {
+    case general
+    case familyStyle(familyName: String, style: ImportedFontStyleRequest)
+}
+
+enum ImportedFontSettingsImportHandler {
+    @MainActor
+    static func handle(
+        result: Result<[URL], Error>,
+        importedFontManager: ImportedFontManager,
+        editorAppearanceStore: EditorAppearanceStore,
+        hasUnlockedThemes: Bool,
+        target: ImportedFontImportTarget = .general
+    ) async {
+        guard ThemeEntitlementGate.canImportCustomFonts(hasUnlockedThemes: hasUnlockedThemes) else {
+            return
+        }
+
+        do {
+            let urls = try result.get()
+            let records = await importedFontManager.importFonts(from: urls)
+            selectImportedFontIfNeeded(
+                records: records,
+                importedFontManager: importedFontManager,
+                editorAppearanceStore: editorAppearanceStore,
+                target: target
+            )
+        } catch {
+            guard isUserCancelled(error) == false else {
+                return
+            }
+
+            importedFontManager.lastError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private static func selectImportedFontIfNeeded(
+        records: [ImportedFontRecord],
+        importedFontManager: ImportedFontManager,
+        editorAppearanceStore: EditorAppearanceStore,
+        target: ImportedFontImportTarget
+    ) {
+        switch target {
+        case .general:
+            if let familyName = records.first?.familyName,
+               let family = importedFontManager.family(named: familyName) {
+                editorAppearanceStore.setImportedFontFamily(family)
+            }
+        case let .familyStyle(familyName, style):
+            guard let family = importedFontManager.family(named: familyName) else {
+                importedFontManager.lastError = "Downward could not find that imported font family."
+                return
+            }
+
+            if family.record(matching: style) != nil {
+                editorAppearanceStore.setImportedFontFamily(family)
+                return
+            }
+
+            if records.isEmpty == false {
+                importedFontManager.lastError = "That file was imported, but it did not add \(style.displayName) to \(familyName)."
+            }
+        }
+    }
+
+    private static func isUserCancelled(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSCocoaErrorDomain && nsError.code == CocoaError.userCancelled.rawValue
+    }
+}
+
+private enum ImportedFontImportType {
+    static var allowedContentTypes: [UTType] {
+        var types: [UTType] = [.font]
+        if let trueType = UTType(filenameExtension: "ttf") {
+            types.append(trueType)
+        }
+        if let openType = UTType(filenameExtension: "otf") {
+            types.append(openType)
+        }
+        return types
     }
 }

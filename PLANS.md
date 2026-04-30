@@ -174,6 +174,7 @@ The previous completed backlog has been compressed out of this file. The current
 
 ## Theme/settings polish
 
+- [x] Add supporter-gated imported custom font families using the existing extra-theme unlock, with per-face metadata persistence, launch re-registration, style availability/install UI, family deletion, markdown style-face matching, and focused tests.
 - [ ] Clarify whether new unsaved custom themes can be exported.
 - [ ] Add import/export/share manual QA cases for custom themes.
 - [ ] Review Settings copy for final release tone and grammar.

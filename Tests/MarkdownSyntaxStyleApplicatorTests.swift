@@ -111,6 +111,63 @@ final class MarkdownSyntaxStyleApplicatorTests: XCTestCase {
         XCTAssertEqual(attributed.attribute(.markdownHiddenSyntax, at: delimiterRange.location, effectiveRange: nil) as? Bool, true)
     }
 
+    func testDelimitedInlineSpansUseImportedFamilyStyleFacesWhenAvailable() throws {
+        let baseImportedFont = try XCTUnwrap(UIFont(name: "Helvetica", size: 16))
+        let styleSet = ImportedFontStyleSet(
+            familyName: "Helvetica",
+            basePostScriptName: "Helvetica",
+            boldPostScriptName: "Helvetica-Bold",
+            italicPostScriptName: "Helvetica-Oblique",
+            boldItalicPostScriptName: "Helvetica-BoldOblique"
+        )
+        let applicator = MarkdownSyntaxStyleApplicator(
+            baseFont: baseImportedFont,
+            importedFontStyleSet: styleSet,
+            resolvedTheme: theme,
+            syntaxMode: .visible,
+            revealedRange: nil
+        )
+        let text = "**bold** *italic* ***both***"
+        let attributed = NSMutableAttributedString(string: text, attributes: applicator.baseAttributes)
+        let nsText = text as NSString
+
+        applicator.applyDelimitedInlineSpan(
+            MarkdownDelimitedInlineSpan(
+                style: .bold,
+                fullRange: nsText.range(of: "**bold**"),
+                contentRange: nsText.range(of: "bold"),
+                markerRanges: []
+            ),
+            in: attributed
+        )
+        applicator.applyDelimitedInlineSpan(
+            MarkdownDelimitedInlineSpan(
+                style: .italic,
+                fullRange: nsText.range(of: "*italic*"),
+                contentRange: nsText.range(of: "italic"),
+                markerRanges: []
+            ),
+            in: attributed
+        )
+        applicator.applyDelimitedInlineSpan(
+            MarkdownDelimitedInlineSpan(
+                style: .boldItalic,
+                fullRange: nsText.range(of: "***both***"),
+                contentRange: nsText.range(of: "both"),
+                markerRanges: []
+            ),
+            in: attributed
+        )
+
+        let boldFont = attributed.attribute(.font, at: nsText.range(of: "bold").location, effectiveRange: nil) as? UIFont
+        let italicFont = attributed.attribute(.font, at: nsText.range(of: "italic").location, effectiveRange: nil) as? UIFont
+        let boldItalicFont = attributed.attribute(.font, at: nsText.range(of: "both").location, effectiveRange: nil) as? UIFont
+
+        XCTAssertEqual(boldFont?.fontName, "Helvetica-Bold")
+        XCTAssertEqual(italicFont?.fontName, "Helvetica-Oblique")
+        XCTAssertEqual(boldItalicFont?.fontName, "Helvetica-BoldOblique")
+    }
+
     func testLinkAndImageApplicationPreserveTextAndUseExpectedThemeRoles() {
         let text = "[Site](https://example.com)\n![Alt](/image.png)"
         let attributed = NSMutableAttributedString(

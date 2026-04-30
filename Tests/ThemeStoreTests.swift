@@ -769,12 +769,14 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertFalse(ThemeEntitlementGate.canEditCustomThemes(hasUnlockedThemes: false))
         XCTAssertFalse(ThemeEntitlementGate.canExportCustomThemes(hasUnlockedThemes: false))
         XCTAssertFalse(ThemeEntitlementGate.canSelectCustomTheme(hasUnlockedThemes: false))
+        XCTAssertFalse(ThemeEntitlementGate.canImportCustomFonts(hasUnlockedThemes: false))
 
         XCTAssertTrue(ThemeEntitlementGate.canCreateCustomTheme(hasUnlockedThemes: true))
         XCTAssertTrue(ThemeEntitlementGate.canImportCustomThemes(hasUnlockedThemes: true))
         XCTAssertTrue(ThemeEntitlementGate.canEditCustomThemes(hasUnlockedThemes: true))
         XCTAssertTrue(ThemeEntitlementGate.canExportCustomThemes(hasUnlockedThemes: true))
         XCTAssertTrue(ThemeEntitlementGate.canSelectCustomTheme(hasUnlockedThemes: true))
+        XCTAssertTrue(ThemeEntitlementGate.canImportCustomFonts(hasUnlockedThemes: true))
     }
 
     @MainActor

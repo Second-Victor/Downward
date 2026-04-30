@@ -168,6 +168,7 @@ private struct CompactWorkspaceShell: View {
                 accessState: viewModel.workspaceAccessState,
                 editorAppearanceStore: viewModel.editorAppearanceStore,
                 themeStore: viewModel.themeStore,
+                importedFontManager: viewModel.importedFontManager,
                 reconnectWorkspaceAction: viewModel.presentFolderPicker,
                 clearWorkspaceAction: viewModel.clearWorkspace,
                 dismissAction: {
@@ -216,6 +217,7 @@ private struct RegularWorkspaceShell: View {
                 accessState: viewModel.workspaceAccessState,
                 editorAppearanceStore: viewModel.editorAppearanceStore,
                 themeStore: viewModel.themeStore,
+                importedFontManager: viewModel.importedFontManager,
                 reconnectWorkspaceAction: viewModel.presentFolderPicker,
                 clearWorkspaceAction: viewModel.clearWorkspace,
                 dismissAction: {
@@ -275,6 +277,7 @@ private struct WorkspaceRouteDestination: View {
                 accessState: viewModel.workspaceAccessState,
                 editorAppearanceStore: viewModel.editorAppearanceStore,
                 themeStore: viewModel.themeStore,
+                importedFontManager: viewModel.importedFontManager,
                 reconnectWorkspaceAction: viewModel.presentFolderPicker,
                 clearWorkspaceAction: viewModel.clearWorkspace
             )

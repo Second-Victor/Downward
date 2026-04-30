@@ -26,7 +26,19 @@ struct EditorFontResolver: Sendable {
         availableChoices.contains(choice) ? choice : .default
     }
 
-    func font(for preferences: EditorAppearancePreferences) -> Font {
+    func font(
+        for preferences: EditorAppearancePreferences,
+        importedFontsUnlocked: Bool = false,
+        importedFamily: ImportedFontFamily? = nil
+    ) -> Font {
+        if let importedFontName = usableImportedFontName(
+            for: preferences,
+            importedFontsUnlocked: importedFontsUnlocked,
+            importedFamily: importedFamily
+        ) {
+            return Font.custom(importedFontName, size: preferences.fontSize)
+        }
+
         let normalizedChoice = normalizedChoice(preferences.fontChoice)
         let size = preferences.fontSize
 
@@ -44,7 +56,20 @@ struct EditorFontResolver: Sendable {
         }
     }
 
-    func uiFont(for preferences: EditorAppearancePreferences) -> UIFont {
+    func uiFont(
+        for preferences: EditorAppearancePreferences,
+        importedFontsUnlocked: Bool = false,
+        importedFamily: ImportedFontFamily? = nil
+    ) -> UIFont {
+        if let importedFontName = usableImportedFontName(
+            for: preferences,
+            importedFontsUnlocked: importedFontsUnlocked,
+            importedFamily: importedFamily
+        ),
+           let font = UIFont(name: importedFontName, size: preferences.fontSize) {
+            return font
+        }
+
         let normalizedChoice = normalizedChoice(preferences.fontChoice)
         let size = preferences.fontSize
 
@@ -66,5 +91,63 @@ struct EditorFontResolver: Sendable {
             return UIFont(name: normalizedChoice.runtimeFontName ?? "", size: size)
                 ?? UIFont.systemFont(ofSize: size)
         }
+    }
+
+    func canUseImportedFont(
+        _ postScriptName: String?,
+        importedFontsUnlocked: Bool
+    ) -> Bool {
+        guard
+            importedFontsUnlocked,
+            let postScriptName,
+            postScriptName.isEmpty == false
+        else {
+            return false
+        }
+
+        return isRuntimeFontAvailable(postScriptName)
+    }
+
+    func canUseImportedFamily(
+        _ familyName: String?,
+        importedFontsUnlocked: Bool,
+        importedFamily: ImportedFontFamily?
+    ) -> Bool {
+        guard
+            importedFontsUnlocked,
+            let familyName,
+            familyName.isEmpty == false,
+            let importedFamily,
+            importedFamily.familyName == familyName,
+            let postScriptName = importedFamily.baseRecord?.postScriptName
+        else {
+            return false
+        }
+
+        return isRuntimeFontAvailable(postScriptName)
+    }
+
+    private func usableImportedFontName(
+        for preferences: EditorAppearancePreferences,
+        importedFontsUnlocked: Bool,
+        importedFamily: ImportedFontFamily?
+    ) -> String? {
+        if canUseImportedFamily(
+            preferences.importedFontFamilyName,
+            importedFontsUnlocked: importedFontsUnlocked,
+            importedFamily: importedFamily
+        ) {
+            return importedFamily?.baseRecord?.postScriptName
+        }
+
+        guard preferences.importedFontFamilyName == nil,
+              canUseImportedFont(
+                preferences.importedFontPostScriptName,
+                importedFontsUnlocked: importedFontsUnlocked
+              ) else {
+            return nil
+        }
+
+        return preferences.importedFontPostScriptName
     }
 }

@@ -12,6 +12,7 @@ import SwiftUI
             )
         ),
         themeStore: makePreviewThemeStore(),
+        importedFontManager: makePreviewImportedFontManager(),
         reconnectWorkspaceAction: {},
         clearWorkspaceAction: {}
     )
@@ -23,6 +24,7 @@ import SwiftUI
         accessState: .noneSelected,
         editorAppearanceStore: EditorAppearanceStore(),
         themeStore: makePreviewThemeStore(),
+        importedFontManager: makePreviewImportedFontManager(),
         reconnectWorkspaceAction: {},
         clearWorkspaceAction: {}
     )
@@ -40,6 +42,7 @@ import SwiftUI
             )
         ),
         themeStore: makePreviewThemeStore(),
+        importedFontManager: makePreviewImportedFontManager(),
         reconnectWorkspaceAction: {},
         clearWorkspaceAction: {}
     )
@@ -54,6 +57,8 @@ import SwiftUI
                 fontSize: 15
             )
         ),
+        themeStore: makePreviewThemeStore(),
+        importedFontManager: makePreviewImportedFontManager(),
         backAction: {}
     )
 }
@@ -106,6 +111,7 @@ import SwiftUI
         accessState: .ready(displayName: PreviewSampleData.nestedWorkspace.displayName),
         editorAppearanceStore: EditorAppearanceStore(),
         themeStore: makePreviewThemeStore(),
+        importedFontManager: makePreviewImportedFontManager(),
         reconnectWorkspaceAction: {},
         clearWorkspaceAction: {},
         dismissAction: {}

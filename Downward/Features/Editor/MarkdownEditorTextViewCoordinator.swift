@@ -167,6 +167,7 @@ extension MarkdownEditorTextView {
                     text: liveText,
                     documentIdentity: configuration.documentIdentity,
                     font: configuration.font,
+                    importedFontStyleSet: configuration.importedFontStyleSet,
                     resolvedTheme: configuration.resolvedTheme,
                     chromeColorScheme: configuration.chromeColorScheme,
                     syntaxMode: configuration.syntaxMode,
@@ -323,6 +324,7 @@ extension MarkdownEditorTextView {
                 text: updatedText,
                 documentIdentity: configuration.documentIdentity,
                 font: configuration.font,
+                importedFontStyleSet: configuration.importedFontStyleSet,
                 resolvedTheme: configuration.resolvedTheme,
                 chromeColorScheme: configuration.chromeColorScheme,
                 syntaxMode: configuration.syntaxMode,
@@ -391,6 +393,7 @@ extension MarkdownEditorTextView {
                 text: currentText,
                 documentIdentity: configuration.documentIdentity,
                 font: configuration.font,
+                importedFontStyleSet: configuration.importedFontStyleSet,
                 resolvedTheme: configuration.resolvedTheme,
                 chromeColorScheme: configuration.chromeColorScheme,
                 syntaxMode: configuration.syntaxMode,
@@ -512,6 +515,7 @@ extension MarkdownEditorTextView {
                 configuration: .init(
                     text: configuration.text,
                     baseFont: configuration.font,
+                    importedFontStyleSet: configuration.importedFontStyleSet,
                     resolvedTheme: configuration.resolvedTheme,
                     syntaxMode: configuration.syntaxMode,
                     revealedRange: configuration.syntaxMode == .hiddenOutsideCurrentLine
@@ -689,6 +693,7 @@ extension MarkdownEditorTextView {
                 configuration: .init(
                     text: lineText,
                     baseFont: configuration.font,
+                    importedFontStyleSet: configuration.importedFontStyleSet,
                     resolvedTheme: configuration.resolvedTheme,
                     syntaxMode: configuration.syntaxMode,
                     revealedRange: configuration.syntaxMode == .hiddenOutsideCurrentLine
@@ -923,6 +928,7 @@ extension MarkdownEditorTextView {
                         text: currentText,
                         documentIdentity: latestConfiguration.documentIdentity,
                         font: latestConfiguration.font,
+                        importedFontStyleSet: latestConfiguration.importedFontStyleSet,
                         resolvedTheme: latestConfiguration.resolvedTheme,
                         chromeColorScheme: latestConfiguration.chromeColorScheme,
                         syntaxMode: latestConfiguration.syntaxMode,

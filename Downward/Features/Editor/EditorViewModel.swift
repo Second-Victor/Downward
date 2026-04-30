@@ -23,6 +23,7 @@ final class EditorViewModel {
     private let coordinator: AppCoordinator
     private let editorAppearanceStore: EditorAppearanceStore
     private let themeStore: ThemeStore
+    private let importedFontManager: ImportedFontManager
     private var autosaveTask: Task<Void, Never>?
     private var flushSaveTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
@@ -51,12 +52,14 @@ final class EditorViewModel {
         coordinator: AppCoordinator,
         editorAppearanceStore: EditorAppearanceStore,
         themeStore: ThemeStore = ThemeStore(),
+        importedFontManager: ImportedFontManager = ImportedFontManager(),
         autosaveDelay: Duration = .milliseconds(750)
     ) {
         self.session = session
         self.coordinator = coordinator
         self.editorAppearanceStore = editorAppearanceStore
         self.themeStore = themeStore
+        self.importedFontManager = importedFontManager
         self.autosaveDelay = autosaveDelay
     }
 
@@ -186,11 +189,15 @@ final class EditorViewModel {
     }
 
     var editorFont: Font {
-        editorAppearanceStore.editorFont
+        editorAppearanceStore.editorFont(importedFamily: selectedImportedFontFamily)
     }
 
     var editorUIFont: UIFont {
-        editorAppearanceStore.editorUIFont
+        editorAppearanceStore.editorUIFont(importedFamily: selectedImportedFontFamily)
+    }
+
+    var importedFontStyleSet: ImportedFontStyleSet? {
+        selectedImportedFontFamily?.styleSet
     }
 
     var markdownSyntaxMode: MarkdownSyntaxMode {
@@ -219,6 +226,14 @@ final class EditorViewModel {
 
     var resolvedEditorTheme: ResolvedEditorTheme {
         editorAppearanceStore.resolvedTheme(using: themeStore)
+    }
+
+    private var selectedImportedFontFamily: ImportedFontFamily? {
+        guard let familyName = editorAppearanceStore.selectedImportedFontFamilyName else {
+            return nil
+        }
+
+        return importedFontManager.family(named: familyName)
     }
 
     func handleTextChange(_ text: String) {

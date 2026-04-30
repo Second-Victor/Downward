@@ -13,7 +13,8 @@ struct SettingsHomeSummary: Equatable {
         selectedTheme: EditorTheme = .adaptive,
         appearanceName: String = "System"
     ) {
-        self.fontName = SettingsFontOption.displayName(for: editorAppearanceStore.selectedFontChoice)
+        self.fontName = editorAppearanceStore.selectedImportedFontFamilyDisplayName
+            ?? SettingsFontOption.displayName(for: editorAppearanceStore.selectedFontChoice)
         self.themeName = selectedTheme.label
         self.workspaceName = workspaceName ?? "None"
         self.appearanceName = appearanceName
@@ -56,6 +57,7 @@ struct SettingsScreen: View {
     let accessState: WorkspaceAccessState
     let editorAppearanceStore: EditorAppearanceStore
     let themeStore: ThemeStore
+    let importedFontManager: ImportedFontManager
     let reconnectWorkspaceAction: () -> Void
     let clearWorkspaceAction: () -> Void
     var releaseConfiguration: SettingsReleaseConfiguration = .current
@@ -79,6 +81,7 @@ struct SettingsScreen: View {
         }
         .onAppear {
             editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
+            editorAppearanceStore.setImportedFontsUnlocked(themeStore.hasUnlockedThemes)
         }
     }
 
@@ -90,6 +93,8 @@ struct SettingsScreen: View {
         case .editor:
             EditorSettingsPage(
                 editorAppearanceStore: editorAppearanceStore,
+                themeStore: themeStore,
+                importedFontManager: importedFontManager,
                 backAction: pop
             )
             .roundedNavigationBarTitles()
@@ -247,5 +252,15 @@ func makePreviewThemeStore() -> ThemeStore {
     ThemeStore(
         fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-themes-\(UUID().uuidString).json"),
         entitlements: ThemeEntitlementStore(hasUnlockedThemes: true)
+    )
+}
+
+@MainActor
+func makePreviewImportedFontManager() -> ImportedFontManager {
+    ImportedFontManager(
+        fontsDirectory: FileManager.default.temporaryDirectory.appending(
+            path: "preview-fonts-\(UUID().uuidString)",
+            directoryHint: .isDirectory
+        )
     )
 }

@@ -15,6 +15,10 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
     var selectedThemeID: String
     var matchSystemChromeToTheme: Bool
     var reopenLastDocumentOnLaunch: Bool
+    var importedFontFamilyName: String?
+    var importedFontFamilyDisplayName: String?
+    var importedFontPostScriptName: String?
+    var importedFontDisplayName: String?
 
     init(
         fontChoice: EditorFontChoice,
@@ -28,7 +32,11 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         createMarkdownTitleFromFilename: Bool = false,
         selectedThemeID: String = EditorTheme.adaptive.id,
         matchSystemChromeToTheme: Bool = true,
-        reopenLastDocumentOnLaunch: Bool = true
+        reopenLastDocumentOnLaunch: Bool = true,
+        importedFontFamilyName: String? = nil,
+        importedFontFamilyDisplayName: String? = nil,
+        importedFontPostScriptName: String? = nil,
+        importedFontDisplayName: String? = nil
     ) {
         self.fontChoice = fontChoice
         self.fontSize = fontSize
@@ -42,6 +50,10 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         self.selectedThemeID = selectedThemeID
         self.matchSystemChromeToTheme = matchSystemChromeToTheme
         self.reopenLastDocumentOnLaunch = reopenLastDocumentOnLaunch
+        self.importedFontFamilyName = importedFontFamilyName
+        self.importedFontFamilyDisplayName = importedFontFamilyDisplayName
+        self.importedFontPostScriptName = importedFontPostScriptName
+        self.importedFontDisplayName = importedFontDisplayName
     }
 
     static let `default` = EditorAppearancePreferences(
@@ -63,6 +75,10 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         case selectedThemeID
         case matchSystemChromeToTheme
         case reopenLastDocumentOnLaunch
+        case importedFontFamilyName
+        case importedFontFamilyDisplayName
+        case importedFontPostScriptName
+        case importedFontDisplayName
     }
 
     init(from decoder: any Decoder) throws {
@@ -109,6 +125,22 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
             Bool.self,
             forKey: .reopenLastDocumentOnLaunch
         ) ?? true
+        importedFontFamilyName = try container.decodeIfPresent(
+            String.self,
+            forKey: .importedFontFamilyName
+        )
+        importedFontFamilyDisplayName = try container.decodeIfPresent(
+            String.self,
+            forKey: .importedFontFamilyDisplayName
+        )
+        importedFontPostScriptName = try container.decodeIfPresent(
+            String.self,
+            forKey: .importedFontPostScriptName
+        )
+        importedFontDisplayName = try container.decodeIfPresent(
+            String.self,
+            forKey: .importedFontDisplayName
+        )
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -125,5 +157,9 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
         try container.encode(selectedThemeID, forKey: .selectedThemeID)
         try container.encode(matchSystemChromeToTheme, forKey: .matchSystemChromeToTheme)
         try container.encode(reopenLastDocumentOnLaunch, forKey: .reopenLastDocumentOnLaunch)
+        try container.encodeIfPresent(importedFontFamilyName, forKey: .importedFontFamilyName)
+        try container.encodeIfPresent(importedFontFamilyDisplayName, forKey: .importedFontFamilyDisplayName)
+        try container.encodeIfPresent(importedFontPostScriptName, forKey: .importedFontPostScriptName)
+        try container.encodeIfPresent(importedFontDisplayName, forKey: .importedFontDisplayName)
     }
 }

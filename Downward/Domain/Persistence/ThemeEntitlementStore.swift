@@ -55,6 +55,10 @@ enum ThemeEntitlementGate {
         hasUnlockedThemes
     }
 
+    static func canImportCustomFonts(hasUnlockedThemes: Bool) -> Bool {
+        hasUnlockedThemes
+    }
+
     static func entitledThemeID(for rawValue: String, hasUnlockedThemes: Bool) -> String {
         guard UUID(uuidString: rawValue) != nil, hasUnlockedThemes == false else {
             return rawValue

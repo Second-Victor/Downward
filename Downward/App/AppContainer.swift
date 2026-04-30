@@ -8,6 +8,7 @@ final class AppContainer {
     let recentFilesStore: RecentFilesStore
     let editorAppearanceStore: EditorAppearanceStore
     let themeStore: ThemeStore
+    let importedFontManager: ImportedFontManager
     let workspaceManager: any WorkspaceManager
     let documentManager: any DocumentManager
     let errorReporter: any ErrorReporter
@@ -25,6 +26,7 @@ final class AppContainer {
         recentFilesStore: RecentFilesStore,
         editorAppearanceStore: EditorAppearanceStore,
         themeStore: ThemeStore = ThemeStore(),
+        importedFontManager: ImportedFontManager = ImportedFontManager(),
         workspaceManager: any WorkspaceManager,
         documentManager: any DocumentManager,
         errorReporter: any ErrorReporter,
@@ -36,10 +38,12 @@ final class AppContainer {
         self.recentFilesStore = recentFilesStore
         self.editorAppearanceStore = editorAppearanceStore
         self.themeStore = themeStore
+        self.importedFontManager = importedFontManager
         self.workspaceManager = workspaceManager
         self.documentManager = documentManager
         self.errorReporter = errorReporter
         self.folderPickerBridge = folderPickerBridge
+        editorAppearanceStore.setImportedFontsUnlocked(themeStore.hasUnlockedThemes)
         editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
 
         let session = AppSession()
@@ -69,7 +73,8 @@ final class AppContainer {
             session: session,
             coordinator: coordinator,
             editorAppearanceStore: editorAppearanceStore,
-            themeStore: themeStore
+            themeStore: themeStore,
+            importedFontManager: importedFontManager
         )
         self.editorViewModel = editorViewModel
 
@@ -79,7 +84,8 @@ final class AppContainer {
             workspaceViewModel: workspaceViewModel,
             editorViewModel: editorViewModel,
             editorAppearanceStore: editorAppearanceStore,
-            themeStore: themeStore
+            themeStore: themeStore,
+            importedFontManager: importedFontManager
         )
     }
 
@@ -89,6 +95,8 @@ final class AppContainer {
         let bookmarkStore = UserDefaultsBookmarkStore()
         let sessionStore = UserDefaultsSessionStore()
         let recentFilesStore = RecentFilesStore()
+        let importedFontManager = ImportedFontManager()
+        importedFontManager.registerAllFonts()
         let editorAppearanceStore = EditorAppearanceStore()
         // StoreKit is not wired yet. Keep themes unlocked in live builds so premium
         // theme selection and editing can be exercised before purchase plumbing lands.
@@ -111,6 +119,7 @@ final class AppContainer {
             recentFilesStore: recentFilesStore,
             editorAppearanceStore: editorAppearanceStore,
             themeStore: themeStore,
+            importedFontManager: importedFontManager,
             workspaceManager: workspaceManager,
             documentManager: documentManager,
             errorReporter: errorReporter,
@@ -131,6 +140,12 @@ final class AppContainer {
         let bookmarkStore = StubBookmarkStore()
         let sessionStore = StubSessionStore()
         let recentFilesStore = RecentFilesStore(initialItems: recentFiles)
+        let importedFontManager = ImportedFontManager(
+            fontsDirectory: FileManager.default.temporaryDirectory.appending(
+                path: "preview-fonts-\(UUID().uuidString)",
+                directoryHint: .isDirectory
+            )
+        )
         let editorAppearanceStore = EditorAppearanceStore(initialPreferences: editorAppearancePreferences)
         let themeStore = ThemeStore(
             fileURL: FileManager.default.temporaryDirectory.appending(path: "preview-themes-\(UUID().uuidString).json"),
@@ -169,6 +184,7 @@ final class AppContainer {
             recentFilesStore: recentFilesStore,
             editorAppearanceStore: editorAppearanceStore,
             themeStore: themeStore,
+            importedFontManager: importedFontManager,
             workspaceManager: workspaceManager,
             documentManager: documentManager,
             errorReporter: errorReporter,

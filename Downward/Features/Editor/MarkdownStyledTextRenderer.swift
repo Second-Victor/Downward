@@ -11,6 +11,7 @@ struct MarkdownStyledTextRenderer {
     struct Configuration: Equatable {
         let text: String
         let baseFont: UIFont
+        let importedFontStyleSet: ImportedFontStyleSet?
         let resolvedTheme: ResolvedEditorTheme
         let syntaxMode: MarkdownSyntaxMode
         let revealedRange: NSRange?
@@ -19,6 +20,7 @@ struct MarkdownStyledTextRenderer {
         init(
             text: String,
             baseFont: UIFont,
+            importedFontStyleSet: ImportedFontStyleSet? = nil,
             resolvedTheme: ResolvedEditorTheme = .default,
             syntaxMode: MarkdownSyntaxMode,
             revealedRange: NSRange?,
@@ -26,6 +28,7 @@ struct MarkdownStyledTextRenderer {
         ) {
             self.text = text
             self.baseFont = baseFont
+            self.importedFontStyleSet = importedFontStyleSet
             self.resolvedTheme = resolvedTheme
             self.syntaxMode = syntaxMode
             self.revealedRange = revealedRange
@@ -44,6 +47,7 @@ struct MarkdownStyledTextRenderer {
         let nsText = text as NSString
         let styleApplicator = MarkdownSyntaxStyleApplicator(
             baseFont: configuration.baseFont,
+            importedFontStyleSet: configuration.importedFontStyleSet,
             resolvedTheme: configuration.resolvedTheme,
             syntaxMode: configuration.syntaxMode,
             revealedRange: configuration.revealedRange,

@@ -124,6 +124,7 @@ struct ExtraThemesSettingsPage: View {
                     Button {
                         Task {
                             await themeStore.restoreThemePurchases()
+                            editorAppearanceStore.setImportedFontsUnlocked(themeStore.hasUnlockedThemes)
                             editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
                         }
                     } label: {
