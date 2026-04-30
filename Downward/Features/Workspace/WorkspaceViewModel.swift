@@ -60,6 +60,10 @@ struct WorkspaceMoveDestination: Identifiable, Equatable {
     var id: String {
         relativePath ?? "__workspace_root__"
     }
+
+    var isWorkspaceRoot: Bool {
+        relativePath == nil
+    }
 }
 
 @MainActor

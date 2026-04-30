@@ -231,16 +231,25 @@ private struct MoveDestinationRow: View {
                     .symbolGradient(.accentColor)
                     .frame(width: iconColumnWidth, alignment: .center)
 
-                Text(destination.title)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(destination.title)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    if destination.isWorkspaceRoot {
+                        Text("(Root)")
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .font(.body)
             }
 
             Spacer(minLength: trailingSpacing)
         }
         .padding(.vertical, verticalPadding)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 }
 

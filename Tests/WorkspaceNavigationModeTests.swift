@@ -176,6 +176,27 @@ final class WorkspaceNavigationModeTests: XCTestCase {
     }
 
     @MainActor
+    func testMoveDestinationsMarkWorkspaceRoot() throws {
+        let (session, viewModel) = makeWorkspaceViewModel()
+        let journalNode = try XCTUnwrap(
+            session.workspaceSnapshot?.rootNodes.first(where: { $0.url == PreviewSampleData.journalURL })
+        )
+        guard case let .folder(journalFolder) = journalNode else {
+            return XCTFail("Expected Journal fixture to be a folder.")
+        }
+        let nestedFolderNode = try XCTUnwrap(
+            journalFolder.children.first(where: { $0.url == PreviewSampleData.year2026URL })
+        )
+
+        viewModel.presentMove(for: nestedFolderNode)
+
+        let rootDestination = try XCTUnwrap(viewModel.moveDestinations.first)
+        XCTAssertTrue(rootDestination.isWorkspaceRoot)
+        XCTAssertNil(rootDestination.relativePath)
+        XCTAssertEqual(rootDestination.title, PreviewSampleData.nestedWorkspace.displayName)
+    }
+
+    @MainActor
     func testRenamedExpandedFolderStaysExpanded() async throws {
         let renamedFolderURL = PreviewSampleData.workspaceRootURL.appending(path: "Logbook")
         let renamedSnapshot = makeWorkspaceSnapshotReplacingJournalFolder(
