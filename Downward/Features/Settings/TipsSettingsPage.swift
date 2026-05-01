@@ -20,7 +20,7 @@ struct TipsSettingsPage: View {
                     ContentUnavailableView(
                         "Tips Unavailable",
                         systemImage: "heart.slash",
-                        description: Text("Tip purchases could not be loaded.")
+                        description: Text("Tip purchases could not be loaded. Try again later.")
                     )
                 } else {
                     ForEach(tipJarManager.products, id: \.id) { product in
@@ -36,10 +36,12 @@ struct TipsSettingsPage: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(tipJarManager.purchaseInProgress)
+                        .accessibilityLabel(tipAccessibilityLabel(for: product))
+                        .accessibilityHint("Purchases \(product.displayName) for \(product.displayPrice).")
                     }
                 }
             } footer: {
-                Text("Tips help support the ongoing development and maintainance of Downward. Thank you for your support!")
+                Text("Tips help support the ongoing development and maintenance of Downward. Thank you for your support!")
                     .settingsFooterStyle()
             }
         }
@@ -77,10 +79,20 @@ struct TipsSettingsPage: View {
     private var purchaseAlertButtonLabel: String {
         switch tipJarManager.purchaseState {
         case .success:
-            "You're Welcome"
+            "Done"
         case .failed, .idle, .purchasing:
             "OK"
         }
+    }
+
+    private func tipAccessibilityLabel(for product: Product) -> String {
+        [
+            product.displayName,
+            product.description,
+            product.displayPrice,
+        ]
+        .filter { $0.isEmpty == false }
+        .joined(separator: ", ")
     }
 
     private var purchaseAlertBinding: Binding<Bool> {
@@ -146,7 +158,7 @@ struct SettingsTipProductRow: View {
         } else if product.price < 8 {
             return "fork.knife"
         } else {
-            return "wineglass.fill"
+            return "gift.fill"
         }
     }
 
@@ -158,7 +170,7 @@ struct SettingsTipProductRow: View {
         } else if product.price < 8 {
             return .teal.opacity(0.65)
         } else {
-            return .red.opacity(0.7)
+            return .pink.opacity(0.72)
         }
     }
 }

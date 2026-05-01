@@ -139,7 +139,7 @@ private struct SupporterFundingMessage: View {
                 .accessibilityHidden(true)
 
             Text({
-                var s = AttributedString("One-time supporter unlock helps fund Downward and unlocks some nice perks. The App works great without it, but these are nice to have.")
+                var s = AttributedString("One-time supporter unlock helps fund Downward and unlocks some nice perks. The app works great without it, but these are nice to have.")
                 if let range = s.range(of: "One-time") {
                     s[range].font = .system(.body, design: .default).weight(.semibold)
                 }
@@ -270,6 +270,7 @@ private struct SupporterPurchaseBar: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(isLoading || isPurchasing)
+            .accessibilityLabel(accessibilityLabel)
             .padding(.horizontal, 20)
             .padding(.top, 12)
             .padding(.bottom, 10)
@@ -288,6 +289,22 @@ private struct SupporterPurchaseBar: View {
 
         if let price {
             return "Unlock Supporter Perks - \(price)"
+        }
+
+        return "Unlock Supporter Perks"
+    }
+
+    private var accessibilityLabel: String {
+        if isLoading {
+            return "Loading Supporter Unlock"
+        }
+
+        if let productName, let price {
+            return "\(productName), \(price)"
+        }
+
+        if let price {
+            return "Unlock Supporter Perks, \(price)"
         }
 
         return "Unlock Supporter Perks"

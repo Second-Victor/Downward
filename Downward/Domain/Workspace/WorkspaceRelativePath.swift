@@ -147,18 +147,39 @@ enum WorkspaceRelativePath {
     nonisolated private static func sanitizedRelativePathComponents(
         from relativePath: String
     ) -> [String]? {
+        guard relativePath.hasPrefix("/") == false else {
+            return nil
+        }
+
         let components = relativePath
             .split(separator: "/", omittingEmptySubsequences: true)
             .map(String.init)
 
         guard
             components.isEmpty == false,
-            components.allSatisfy({ $0 != "." && $0 != ".." })
+            components.allSatisfy(isSafeRelativePathComponent)
         else {
             return nil
         }
 
         return components
+    }
+
+    /// Relative route strings are app-owned identity, not user-entered URLs. Reject path-control
+    /// components both literally and after percent decoding so encoded escapes cannot be
+    /// reinterpreted by a later filesystem boundary.
+    nonisolated private static func isSafeRelativePathComponent(_ component: String) -> Bool {
+        guard component != "." && component != ".." else {
+            return false
+        }
+
+        guard let decodedComponent = component.removingPercentEncoding else {
+            return true
+        }
+
+        return decodedComponent != "."
+            && decodedComponent != ".."
+            && decodedComponent.contains("/") == false
     }
 
     nonisolated private static func validateDescendantComponents(

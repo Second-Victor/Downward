@@ -87,11 +87,13 @@ final class EditorUndoRedoTests: XCTestCase {
         XCTAssertNotNil(textView.keyboardAccessoryToolbarView)
         XCTAssertClear(accessoryView.backgroundColor)
         XCTAssertFalse(accessoryView.isOpaque)
-        XCTAssertEqual(accessoryView.toolbar.items?.count, 6)
-        XCTAssertTrue(accessoryView.toolbar.items?.first === textView.formatAccessoryItem)
-        XCTAssertTrue(accessoryView.toolbar.items?[2] === textView.undoAccessoryItem)
-        XCTAssertTrue(accessoryView.toolbar.items?[3] === textView.redoAccessoryItem)
-        XCTAssertTrue(accessoryView.toolbar.items?.last === textView.dismissAccessoryItem)
+        XCTAssertAccessoryToolbarItemsMatchCurrentIdiom(
+            accessoryView.toolbar.items,
+            formatItem: textView.formatAccessoryItem,
+            undoItem: textView.undoAccessoryItem,
+            redoItem: textView.redoAccessoryItem,
+            dismissItem: textView.dismissAccessoryItem
+        )
         XCTAssertFalse(textView.undoAccessoryItem?.isEnabled ?? true)
         XCTAssertFalse(textView.redoAccessoryItem?.isEnabled ?? true)
         XCTAssertFalse(textView.dismissAccessoryItem?.isEnabled ?? true)
@@ -111,7 +113,11 @@ final class EditorUndoRedoTests: XCTestCase {
 
         XCTAssertTrue(textView.undoAccessoryItem?.isEnabled ?? false)
         XCTAssertFalse(textView.redoAccessoryItem?.isEnabled ?? true)
-        XCTAssertTrue(textView.dismissAccessoryItem?.isEnabled ?? false)
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            XCTAssertFalse(textView.dismissAccessoryItem?.isEnabled ?? true)
+        } else {
+            XCTAssertTrue(textView.dismissAccessoryItem?.isEnabled ?? false)
+        }
     }
 
     @MainActor
@@ -916,7 +922,8 @@ final class EditorUndoRedoTests: XCTestCase {
             undoAction: #selector(AccessoryActionTarget.performAction),
             redoAction: #selector(AccessoryActionTarget.performAction),
             dismissAction: #selector(AccessoryActionTarget.performAction),
-            resolvedTheme: .default
+            resolvedTheme: .default,
+            showsDismissButton: true
         )
 
         let items = accessoryView.toolbar.items ?? []
@@ -1278,11 +1285,21 @@ final class EditorUndoRedoTests: XCTestCase {
 
         XCTAssertNotNil(textView.inputAccessoryView)
         XCTAssertTrue(accessoryView === textView.keyboardAccessoryToolbarView)
-        XCTAssertEqual(textView.keyboardAccessoryToolbarView?.toolbar.items?.count, 6)
+        XCTAssertAccessoryToolbarItemsMatchCurrentIdiom(
+            textView.keyboardAccessoryToolbarView?.toolbar.items,
+            formatItem: textView.formatAccessoryItem,
+            undoItem: textView.undoAccessoryItem,
+            redoItem: textView.redoAccessoryItem,
+            dismissItem: textView.dismissAccessoryItem
+        )
         XCTAssertNotNil(textView.formatAccessoryItem?.menu)
         XCTAssertEqual(textView.undoAccessoryItem?.isEnabled, true)
         XCTAssertEqual(textView.redoAccessoryItem?.isEnabled, false)
-        XCTAssertEqual(textView.dismissAccessoryItem?.isEnabled, true)
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            XCTAssertEqual(textView.dismissAccessoryItem?.isEnabled, false)
+        } else {
+            XCTAssertEqual(textView.dismissAccessoryItem?.isEnabled, true)
+        }
         XCTAssertEqual(textView.reloadInputViewsCallCount, 1)
     }
 
@@ -2540,6 +2557,34 @@ private func XCTAssertClear(
 
     let resolvedColor = color.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
     XCTAssertEqual(resolvedColor.cgColor.alpha, 0, accuracy: 0.001, file: file, line: line)
+}
+
+private func XCTAssertAccessoryToolbarItemsMatchCurrentIdiom(
+    _ items: [UIBarButtonItem]?,
+    formatItem: UIBarButtonItem?,
+    undoItem: UIBarButtonItem?,
+    redoItem: UIBarButtonItem?,
+    dismissItem: UIBarButtonItem?,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    guard let items else {
+        return XCTFail("Expected toolbar items", file: file, line: line)
+    }
+
+    XCTAssertTrue(items.first === formatItem, file: file, line: line)
+
+    if UIDevice.current.userInterfaceIdiom == .pad {
+        XCTAssertEqual(items.count, 4, file: file, line: line)
+        XCTAssertTrue(items[2] === undoItem, file: file, line: line)
+        XCTAssertTrue(items[3] === redoItem, file: file, line: line)
+        XCTAssertFalse(items.contains { $0 === dismissItem }, file: file, line: line)
+    } else {
+        XCTAssertEqual(items.count, 6, file: file, line: line)
+        XCTAssertTrue(items[2] === undoItem, file: file, line: line)
+        XCTAssertTrue(items[3] === redoItem, file: file, line: line)
+        XCTAssertTrue(items.last === dismissItem, file: file, line: line)
+    }
 }
 
 private func XCTAssertSameResolvedColor(
