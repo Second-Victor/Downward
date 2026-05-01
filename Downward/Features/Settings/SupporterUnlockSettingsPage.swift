@@ -138,26 +138,19 @@ private struct SupporterThanksMessage: View {
 
 private struct SupporterFundingMessage: View {
     var body: some View {
-        HStack(spacing: 14) {
-//            Image(systemName: "heart.fill")
-//                .font(.body.weight(.semibold))
-//                .symbolGradient(.pink)
-//                .frame(width: 28)
-//                .accessibilityHidden(true)
-
-            Text({
-                var s = AttributedString("One-time supporter unlock helps fund Downward and you get some extras.\n\nThe app works great without it, these are just nice to have. 😄")
-                if let range = s.range(of: "One-time") {
-                    s[range].font = .system(.body, design: .default).weight(.semibold)
-                }
-                return s
-            }())
-                .font(.body)
-                .foregroundStyle(.primary)
-//                .fixedSize(horizontal: false, vertical: true)
-        }
-//        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-//        .accessibilityElement(children: .combine)
+        Text({
+            var s = AttributedString("One-time supporter unlock helps fund Downward and you get some extras.\n\nThe app works great without it, these are just nice to have. 😄")
+            if let range = s.range(of: "One-time") {
+                s[range].font = .system(.body, design: .default).weight(.semibold)
+            }
+            return s
+        }())
+            .font(.body)
+            .foregroundStyle(.primary)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: 90, alignment: .center)
+        .accessibilityElement(children: .combine)
     }
 }
 

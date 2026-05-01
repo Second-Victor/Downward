@@ -826,6 +826,27 @@ final class ThemeStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testStoreKitEntitlementStoreKeepsCachedSupporterUnlockDuringNonDestructiveLaunchRefresh() throws {
+        let suiteName = "StoreKitThemeEntitlementStoreTests-\(UUID().uuidString)"
+        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        userDefaults.set(true, forKey: StoreKitThemeEntitlementStore.cachedSupporterUnlockKey)
+
+        let store = StoreKitThemeEntitlementStore(userDefaults: userDefaults, autoload: false)
+
+        store.applyResolvedSupporterEntitlement(
+            hasCurrentEntitlement: false,
+            clearsMissingEntitlement: false
+        )
+
+        XCTAssertTrue(store.hasUnlockedThemes)
+        XCTAssertTrue(store.hasResolvedThemeEntitlements)
+        XCTAssertTrue(userDefaults.bool(forKey: StoreKitThemeEntitlementStore.cachedSupporterUnlockKey))
+    }
+
+    @MainActor
     func testStoreKitEntitlementStoreCachesVerifiedSupporterUnlockResolution() throws {
         let suiteName = "StoreKitThemeEntitlementStoreTests-\(UUID().uuidString)"
         let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

@@ -36,7 +36,7 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
 
         if autoload {
             Task { [weak self] in
-                await self?.refreshPurchasedEntitlements()
+                await self?.refreshPurchasedEntitlements(clearsMissingEntitlement: false)
                 await self?.loadSupporterProduct()
             }
         }
@@ -122,7 +122,7 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
     func restoreThemePurchases() async {
         do {
             try await AppStore.sync()
-            await refreshPurchasedEntitlements()
+            await refreshPurchasedEntitlements(clearsMissingEntitlement: true)
 
             if hasUnlockedThemes {
                 supporterPurchaseErrorMessage = nil
@@ -138,7 +138,7 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
         supporterPurchaseErrorMessage = nil
     }
 
-    private func refreshPurchasedEntitlements() async {
+    private func refreshPurchasedEntitlements(clearsMissingEntitlement: Bool) async {
         var isUnlocked = false
 
         for await result in Transaction.currentEntitlements {
@@ -152,17 +152,24 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
             }
         }
 
-        applyResolvedSupporterEntitlement(hasCurrentEntitlement: isUnlocked)
+        applyResolvedSupporterEntitlement(
+            hasCurrentEntitlement: isUnlocked,
+            clearsMissingEntitlement: clearsMissingEntitlement
+        )
     }
 
-    func applyResolvedSupporterEntitlement(hasCurrentEntitlement isUnlocked: Bool) {
-        // The launch cache is optimistic only until StoreKit finishes enumerating
-        // current entitlements. Once resolved, mirror the authoritative result locally.
+    func applyResolvedSupporterEntitlement(
+        hasCurrentEntitlement isUnlocked: Bool,
+        clearsMissingEntitlement: Bool = true
+    ) {
+        // Launch keeps the local purchase cache while StoreKit warms up, but explicit
+        // restore/revocation paths are allowed to mirror StoreKit's missing entitlement.
+        let resolvedUnlock = isUnlocked || (clearsMissingEntitlement == false && hasUnlockedThemes)
         setHasUnlockedThemes(
-            isUnlocked,
+            resolvedUnlock,
             markingEntitlementsResolved: true,
             persistLocalUnlock: isUnlocked,
-            clearLocalUnlock: isUnlocked == false
+            clearLocalUnlock: isUnlocked == false && clearsMissingEntitlement
         )
     }
 
@@ -182,7 +189,7 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
             }
 
             guard transaction.revocationDate == nil else {
-                await refreshPurchasedEntitlements()
+                await refreshPurchasedEntitlements(clearsMissingEntitlement: true)
                 await transaction.finish()
                 return
             }
