@@ -170,8 +170,19 @@ struct SettingsScreen: View {
             )
             .roundedNavigationBarTitles()
         case .tips:
-            TipsSettingsPage(backAction: pop)
+            if releaseConfiguration.showsTipsPage {
+                TipsSettingsPage(backAction: pop)
+                    .roundedNavigationBarTitles()
+            } else {
+                GradientContentUnavailableView(
+                    "Tips Unavailable",
+                    systemName: "banknote",
+                    color: .secondary
+                ) {
+                    Text("Tips are not enabled in this build.")
+                }
                 .roundedNavigationBarTitles()
+            }
         case .about:
             AboutSettingsPage(
                 backAction: pop,

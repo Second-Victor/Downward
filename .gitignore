@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode user state
+*.xcuserstate
+*.xcscmblueprint
+xcuserdata/
+
+# Build products and local package state
+DerivedData/
+build/
+.build/
+.swiftpm/
+
+# Swift/Xcode transient files
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Logs
+*.log

@@ -236,6 +236,7 @@ final class SettingsScreenModelTests: XCTestCase {
         let termsAndConditionsURL = try XCTUnwrap(URL(string: "https://example.com/terms"))
         let configuration = SettingsReleaseConfiguration(
             tipsPurchasesEnabled: true,
+            rateTheAppEnabled: true,
             appStoreReviewURL: appStoreReviewURL,
             privacyPolicyURL: privacyPolicyURL,
             termsAndConditionsURL: termsAndConditionsURL
@@ -259,6 +260,64 @@ final class SettingsScreenModelTests: XCTestCase {
 
         XCTAssertFalse(configuration.showsRateTheApp)
         XCTAssertFalse(SettingsPlaceholderFeature.rateTheApp.isVisible(in: configuration))
+    }
+
+    @MainActor
+    func testRateTheAppIsHiddenWhenDisabledEvenWithReviewURL() throws {
+        let appStoreReviewURL = try XCTUnwrap(URL(string: "https://apps.apple.com/app/id1234567890?action=write-review"))
+        let configuration = SettingsReleaseConfiguration(
+            tipsPurchasesEnabled: false,
+            rateTheAppEnabled: false,
+            appStoreReviewURL: appStoreReviewURL
+        )
+
+        XCTAssertFalse(configuration.showsRateTheApp)
+        XCTAssertFalse(SettingsPlaceholderFeature.rateTheApp.isVisible(in: configuration))
+    }
+
+    @MainActor
+    func testSettingsHomeReleaseSurfacesFollowConfiguration() throws {
+        let appStoreReviewURL = try XCTUnwrap(URL(string: "https://apps.apple.com/app/id1234567890?action=write-review"))
+        let hiddenConfiguration = SettingsReleaseConfiguration(
+            tipsPurchasesEnabled: false,
+            rateTheAppEnabled: false,
+            appStoreReviewURL: appStoreReviewURL
+        )
+        let visibleConfiguration = SettingsReleaseConfiguration(
+            tipsPurchasesEnabled: true,
+            rateTheAppEnabled: true,
+            appStoreReviewURL: appStoreReviewURL
+        )
+
+        XCTAssertEqual(
+            SettingsHomeReleaseSurfaces(configuration: hiddenConfiguration),
+            SettingsHomeReleaseSurfaces(showsTipsRow: false, appStoreReviewURL: nil)
+        )
+        XCTAssertEqual(
+            SettingsHomeReleaseSurfaces(configuration: visibleConfiguration),
+            SettingsHomeReleaseSurfaces(showsTipsRow: true, appStoreReviewURL: appStoreReviewURL)
+        )
+    }
+
+    @MainActor
+    func testSettingsHomeVisibleReleaseRowsFollowConfiguration() throws {
+        let appStoreReviewURL = try XCTUnwrap(URL(string: "https://apps.apple.com/app/id1234567890?action=write-review"))
+        let hiddenConfiguration = SettingsReleaseConfiguration(
+            tipsPurchasesEnabled: false,
+            rateTheAppEnabled: false,
+            appStoreReviewURL: appStoreReviewURL
+        )
+        let visibleConfiguration = SettingsReleaseConfiguration(
+            tipsPurchasesEnabled: true,
+            rateTheAppEnabled: true,
+            appStoreReviewURL: appStoreReviewURL
+        )
+
+        XCTAssertEqual(SettingsHomeReleaseSurfaces(configuration: hiddenConfiguration).visibleRows, [])
+        XCTAssertEqual(
+            SettingsHomeReleaseSurfaces(configuration: visibleConfiguration).visibleRows,
+            [.tips, .rateTheApp(appStoreReviewURL)]
+        )
     }
 
     func testSettingsSurfacesAreMarkedImplemented() {

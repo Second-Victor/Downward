@@ -143,18 +143,17 @@ struct ThemeEditorSettingsPage: View {
         .navigationTitle(editing == nil ? "New Theme" : "Edit Theme")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if editing != nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        exportTheme()
-                    } label: {
-                        GradientIconLabel(
-                            ThemeEditorDraftExport.buttonTitle,
-                            systemName: "square.and.arrow.up",
-                            color: .accentColor
-                        )
-                    }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    exportTheme()
+                } label: {
+                    GradientIconLabel(
+                        ThemeEditorDraftExport.buttonTitle(isEditingExistingTheme: editing != nil),
+                        systemName: "square.and.arrow.up",
+                        color: .accentColor
+                    )
                 }
+                .disabled(isExportDisabled)
             }
 
             ToolbarItem(placement: .confirmationAction) {
@@ -208,7 +207,15 @@ struct ThemeEditorSettingsPage: View {
     }
 
     private var isSaveDisabled: Bool {
-        isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        isSaving || trimmedName.isEmpty
+    }
+
+    private var isExportDisabled: Bool {
+        trimmedName.isEmpty
+    }
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var textBackgroundContrastRatio: Double {
@@ -287,7 +294,6 @@ struct ThemeEditorSettingsPage: View {
         isSaving = true
         defer { isSaving = false }
 
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let theme = makeTheme(id: editing?.id ?? UUID(), name: trimmedName)
 
         if editing != nil {
@@ -341,7 +347,9 @@ enum ThemeContrastWarning {
 }
 
 enum ThemeEditorDraftExport {
-    static let buttonTitle = "Export Draft"
+    static func buttonTitle(isEditingExistingTheme: Bool) -> String {
+        isEditingExistingTheme ? "Export Theme" : "Export Draft"
+    }
 
     static func document(for theme: CustomTheme) -> ThemeExchangeDocument {
         ThemeExchangeDocument(theme: theme)
@@ -364,7 +372,7 @@ enum ThemeEditorDraftExport {
 enum ThemeEditorPreviewLayout {
     static let previewFontSize: CGFloat = 15
     static let previewHeight: CGFloat = 270
-    static let cornerRadius: CGFloat = 20
+    static let cornerRadius: CGFloat = 16
     static let topPadding: CGFloat = 8
     static let bottomPadding: CGFloat = 8
     static let listTopContentMargin = previewHeight + topPadding + bottomPadding

@@ -178,6 +178,28 @@ final class MarkdownFormattingPlanTests: XCTestCase {
         )
     }
 
+    func testLinkInsertionHandlesEmptyAndURLSelections() {
+        let emptyPlan = MarkdownLinkInsertionPlan.make(forSelectedText: "  \n")
+        let urlPlan = MarkdownLinkInsertionPlan.make(forSelectedText: " https://example.com/path_(one) ")
+
+        XCTAssertEqual(emptyPlan.replacement, "[text](https://)")
+        XCTAssertEqual(emptyPlan.selectedRangeInReplacement, NSRange(location: 1, length: 4))
+        XCTAssertEqual(urlPlan.replacement, "[link](https://example.com/path_(one))")
+        XCTAssertEqual(urlPlan.selectedRangeInReplacement, NSRange(location: 1, length: 4))
+    }
+
+    func testTaskPlanRepeatedTogglesPreserveMixedLineEndings() {
+        let text = "one\r\ntwo\nthree\r"
+        let applied = MarkdownTaskListPlan.make(selectedText: text).replacement
+        let removed = MarkdownTaskListPlan.make(selectedText: applied).replacement
+        let reapplied = MarkdownTaskListPlan.make(selectedText: removed).replacement
+
+        XCTAssertEqual(applied, "- [ ] one\r\n- [ ] two\n- [ ] three\r")
+        XCTAssertEqual(removed, text)
+        XCTAssertEqual(reapplied, applied)
+        XCTAssertEqual(lineEndings(in: applied), lineEndings(in: text))
+    }
+
     func testImageInsertionEscapesSelectedAltText() {
         XCTAssertEqual(
             MarkdownImageInsertionPlan.make(forSelectedText: "image]name").replacement,
@@ -195,6 +217,9 @@ final class MarkdownFormattingPlanTests: XCTestCase {
         XCTAssertEqual(MarkdownFormattingURLClassifier.markdownDestination(for: "www.example.com"), "www.example.com")
         XCTAssertEqual(MarkdownFormattingURLClassifier.markdownDestination(for: "test@example.com"), "mailto:test@example.com")
         XCTAssertEqual(MarkdownFormattingURLClassifier.markdownDestination(for: "mailto:test@example.com"), "mailto:test@example.com")
+        XCTAssertEqual(MarkdownFormattingURLClassifier.markdownDestination(for: " https://example.com/a_(b) "), "https://example.com/a_(b)")
+        XCTAssertNil(MarkdownFormattingURLClassifier.markdownDestination(for: ""))
+        XCTAssertNil(MarkdownFormattingURLClassifier.markdownDestination(for: "https://example.com/a b"))
         XCTAssertNil(MarkdownFormattingURLClassifier.markdownDestination(for: "foo:bar"))
         XCTAssertNil(MarkdownFormattingURLClassifier.markdownDestination(for: "javascript:alert(1)"))
         XCTAssertNil(MarkdownFormattingURLClassifier.markdownDestination(for: "file:///private/tmp/example"))

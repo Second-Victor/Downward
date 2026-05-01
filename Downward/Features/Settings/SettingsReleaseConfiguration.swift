@@ -38,7 +38,7 @@ struct SettingsReleaseConfiguration: Equatable, Sendable {
     }
 
     var showsRateTheApp: Bool {
-        appStoreReviewURL != nil
+        rateTheAppEnabled && appStoreReviewURL != nil
     }
 
     var showsLegalLinks: Bool {

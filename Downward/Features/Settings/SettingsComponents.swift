@@ -160,26 +160,6 @@ struct SettingsNavigationRow: View {
     }
 }
 
-struct SettingsMenuStyleRow: View {
-    let icon: SettingsIcon
-    let iconTint: Color
-    let title: String
-    let value: String
-
-    var body: some View {
-        SettingsRowContent(
-            icon: icon,
-            iconTint: iconTint,
-            title: title,
-            value: value,
-            showsChevron: false,
-            trailingSystemImage: "chevron.up.chevron.down"
-        )
-        .opacity(0.9)
-        .accessibilityHint("App appearance selection is not implemented yet.")
-    }
-}
-
 struct SettingsRowContent: View {
     let icon: SettingsIcon
     let iconTint: Color

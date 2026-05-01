@@ -88,6 +88,31 @@ final class MarkdownLocalLinkResolverTests: XCTestCase {
         )
     }
 
+    func testTrimsWhitespaceAroundLocalMarkdownDestination() {
+        XCTAssertEqual(
+            MarkdownLocalLinkResolver.resolve(
+                destination: "  References/README.md#overview \n",
+                from: "Inbox.md",
+                in: PreviewSampleData.nestedWorkspace
+            ),
+            .target(
+                relativePath: "References/README.md",
+                url: PreviewSampleData.readmeDocumentURL
+            )
+        )
+    }
+
+    func testEmptyLocalMarkdownDestinationIsUnsupported() {
+        XCTAssertEqual(
+            MarkdownLocalLinkResolver.resolve(
+                destination: "  \n",
+                from: "Inbox.md",
+                in: PreviewSampleData.nestedWorkspace
+            ),
+            .unsupported(displayPath: "  \n")
+        )
+    }
+
     func testAnchorOnlyLinkDoesNotRequireFileResolution() {
         XCTAssertEqual(
             MarkdownLocalLinkResolver.resolve(

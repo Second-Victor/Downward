@@ -1,5 +1,40 @@
 import SwiftUI
 
+enum SettingsHomeReleaseRow: Equatable {
+    case tips
+    case rateTheApp(URL)
+}
+
+struct SettingsHomeReleaseSurfaces: Equatable {
+    let showsTipsRow: Bool
+    let appStoreReviewURL: URL?
+
+    init(showsTipsRow: Bool, appStoreReviewURL: URL?) {
+        self.showsTipsRow = showsTipsRow
+        self.appStoreReviewURL = appStoreReviewURL
+    }
+
+    init(configuration: SettingsReleaseConfiguration) {
+        showsTipsRow = configuration.showsTipsPage
+        appStoreReviewURL = configuration.showsRateTheApp ? configuration.appStoreReviewURL : nil
+    }
+
+    var showsRateTheAppSection: Bool {
+        appStoreReviewURL != nil
+    }
+
+    var visibleRows: [SettingsHomeReleaseRow] {
+        var rows: [SettingsHomeReleaseRow] = []
+        if showsTipsRow {
+            rows.append(.tips)
+        }
+        if let appStoreReviewURL {
+            rows.append(.rateTheApp(appStoreReviewURL))
+        }
+        return rows
+    }
+}
+
 struct SettingsHomePage: View {
     let summary: SettingsHomeSummary
     @Binding var appColorScheme: AppColorScheme
@@ -86,16 +121,22 @@ struct SettingsHomePage: View {
                     )
                 }
 
-                NavigationLink(value: SettingsPage.tips) {
-                    SettingsHomeRow(
-                        systemName: "banknote.fill",
-                        colors: [.green],
-                        title: "Tips",
-                        detail: nil
-                    )
+                if releaseSurfaces.showsTipsRow {
+                    NavigationLink(value: SettingsPage.tips) {
+                        SettingsHomeRow(
+                            systemName: "banknote.fill",
+                            colors: [.green],
+                            title: "Tips",
+                            detail: nil
+                        )
+                    }
                 }
             } header: {
                 Text("Support the App")
+            }
+
+            if let appStoreReviewURL = releaseSurfaces.appStoreReviewURL {
+                RateTheAppSettingsSection(appStoreReviewURL: appStoreReviewURL)
             }
         }
         .listStyle(.insetGrouped)
@@ -106,6 +147,10 @@ struct SettingsHomePage: View {
             }
         }
         .roundedNavigationBarTitles()
+    }
+
+    private var releaseSurfaces: SettingsHomeReleaseSurfaces {
+        SettingsHomeReleaseSurfaces(configuration: releaseConfiguration)
     }
 }
 

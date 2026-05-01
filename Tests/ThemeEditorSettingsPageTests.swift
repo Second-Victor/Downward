@@ -16,8 +16,9 @@ final class ThemeEditorSettingsPageTests: XCTestCase {
     }
 
     @MainActor
-    func testDraftExportUsesDraftLabel() {
-        XCTAssertEqual(ThemeEditorDraftExport.buttonTitle, "Export Draft")
+    func testDraftExportUsesContextualToolbarLabels() {
+        XCTAssertEqual(ThemeEditorDraftExport.buttonTitle(isEditingExistingTheme: false), "Export Draft")
+        XCTAssertEqual(ThemeEditorDraftExport.buttonTitle(isEditingExistingTheme: true), "Export Theme")
     }
 
     @MainActor
