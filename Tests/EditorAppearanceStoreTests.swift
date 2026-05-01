@@ -60,6 +60,8 @@ final class EditorAppearanceStoreTests: XCTestCase {
     func testDefaultLineNumbersAreFalse() {
         let store = EditorAppearanceStore(initialPreferences: .default)
 
+        XCTAssertEqual(store.selectedFontChoice, .systemMonospaced)
+        XCTAssertEqual(store.selectedFontDisplayName, "SF Mono")
         XCTAssertFalse(store.showLineNumbers)
         XCTAssertFalse(store.effectiveShowLineNumbers)
         XCTAssertEqual(store.lineNumberOpacity, EditorAppearancePreferences.defaultLineNumberOpacity)
@@ -556,7 +558,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         store.setImportedFont(record)
         XCTAssertNil(store.selectedImportedFontFamilyName)
-        XCTAssertEqual(store.selectedFontChoice, .default)
+        XCTAssertEqual(store.selectedFontChoice, .systemMonospaced)
 
         store.setImportedFontsUnlocked(true)
         store.setImportedFont(record)
@@ -629,7 +631,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
             resolver: resolver
         )
         XCTAssertNil(lockedReload.selectedImportedFontFamilyName)
-        XCTAssertEqual(lockedReload.selectedFontChoice, .default)
+        XCTAssertEqual(lockedReload.selectedFontChoice, .systemMonospaced)
 
         lockedReload.setImportedFontsUnlocked(true)
         XCTAssertEqual(lockedReload.selectedImportedFontFamilyName, "Readable")
@@ -661,8 +663,8 @@ final class EditorAppearanceStoreTests: XCTestCase {
         store.clearImportedFontFamilyIfSelected("Readable")
 
         XCTAssertNil(store.selectedImportedFontFamilyName)
-        XCTAssertEqual(store.selectedFontChoice, .default)
-        XCTAssertEqual(store.selectedFontDisplayName, "SF Pro")
+        XCTAssertEqual(store.selectedFontChoice, .systemMonospaced)
+        XCTAssertEqual(store.selectedFontDisplayName, "SF Mono")
     }
 
     @MainActor

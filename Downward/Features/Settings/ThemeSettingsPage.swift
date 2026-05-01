@@ -6,6 +6,9 @@ struct ThemeSettingsPage: View {
     let themeStore: ThemeStore
     let push: (SettingsPage) -> Void
     let backAction: () -> Void
+    private let themeImportService = ThemeImportService()
+
+    @State private var isImportingTheme = false
 
     var body: some View {
         Form {
@@ -25,154 +28,80 @@ struct ThemeSettingsPage: View {
 
             if themeStore.hasUnlockedThemes {
                 Section {
-                    NavigationLink(value: SettingsPage.extraThemes) {
-                        ExtraThemesNavigationLabel(
-                            selectedTheme: selectedExtraTheme
-                        )
+                    ForEach(themeStore.themes) { customTheme in
+                        ThemeSelectionRow(
+                            theme: EditorTheme(from: customTheme),
+                            isSelected: editorAppearanceStore.selectedThemeID == customTheme.id.uuidString,
+                            isEnabled: themeStore.hasUnlockedThemes,
+                            onEdit: themeStore.hasUnlockedThemes ? { push(.editTheme(customTheme.id)) } : nil
+                        ) {
+                            editorAppearanceStore.setSelectedThemeID(customTheme.id.uuidString, using: themeStore)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            if themeStore.canDeleteTheme(id: customTheme.id) {
+                                Button(role: .destructive) {
+                                    // Explicit theme mutations are ThemeStore-owned and serialized there;
+                                    // do not cancel user-requested persistence with view lifetime changes.
+                                    Task {
+                                        let didDelete = await themeStore.delete(id: customTheme.id)
+                                        editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedThemeWasDeleted(
+                                            customTheme.id,
+                                            didDelete: didDelete
+                                        )
+                                    }
+                                } label: {
+                                    GradientIconLabel("Delete", systemName: "trash", color: .red)
+                                }
+                            }
+                        }
+                        .swipeActions(edge: .leading) {
+                            if themeStore.hasUnlockedThemes {
+                                Button {
+                                    push(.editTheme(customTheme.id))
+                                } label: {
+                                    GradientIconLabel("Edit", systemName: "pencil", color: .orange)
+                                }
+                                .tint(.orange)
+                            }
+                        }
                     }
+
+                    Button {
+                        push(.newTheme)
+                    } label: {
+                        NewThemeSettingsLabel()
+                    }
+                    .disabled(ThemeEntitlementGate.canCreateCustomTheme(hasUnlockedThemes: themeStore.hasUnlockedThemes) == false)
+
+                    Button {
+                        isImportingTheme = true
+                    } label: {
+                        ImportThemeSettingsLabel()
+                    }
+                    .disabled(ThemeEntitlementGate.canImportCustomThemes(hasUnlockedThemes: themeStore.hasUnlockedThemes) == false)
+                } header: {
+                    Text("Extra Themes")
                 } footer: {
                     Text("Create, import, edit and select supporter themes.")
+                        .settingsFooterStyle()
+                }
+
+                Section {
+                    Toggle(
+                        "Match Editor Menus to Theme",
+                        isOn: Binding(
+                            get: { editorAppearanceStore.matchSystemChromeToTheme },
+                            set: { editorAppearanceStore.setMatchSystemChromeToTheme($0) }
+                        )
+                    )
+                    .disabled(themeStore.hasUnlockedThemes == false)
+                } footer: {
+                    Text("When enabled, editor menus and keyboard controls follow the selected editor theme instead of the app appearance.")
                         .settingsFooterStyle()
                 }
             }
         }
         .navigationTitle("Theme")
-        .onAppear {
-            editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
-        }
-    }
-
-    private var builtInThemesFooter: String {
-        if themeStore.hasUnlockedThemes {
-            return "Follows the system appearance automatically."
-        }
-
-        return "Follows the system appearance automatically. More themes are available for supporters."
-    }
-
-    private var selectedExtraTheme: EditorTheme? {
-        guard
-            themeStore.hasUnlockedThemes,
-            let selectedThemeID = UUID(uuidString: editorAppearanceStore.selectedThemeID),
-            let customTheme = themeStore.theme(withID: selectedThemeID)
-        else {
-            return nil
-        }
-
-        return EditorTheme(from: customTheme)
-    }
-}
-
-private struct ExtraThemesNavigationLabel: View {
-    let selectedTheme: EditorTheme?
-
-    var body: some View {
-        HStack(spacing: 10) {
-            SettingsHomeSymbol(
-                systemName: "circle.hexagongrid.fill",
-                colors: [.accentColor],
-                usesMulticolor: true
-            )
-
-            Text("Extra Themes")
-
-            Spacer(minLength: 12)
-
-            if let selectedTheme {
-                Text(selectedTheme.label)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-    }
-}
-
-struct ExtraThemesSettingsPage: View {
-    let editorAppearanceStore: EditorAppearanceStore
-    let themeStore: ThemeStore
-    let push: (SettingsPage) -> Void
-    let backAction: () -> Void
-    private let themeImportService = ThemeImportService()
-
-    @State private var isImportingTheme = false
-
-    var body: some View {
-        Form {
-            Section {
-                ForEach(themeStore.themes) { customTheme in
-                    ThemeSelectionRow(
-                        theme: EditorTheme(from: customTheme),
-                        isSelected: editorAppearanceStore.selectedThemeID == customTheme.id.uuidString,
-                        isEnabled: themeStore.hasUnlockedThemes,
-                        onEdit: themeStore.hasUnlockedThemes ? { push(.editTheme(customTheme.id)) } : nil
-                    ) {
-                        editorAppearanceStore.setSelectedThemeID(customTheme.id.uuidString, using: themeStore)
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        if themeStore.canDeleteTheme(id: customTheme.id) {
-                            Button(role: .destructive) {
-                                // Explicit theme mutations are ThemeStore-owned and serialized there;
-                                // do not cancel user-requested persistence with view lifetime changes.
-                                Task {
-                                    let didDelete = await themeStore.delete(id: customTheme.id)
-                                    editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedThemeWasDeleted(
-                                        customTheme.id,
-                                        didDelete: didDelete
-                                    )
-                                }
-                            } label: {
-                                GradientIconLabel("Delete", systemName: "trash", color: .red)
-                            }
-                        }
-                    }
-                    .swipeActions(edge: .leading) {
-                        if themeStore.hasUnlockedThemes {
-                            Button {
-                                push(.editTheme(customTheme.id))
-                            } label: {
-                                GradientIconLabel("Edit", systemName: "pencil", color: .orange)
-                            }
-                            .tint(.orange)
-                        }
-                    }
-                }
-
-                Button {
-                    push(.newTheme)
-                } label: {
-                    NewThemeSettingsLabel()
-                }
-                .disabled(ThemeEntitlementGate.canCreateCustomTheme(hasUnlockedThemes: themeStore.hasUnlockedThemes) == false)
-
-                Button {
-                    isImportingTheme = true
-                } label: {
-                    ImportThemeSettingsLabel()
-                }
-                .disabled(ThemeEntitlementGate.canImportCustomThemes(hasUnlockedThemes: themeStore.hasUnlockedThemes) == false)
-
-            } header: {
-                Text("Themes")
-            } footer: {
-                Text("Support the app development and unlock themes")
-                    .settingsFooterStyle()
-            }
-
-            Section {
-                Toggle(
-                    "Match Editor Menus to Theme",
-                    isOn: Binding(
-                        get: { editorAppearanceStore.matchSystemChromeToTheme },
-                        set: { editorAppearanceStore.setMatchSystemChromeToTheme($0) }
-                    )
-                )
-                .disabled(themeStore.hasUnlockedThemes == false)
-            } footer: {
-                Text("When enabled, editor menus and keyboard controls follow the selected editor theme instead of the app appearance.")
-                    .settingsFooterStyle()
-            }
-        }
-        .navigationTitle("Extra Themes")
         .fileImporter(
             isPresented: $isImportingTheme,
             allowedContentTypes: [.json]
@@ -193,6 +122,14 @@ struct ExtraThemesSettingsPage: View {
         .onAppear {
             editorAppearanceStore.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
         }
+    }
+
+    private var builtInThemesFooter: String {
+        if themeStore.hasUnlockedThemes {
+            return "Follows the system appearance automatically."
+        }
+
+        return "Follows the system appearance automatically. More themes are available for supporters."
     }
 
     private var themeErrorBinding: Binding<Bool> {

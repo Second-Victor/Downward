@@ -32,7 +32,7 @@ struct SupporterUnlockSettingsPage: View {
                 } header: {
                     Text("Themes")
                 } footer: {
-                    Text("Supporters unlock these themes plus more, and you also get theme import, export and editing.")
+                    Text("Supporters unlock these extra themes plus another 4, and you also get theme import, export and editing.")
                         .settingsFooterStyle()
                 }
 

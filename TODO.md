@@ -171,11 +171,11 @@ Current source status:
 
 ### 2.1 Decide whether purchases ship in 1.0
 
-- [ ] Decide whether the Supporter unlock ships in 1.0.
-- [ ] Decide whether the Tip Jar ships in 1.0.
-- [ ] If Tip Jar is not fully ready, set `tipsPurchasesEnabled` to `false` in `SettingsReleaseConfiguration.current`.
-- [ ] If Supporter unlock is not fully ready, hide the Supporter purchase surface or make premium perks free until purchase infrastructure is ready.
-- [ ] If purchases ship, keep both purchase surfaces visible and complete all P0 purchase QA below.
+- [x] Decide whether the Supporter unlock ships in 1.0.
+- [x] Decide whether the Tip Jar ships in 1.0.
+- [x] If Tip Jar is not fully ready, set `tipsPurchasesEnabled` to `false` in `SettingsReleaseConfiguration.current`.
+- [x] If Supporter unlock is not fully ready, hide the Supporter purchase surface or make premium perks free until purchase infrastructure is ready.
+- [x] If purchases ship, keep both purchase surfaces visible and complete all P0 purchase QA below.
 
 Files:
 
@@ -215,6 +215,12 @@ Acceptance checks:
 - [ ] Missing-product fallback is never seen in the intended release storefront.
 - [ ] Product names/descriptions shown in-app match App Store Connect.
 
+Sandbox evidence:
+
+- [x] User verified purchases work with Sandbox on a real device.
+- [ ] Record exact real device, OS version, sandbox account/storefront, and product IDs tested.
+- [ ] Repeat purchase verification through TestFlight before release submission.
+
 ### 2.3 Add StoreKit automated coverage
 
 Add tests with local StoreKit configuration where practical.
@@ -235,7 +241,8 @@ Add tests with local StoreKit configuration where practical.
 Acceptance checks:
 
 - [ ] StoreKit tests pass locally.
-- [ ] Manual Sandbox purchase pass matches tests.
+- [x] Manual Sandbox purchase pass completed on a real device.
+- [ ] Manual Sandbox purchase pass matches tests after automated StoreKit tests exist.
 - [ ] Manual TestFlight purchase pass matches tests.
 
 ### 2.4 Harden entitlement edge cases
@@ -768,7 +775,8 @@ For each release build, record:
 - [ ] Real device names and OS versions.
 - [x] Commands run.
 - [x] XCTest pass/fail count.
-- [ ] StoreKit sandbox/TestFlight purchase results.
+- [x] StoreKit Sandbox purchase result.
+- [ ] StoreKit TestFlight purchase result.
 - [ ] Files provider results.
 - [ ] Large document results.
 - [ ] Accessibility results.

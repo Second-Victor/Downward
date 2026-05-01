@@ -105,14 +105,6 @@ struct SettingsScreen: View {
                 backAction: pop
             )
             .roundedNavigationBarTitles()
-        case .extraThemes:
-            ExtraThemesSettingsPage(
-                editorAppearanceStore: editorAppearanceStore,
-                themeStore: themeStore,
-                push: push,
-                backAction: pop
-            )
-            .roundedNavigationBarTitles()
         case .supporterUnlock:
             SupporterUnlockSettingsPage(
                 editorAppearanceStore: editorAppearanceStore,
@@ -243,7 +235,6 @@ enum SettingsPage: Hashable {
     case home
     case editor
     case theme
-    case extraThemes
     case supporterUnlock
     case workspace
     case newTheme

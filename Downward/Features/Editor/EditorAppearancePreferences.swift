@@ -57,7 +57,7 @@ struct EditorAppearancePreferences: Codable, Equatable, Sendable {
     }
 
     static let `default` = EditorAppearancePreferences(
-        fontChoice: .default,
+        fontChoice: .systemMonospaced,
         fontSize: 16,
         markdownSyntaxMode: .visible
     )
