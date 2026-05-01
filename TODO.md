@@ -48,22 +48,22 @@ Codex rules:
 
 Current project settings show `IPHONEOS_DEPLOYMENT_TARGET = 26.0` for project/app/test configurations. This may be intentional, but it is a major release decision.
 
-- [ ] Decide the actual minimum OS for 1.0.
-- [ ] If `26.0` is intentional, record why in release notes and App Store metadata planning.
-- [ ] If the app should support an earlier public iOS/iPadOS, update all matching build settings consistently:
-  - [ ] Project-level Debug configuration.
-  - [ ] Project-level Release configuration.
-  - [ ] App target Debug configuration.
-  - [ ] App target Release configuration.
-  - [ ] Test target Debug configuration.
-  - [ ] Test target Release configuration.
-- [ ] Re-run the full test suite after any deployment-target change.
-- [ ] Verify every API used by the app is available for the chosen minimum OS, especially:
-  - [ ] SwiftUI navigation APIs.
-  - [ ] StoreKit 2 APIs.
-  - [ ] `registerForTraitChanges`.
-  - [ ] file importer / security-scoped bookmark APIs.
-  - [ ] privacy manifest packaging.
+- [x] Decide the actual minimum OS for 1.0: iOS/iPadOS 26.0 and later.
+- [x] If `26.0` is intentional, record why in release notes and App Store metadata planning.
+- [x] Earlier public iOS/iPadOS support is intentionally out of scope for 1.0, so no deployment-target setting changes are needed:
+  - [x] Project-level Debug configuration remains `26.0`.
+  - [x] Project-level Release configuration remains `26.0`.
+  - [x] App target Debug configuration remains `26.0`.
+  - [x] App target Release configuration remains `26.0`.
+  - [x] Test target Debug configuration remains `26.0`.
+  - [x] Test target Release configuration remains `26.0`.
+- [x] No deployment-target change was made; current iPhone and iPad simulator suites already pass on iOS 26.4.
+- [x] Verify every API used by the app is available for the chosen minimum OS, especially:
+  - [x] SwiftUI navigation APIs.
+  - [x] StoreKit 2 APIs.
+  - [x] `registerForTraitChanges`.
+  - [x] file importer / security-scoped bookmark APIs.
+  - [x] privacy manifest packaging.
 
 Acceptance checks:
 

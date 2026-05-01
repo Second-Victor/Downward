@@ -360,6 +360,17 @@ final class EditorAppearanceStore {
             return
         }
 
+        guard themeStore.hasUnlockedThemes == false else {
+            return
+        }
+
+        // Keep the user's saved extra-theme choice intact. `ThemeStore.resolve(_:)`
+        // renders Adaptive while locked, and the saved choice can become active again
+        // after a purchase, restore, or delayed StoreKit entitlement refresh.
+        guard UUID(uuidString: selectedThemeID) == nil else {
+            return
+        }
+
         let entitledThemeID = ThemeEntitlementGate.entitledThemeID(
             for: selectedThemeID,
             hasUnlockedThemes: themeStore.hasUnlockedThemes

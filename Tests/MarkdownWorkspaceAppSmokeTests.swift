@@ -68,7 +68,7 @@ final class MarkdownWorkspaceAppSmokeTests: MarkdownWorkspaceAppTestCase {
     }
 
     @MainActor
-    func testContainerFallsBackFromSavedCustomThemeAfterResolvedLockedEntitlements() throws {
+    func testContainerPreservesSavedCustomThemeAfterResolvedLockedEntitlements() throws {
         let selectedThemeID = UUID()
         let editorAppearanceStore = EditorAppearanceStore(
             initialPreferences: EditorAppearancePreferences(
@@ -98,7 +98,8 @@ final class MarkdownWorkspaceAppSmokeTests: MarkdownWorkspaceAppTestCase {
             folderPickerBridge: StubFolderPickerBridge()
         )
 
-        XCTAssertEqual(editorAppearanceStore.selectedThemeID, EditorTheme.adaptive.id)
+        XCTAssertEqual(editorAppearanceStore.selectedThemeID, selectedThemeID.uuidString)
+        XCTAssertEqual(editorAppearanceStore.selectedThemeLabel(using: themeStore), EditorTheme.adaptive.label)
     }
 
     @MainActor

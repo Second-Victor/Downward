@@ -43,6 +43,7 @@ Environment: local Codex workspace at `/Users/allan/Desktop/Downward`
 
 ### Notes
 
+- Release decision: Downward 1.0 targets iOS/iPadOS 26.0 and later. Earlier OS support is intentionally out of scope for 1.0 so the app can ship against the current SwiftUI, StoreKit, Files, and privacy-manifest surface already used by the codebase.
 - Earlier full-suite iPad attempts on iPad Pro 13-inch (M5) and iPad Air 11-inch (M4) hit CoreSimulator launch failures, including `NSMachErrorDomain Code=-308` and `FBSOpenApplicationServiceErrorDomain Code=1` / Busy preflight failures. A final full-suite run on iPad (A16) completed successfully after running outside the sandbox.
 - The only build warnings observed were AppIntents metadata extraction notices for a target without AppIntents and a CoreImage asset catalog runtime message; no new deployment-target availability warnings were observed.
 

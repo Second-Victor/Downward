@@ -6,6 +6,7 @@ import StoreKit
 @Observable
 final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
     static let supporterProductID = "com.secondvictor.downward.supporter"
+    static let cachedSupporterUnlockKey = "theme.entitlements.supporterUnlock.cached"
 
     private(set) var hasUnlockedThemes = false
     private(set) var hasResolvedThemeEntitlements = false
@@ -16,11 +17,21 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
     private(set) var isPurchasingSupporterUnlock = false
     private(set) var supporterPurchaseErrorMessage: String?
 
+    @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private var supporterProduct: Product?
     @ObservationIgnored private var transactionListener: Task<Void, Never>?
     @ObservationIgnored private var entitlementChangeHandler: ThemeEntitlementChangeHandler?
 
-    init(autoload: Bool = true) {
+    init(
+        userDefaults: UserDefaults = .standard,
+        autoload: Bool = true
+    ) {
+        self.userDefaults = userDefaults
+        if userDefaults.bool(forKey: Self.cachedSupporterUnlockKey) {
+            hasUnlockedThemes = true
+            hasResolvedThemeEntitlements = true
+        }
+
         transactionListener = listenForTransactions()
 
         if autoload {
@@ -141,7 +152,13 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
             }
         }
 
-        setHasUnlockedThemes(isUnlocked, markingEntitlementsResolved: true)
+        // A verified non-consumable purchase is cached locally so launch stays calm while
+        // StoreKit is still warming up or temporarily unable to enumerate entitlements.
+        setHasUnlockedThemes(
+            isUnlocked || hasUnlockedThemes,
+            markingEntitlementsResolved: true,
+            persistLocalUnlock: isUnlocked
+        )
     }
 
     private func listenForTransactions() -> Task<Void, Never> {
@@ -171,17 +188,22 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
             return
         }
 
-        setHasUnlockedThemes(true)
+        setHasUnlockedThemes(true, persistLocalUnlock: true)
     }
 
     private func setHasUnlockedThemes(
         _ isUnlocked: Bool,
-        markingEntitlementsResolved: Bool = false
+        markingEntitlementsResolved: Bool = false,
+        persistLocalUnlock: Bool = false
     ) {
         let didChangeUnlockState = hasUnlockedThemes != isUnlocked
         let didResolveEntitlements = markingEntitlementsResolved && hasResolvedThemeEntitlements == false
 
         hasUnlockedThemes = isUnlocked
+        if isUnlocked && persistLocalUnlock {
+            userDefaults.set(true, forKey: Self.cachedSupporterUnlockKey)
+        }
+
         if markingEntitlementsResolved {
             hasResolvedThemeEntitlements = true
         }

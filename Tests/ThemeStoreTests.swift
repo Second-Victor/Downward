@@ -793,6 +793,21 @@ final class ThemeStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testStoreKitEntitlementStoreUsesCachedSupporterUnlockOnLaunch() throws {
+        let suiteName = "StoreKitThemeEntitlementStoreTests-\(UUID().uuidString)"
+        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        userDefaults.set(true, forKey: StoreKitThemeEntitlementStore.cachedSupporterUnlockKey)
+
+        let store = StoreKitThemeEntitlementStore(userDefaults: userDefaults, autoload: false)
+
+        XCTAssertTrue(store.hasUnlockedThemes)
+        XCTAssertTrue(store.hasResolvedThemeEntitlements)
+    }
+
+    @MainActor
     private func makeThemeStore(
         fileURL: URL,
         persistThemes: ThemeStore.PersistThemes? = nil,

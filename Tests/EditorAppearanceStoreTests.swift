@@ -336,7 +336,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testEditorAppearanceStoreFallsBackFromLockedCustomThemeSelection() async {
+    func testEditorAppearanceStorePreservesLockedCustomThemeSelection() async {
         let entitlements = ThemeEntitlementStore(hasUnlockedThemes: true)
         let customTheme = CustomTheme(
             id: UUID(),
@@ -370,9 +370,8 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         entitlements.setHasUnlockedThemes(false)
         store.fallBackToAdaptiveThemeIfSelectedCustomThemeIsNotEntitled(using: themeStore)
-        store.setSelectedThemeID(customTheme.id.uuidString, using: themeStore)
 
-        XCTAssertEqual(store.selectedThemeID, EditorTheme.adaptive.id)
+        XCTAssertEqual(store.selectedThemeID, customTheme.id.uuidString)
         XCTAssertEqual(store.selectedThemeLabel(using: themeStore), EditorTheme.adaptive.label)
     }
 

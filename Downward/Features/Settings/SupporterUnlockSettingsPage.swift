@@ -4,8 +4,15 @@ struct SupporterUnlockSettingsPage: View {
     let editorAppearanceStore: EditorAppearanceStore
     let themeStore: ThemeStore
     let backAction: () -> Void
-
     private let benefits = SupporterBenefit.all
+
+    private var previewThemes: [EditorTheme] {
+        let previewThemeNames = ["Monokai", "Solarized", "Sepia Paper"]
+        return previewThemeNames.compactMap { name in
+            ThemeStore.bundledPremiumThemes.first { $0.name == name }
+                .map(EditorTheme.init(from:))
+        }
+    }
 
     var body: some View {
         Form {
@@ -15,13 +22,17 @@ struct SupporterUnlockSettingsPage: View {
                 }
             } else {
                 Section {
+                    SupporterFundingMessage()
+                }
+
+                Section {
                     SupporterThemePreviewStrip(
-                        themes: ThemeStore.bundledPremiumThemes.prefix(5).map(EditorTheme.init(from:))
+                        themes: previewThemes
                     )
                 } header: {
                     Text("Themes")
                 } footer: {
-                    Text("These themes and more are available to supporters. Supporters can also import, export and edit themes.")
+                    Text("Supporters unlock these themes plus more, and you also get theme import, export and editing.")
                         .settingsFooterStyle()
                 }
 
@@ -31,10 +42,6 @@ struct SupporterUnlockSettingsPage: View {
                     }
                 } header: {
                     Text("Fonts")
-                }
-
-                Section {
-                    SupporterFundingMessage()
                 }
 
                 if themeStore.canRestoreThemePurchases {
@@ -55,7 +62,7 @@ struct SupporterUnlockSettingsPage: View {
                 }
             }
         }
-        .navigationTitle(themeStore.hasUnlockedThemes ? "Supporter" : "Supporter Unlock")
+        .navigationTitle(themeStore.hasUnlockedThemes ? "Supporter" : "Supporter Perks")
         .safeAreaInset(edge: .bottom) {
             if themeStore.hasUnlockedThemes == false {
                 SupporterPurchaseBar(
@@ -132,14 +139,14 @@ private struct SupporterThanksMessage: View {
 private struct SupporterFundingMessage: View {
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: "heart.fill")
-                .font(.body.weight(.semibold))
-                .symbolGradient(.pink)
-                .frame(width: 28)
-                .accessibilityHidden(true)
+//            Image(systemName: "heart.fill")
+//                .font(.body.weight(.semibold))
+//                .symbolGradient(.pink)
+//                .frame(width: 28)
+//                .accessibilityHidden(true)
 
             Text({
-                var s = AttributedString("One-time supporter unlock helps fund Downward and unlocks some nice perks. The app works great without it, but these are nice to have.")
+                var s = AttributedString("One-time supporter unlock helps fund Downward and you get some extras.\n\nThe app works great without it, these are just nice to have. 😄")
                 if let range = s.range(of: "One-time") {
                     s[range].font = .system(.body, design: .default).weight(.semibold)
                 }
@@ -147,10 +154,10 @@ private struct SupporterFundingMessage: View {
             }())
                 .font(.body)
                 .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
+//                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-        .accessibilityElement(children: .combine)
+//        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+//        .accessibilityElement(children: .combine)
     }
 }
 
@@ -204,7 +211,7 @@ struct SupporterBenefit: Identifiable {
             systemName: "textformat",
             color: .blue,
             title: "Custom Fonts",
-            detail: "Import .ttf and .otf font families and use them throughout the editor."
+            detail: "Import .ttf and .otf font families and use them in the editor."
         )
     ]
 }
