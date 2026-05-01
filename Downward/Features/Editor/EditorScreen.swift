@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct EditorScreen: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -33,6 +34,7 @@ struct EditorScreen: View {
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .editorSystemChrome(colorScheme: editorChromeColorScheme)
+                .editorStatusBarChrome(colorScheme: editorChromeColorScheme)
                 .roundedNavigationBarTitles()
                 .task(id: documentURL) {
                     savedDateHeaderPullDistance = 0
@@ -197,6 +199,76 @@ struct EditorScreen: View {
     }
 }
 
+private struct EditorStatusBarChromeConfigurator: UIViewControllerRepresentable {
+    let colorScheme: ColorScheme?
+
+    func makeUIViewController(context: Context) -> EditorStatusBarChromeViewController {
+        EditorStatusBarChromeViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: EditorStatusBarChromeViewController, context: Context) {
+        uiViewController.apply(colorScheme: colorScheme)
+    }
+
+    static func dismantleUIViewController(_ uiViewController: EditorStatusBarChromeViewController, coordinator: ()) {
+        uiViewController.resetAppliedStyle()
+    }
+}
+
+private final class EditorStatusBarChromeViewController: UIViewController {
+    private var desiredStyle: UIUserInterfaceStyle = .unspecified
+    private weak var styledNavigationController: UINavigationController?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.isHidden = true
+        view.isUserInteractionEnabled = false
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        applyDesiredStyle()
+    }
+
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
+        applyDesiredStyle()
+    }
+
+    func apply(colorScheme: ColorScheme?) {
+        desiredStyle = colorScheme.editorUserInterfaceStyle
+        applyDesiredStyle()
+    }
+
+    func resetAppliedStyle() {
+        guard let styledNavigationController else {
+            return
+        }
+
+        styledNavigationController.overrideUserInterfaceStyle = .unspecified
+        styledNavigationController.setNeedsStatusBarAppearanceUpdate()
+        self.styledNavigationController = nil
+    }
+
+    private func applyDesiredStyle() {
+        guard let navigationController else {
+            return
+        }
+
+        if styledNavigationController !== navigationController {
+            resetAppliedStyle()
+            styledNavigationController = navigationController
+        }
+
+        guard navigationController.overrideUserInterfaceStyle != desiredStyle else {
+            return
+        }
+
+        navigationController.overrideUserInterfaceStyle = desiredStyle
+        navigationController.setNeedsStatusBarAppearanceUpdate()
+    }
+}
+
 private extension View {
     @ViewBuilder
     func editorSystemChrome(colorScheme: ColorScheme?) -> some View {
@@ -206,6 +278,28 @@ private extension View {
                 .toolbarColorScheme(colorScheme, for: .navigationBar)
         } else {
             self
+        }
+    }
+
+    func editorStatusBarChrome(colorScheme: ColorScheme?) -> some View {
+        background {
+            EditorStatusBarChromeConfigurator(colorScheme: colorScheme)
+                .frame(width: 0, height: 0)
+        }
+    }
+}
+
+private extension Optional where Wrapped == ColorScheme {
+    var editorUserInterfaceStyle: UIUserInterfaceStyle {
+        switch self {
+        case .none:
+            .unspecified
+        case .some(.dark):
+            .dark
+        case .some(.light):
+            .light
+        case .some:
+            .unspecified
         }
     }
 }
