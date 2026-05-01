@@ -23,6 +23,7 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
     private let horizontalPadding: CGFloat = 4
     private let verticalPadding: CGFloat = 1
     private let cornerRadius: CGFloat = 4
+    private let copiedCodeStrokeWidth: CGFloat = 2
     private let blockquoteBarWidth: CGFloat = 6
     private let blockquoteBarSpacing: CGFloat = 0
     private let blockquoteBarInset: CGFloat = 0
@@ -33,6 +34,9 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
     private let horizontalRuleHorizontalInset: CGFloat = 2
     private let horizontalRuleCornerRadius: CGFloat = 1
     nonisolated(unsafe) var resolvedTheme: ResolvedEditorTheme = .default
+    nonisolated(unsafe) private var copiedCodeHighlightRange: NSRange?
+    nonisolated(unsafe) private var copiedCodeHighlightKind: MarkdownCodeBackgroundKind?
+    private var copiedCodeHighlightGeneration = 0
 
     nonisolated override init() {
         super.init()
@@ -145,9 +149,17 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
 
             switch kind {
             case .inline:
-                self.drawInlineBackground(forGlyphRange: visibleGlyphRange, at: origin)
+                self.drawInlineBackground(
+                    forGlyphRange: visibleGlyphRange,
+                    characterRange: range,
+                    at: origin
+                )
             case .block:
-                self.drawBlockBackground(forGlyphRange: visibleGlyphRange, at: origin)
+                self.drawBlockBackground(
+                    forGlyphRange: visibleGlyphRange,
+                    characterRange: range,
+                    at: origin
+                )
             }
         }
 
@@ -185,8 +197,56 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
         }
     }
 
+    func flashCopiedCodeBackground(
+        characterRange: NSRange,
+        kind: MarkdownCodeBackgroundKind
+    ) {
+        copiedCodeHighlightGeneration += 1
+        let generation = copiedCodeHighlightGeneration
+        let previousHighlightRange = copiedCodeHighlightRange
+        copiedCodeHighlightRange = characterRange
+        copiedCodeHighlightKind = kind
+        invalidateCopiedCodeDisplay(for: previousHighlightRange)
+        invalidateCopiedCodeDisplay(for: characterRange)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
+            guard
+                let self,
+                self.copiedCodeHighlightGeneration == generation
+            else {
+                return
+            }
+
+            let expiredHighlightRange = self.copiedCodeHighlightRange
+            self.copiedCodeHighlightRange = nil
+            self.copiedCodeHighlightKind = nil
+            self.invalidateCopiedCodeDisplay(for: expiredHighlightRange)
+        }
+    }
+
+    private func invalidateCopiedCodeDisplay(for range: NSRange?) {
+        guard
+            let range,
+            range.location != NSNotFound,
+            range.length > 0,
+            let textStorage,
+            textStorage.length > 0
+        else {
+            return
+        }
+
+        let location = min(max(range.location, 0), textStorage.length)
+        let length = min(range.length, textStorage.length - location)
+        guard length > 0 else {
+            return
+        }
+
+        invalidateDisplay(forCharacterRange: NSRange(location: location, length: length))
+    }
+
     nonisolated private func drawInlineBackground(
         forGlyphRange glyphRange: NSRange,
+        characterRange: NSRange,
         at origin: CGPoint
     ) {
         guard let textContainer = textContainers.first else {
@@ -207,11 +267,15 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
             )
             self.resolvedTheme.inlineCodeBackground.setFill()
             path.fill()
+            if self.shouldHighlightCopiedCode(characterRange: characterRange, kind: .inline) {
+                self.strokeCopiedCodeHighlight(path)
+            }
         }
     }
 
     nonisolated private func drawBlockBackground(
         forGlyphRange glyphRange: NSRange,
+        characterRange: NSRange,
         at origin: CGPoint
     ) {
         var unionRect: CGRect?
@@ -236,6 +300,29 @@ final class MarkdownCodeBackgroundLayoutManager: NSLayoutManager, NSLayoutManage
         )
         resolvedTheme.codeBlockBackground.setFill()
         path.fill()
+        if shouldHighlightCopiedCode(characterRange: characterRange, kind: .block) {
+            strokeCopiedCodeHighlight(path)
+        }
+    }
+
+    nonisolated private func shouldHighlightCopiedCode(
+        characterRange: NSRange,
+        kind: MarkdownCodeBackgroundKind
+    ) -> Bool {
+        guard
+            copiedCodeHighlightKind == kind,
+            let copiedCodeHighlightRange
+        else {
+            return false
+        }
+
+        return NSIntersectionRange(copiedCodeHighlightRange, characterRange).length > 0
+    }
+
+    nonisolated private func strokeCopiedCodeHighlight(_ path: UIBezierPath) {
+        UIColor.systemGreen.setStroke()
+        path.lineWidth = copiedCodeStrokeWidth
+        path.stroke()
     }
 
     nonisolated private func drawBlockquoteBlock(

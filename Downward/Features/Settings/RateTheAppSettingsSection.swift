@@ -1,21 +1,20 @@
+import StoreKit
 import SwiftUI
 
-struct RateTheAppSettingsSection: View {
-    let appStoreReviewURL: URL
-
-    @Environment(\.openURL) private var openURL
+struct RateTheAppSettingsRow: View {
+    @Environment(\.requestReview) private var requestReview
 
     var body: some View {
-        Section {
-            Button {
-                openURL(appStoreReviewURL)
-            } label: {
-                SettingsHomeLabel(title: "Rate the App", systemName: "star.fill", colors: [.yellow])
-            }
-            .buttonStyle(.plain)
-        } footer: {
-            Text("If Downward is working well for you, leaving a rating helps.")
-                .settingsFooterStyle()
+        Button {
+            requestReview()
+        } label: {
+            SettingsHomeRow(
+                systemName: "star.fill",
+                colors: [.yellow],
+                title: "Rate the App",
+                detail: nil
+            )
         }
+        .buttonStyle(.plain)
     }
 }

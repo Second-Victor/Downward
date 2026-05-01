@@ -80,6 +80,11 @@ final class MarkdownEditorTextViewSizingTests: XCTestCase {
     }
 
     @MainActor
+    func testBottomInsetLeavesScrollableBreathingRoomAfterLastLine() {
+        XCTAssertGreaterThanOrEqual(EditorTextViewLayout.bottomInset, 56)
+    }
+
+    @MainActor
     private func findEditorTextView(in view: UIView) -> EditorChromeAwareTextView? {
         if let textView = view as? EditorChromeAwareTextView {
             return textView

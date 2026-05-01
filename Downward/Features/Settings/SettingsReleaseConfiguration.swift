@@ -26,7 +26,7 @@ struct SettingsReleaseConfiguration: Equatable, Sendable {
 
     static let current = SettingsReleaseConfiguration(
         tipsPurchasesEnabled: true,
-        rateTheAppEnabled: false,
+        rateTheAppEnabled: true,
         appStoreReviewURL: nil,
         projectURL: URL(string: "https://secondvictor.com/public/projects/downward/downward.html"),
         privacyPolicyURL: URL(string: "https://secondvictor.com/public/projects/downward/downward-policy.html"),
@@ -38,7 +38,7 @@ struct SettingsReleaseConfiguration: Equatable, Sendable {
     }
 
     var showsRateTheApp: Bool {
-        rateTheAppEnabled && appStoreReviewURL != nil
+        rateTheAppEnabled
     }
 
     var showsLegalLinks: Bool {

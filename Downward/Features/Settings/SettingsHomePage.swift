@@ -2,25 +2,21 @@ import SwiftUI
 
 enum SettingsHomeReleaseRow: Equatable {
     case tips
-    case rateTheApp(URL)
+    case rateTheApp
 }
 
 struct SettingsHomeReleaseSurfaces: Equatable {
     let showsTipsRow: Bool
-    let appStoreReviewURL: URL?
+    let showsRateTheAppRow: Bool
 
-    init(showsTipsRow: Bool, appStoreReviewURL: URL?) {
+    init(showsTipsRow: Bool, showsRateTheAppRow: Bool) {
         self.showsTipsRow = showsTipsRow
-        self.appStoreReviewURL = appStoreReviewURL
+        self.showsRateTheAppRow = showsRateTheAppRow
     }
 
     init(configuration: SettingsReleaseConfiguration) {
         showsTipsRow = configuration.showsTipsPage
-        appStoreReviewURL = configuration.showsRateTheApp ? configuration.appStoreReviewURL : nil
-    }
-
-    var showsRateTheAppSection: Bool {
-        appStoreReviewURL != nil
+        showsRateTheAppRow = configuration.showsRateTheApp
     }
 
     var visibleRows: [SettingsHomeReleaseRow] {
@@ -28,8 +24,8 @@ struct SettingsHomeReleaseSurfaces: Equatable {
         if showsTipsRow {
             rows.append(.tips)
         }
-        if let appStoreReviewURL {
-            rows.append(.rateTheApp(appStoreReviewURL))
+        if showsRateTheAppRow {
+            rows.append(.rateTheApp)
         }
         return rows
     }
@@ -109,6 +105,12 @@ struct SettingsHomePage: View {
                         detail: nil
                     )
                 }
+
+                if releaseSurfaces.showsRateTheAppRow {
+                    RateTheAppSettingsRow()
+                }
+            } header: {
+                Text("Information")
             }
 
             Section {
@@ -133,10 +135,6 @@ struct SettingsHomePage: View {
                 }
             } header: {
                 Text("Support the App")
-            }
-
-            if let appStoreReviewURL = releaseSurfaces.appStoreReviewURL {
-                RateTheAppSettingsSection(appStoreReviewURL: appStoreReviewURL)
             }
         }
         .listStyle(.insetGrouped)

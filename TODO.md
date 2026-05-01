@@ -82,8 +82,8 @@ Acceptance checks:
 - [ ] Archive the app in Xcode.
 - [ ] Validate the archive in Xcode Organizer.
 - [ ] Export an App Store/TestFlight build.
-- [ ] Install the exported build on a real iPhone.
-- [ ] Install the exported build on a real iPad if iPad support is shipping.
+- [x] Install the exported build on a real iPhone.
+- [x] Install the exported build on a real iPad if iPad support is shipping.
 - [x] Record Xcode version, device/simulator names, OS versions, command lines, and pass/fail counts.
 
 Suggested commands:

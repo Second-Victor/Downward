@@ -52,10 +52,18 @@ extension MarkdownEditorTextView {
         private var pendingTaskToggleRange: NSRange?
         private weak var linkTapGesture: UITapGestureRecognizer?
         private var pendingLinkDestination: MarkdownLinkDestination?
+        private weak var codeCopyLongPressGesture: UILongPressGestureRecognizer?
+        private struct CodeCopyTarget {
+            let range: NSRange
+            let kind: MarkdownCodeBackgroundKind
+            let text: String
+        }
+        private var pendingCodeCopyTarget: CodeCopyTarget?
         private var savedDateHeaderPullDistance: CGFloat = 0
         private let openExternalURL: @MainActor (URL) -> Void
         private let openLocalMarkdownLink: @MainActor (String) -> Void
         private let taskToggleFeedback = UIImpactFeedbackGenerator(style: .light)
+        private let codeCopyFeedback = UINotificationFeedbackGenerator()
 
         var hasPendingDeferredRerender: Bool {
             deferredRerenderTask != nil
@@ -122,6 +130,7 @@ extension MarkdownEditorTextView {
                 )
                 configureTaskToggleGesture(for: textView, isEnabled: configuration.tapToToggleTasks)
                 configureLinkOpeningGesture(for: textView)
+                configureCodeCopyLongPressGesture(for: textView)
                 configureKeyboardAccessory(for: textView, resolvedTheme: configuration.resolvedTheme)
                 keyboardGeometryController.attach(
                     to: textView,
@@ -1044,6 +1053,26 @@ extension MarkdownEditorTextView {
             gesture.isEnabled = true
         }
 
+        private func configureCodeCopyLongPressGesture(for textView: EditorChromeAwareTextView) {
+            if let existingGesture = codeCopyLongPressGesture, existingGesture.view !== textView {
+                existingGesture.view?.removeGestureRecognizer(existingGesture)
+                codeCopyLongPressGesture = nil
+            }
+
+            let gesture: UILongPressGestureRecognizer
+            if let existingGesture = codeCopyLongPressGesture {
+                gesture = existingGesture
+            } else {
+                gesture = UILongPressGestureRecognizer(target: self, action: #selector(handleCodeCopyLongPress(_:)))
+                gesture.delegate = self
+                gesture.cancelsTouchesInView = true
+                gesture.minimumPressDuration = 0.45
+                textView.addGestureRecognizer(gesture)
+                codeCopyLongPressGesture = gesture
+            }
+            gesture.isEnabled = true
+        }
+
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             if
                 gestureRecognizer === linkTapGesture,
@@ -1056,6 +1085,20 @@ extension MarkdownEditorTextView {
                 return pendingLinkDestination != nil
             }
 
+            if
+                gestureRecognizer === codeCopyLongPressGesture,
+                let textView = gestureRecognizer.view as? UITextView
+            {
+                pendingCodeCopyTarget = resolvedCodeCopyTarget(
+                    at: gestureRecognizer.location(in: textView),
+                    in: textView
+                )
+                if pendingCodeCopyTarget != nil {
+                    codeCopyFeedback.prepare()
+                }
+                return pendingCodeCopyTarget != nil
+            }
+
             guard
                 gestureRecognizer === taskToggleTapGesture,
                 let textView = gestureRecognizer.view as? UITextView
@@ -1066,6 +1109,36 @@ extension MarkdownEditorTextView {
             let point = gestureRecognizer.location(in: textView)
             pendingTaskToggleRange = resolvedTaskCheckboxRange(at: point, in: textView)
             return pendingTaskToggleRange != nil
+        }
+
+        @objc
+        private func handleCodeCopyLongPress(_ gesture: UILongPressGestureRecognizer) {
+            guard
+                gesture.state == .began,
+                let textView = gesture.view as? UITextView
+            else {
+                if gesture.state == .cancelled || gesture.state == .failed || gesture.state == .ended {
+                    pendingCodeCopyTarget = nil
+                }
+                return
+            }
+
+            let target = pendingCodeCopyTarget
+                ?? resolvedCodeCopyTarget(at: gesture.location(in: textView), in: textView)
+            pendingCodeCopyTarget = nil
+
+            guard let target else {
+                return
+            }
+
+            UIPasteboard.general.string = target.text
+            if let layoutManager = textView.layoutManager as? MarkdownCodeBackgroundLayoutManager {
+                layoutManager.flashCopiedCodeBackground(
+                    characterRange: target.range,
+                    kind: target.kind
+                )
+            }
+            codeCopyFeedback.notificationOccurred(.success)
         }
 
         @objc
@@ -1191,6 +1264,105 @@ extension MarkdownEditorTextView {
             }
 
             return checkboxRange
+        }
+
+        private func resolvedCodeCopyTarget(
+            at point: CGPoint,
+            in textView: UITextView
+        ) -> CodeCopyTarget? {
+            guard textView.textStorage.length > 0 else {
+                return nil
+            }
+
+            let textContainerPoint = CGPoint(
+                x: point.x - textView.textContainerInset.left,
+                y: point.y - textView.textContainerInset.top
+            )
+            var fraction: CGFloat = 0
+            let rawCharacterIndex = textView.layoutManager.characterIndex(
+                for: textContainerPoint,
+                in: textView.textContainer,
+                fractionOfDistanceBetweenInsertionPoints: &fraction
+            )
+            let characterIndex = min(max(rawCharacterIndex, 0), textView.textStorage.length - 1)
+            let candidateIndexes = [characterIndex, max(0, characterIndex - 1)]
+
+            for candidateIndex in candidateIndexes {
+                if let target = codeCopyTarget(
+                    atCharacterIndex: candidateIndex,
+                    hitPoint: textContainerPoint,
+                    in: textView
+                ) {
+                    return target
+                }
+            }
+
+            return nil
+        }
+
+        private func codeCopyTarget(
+            atCharacterIndex characterIndex: Int,
+            hitPoint: CGPoint,
+            in textView: UITextView
+        ) -> CodeCopyTarget? {
+            var codeRange = NSRange(location: NSNotFound, length: 0)
+            guard
+                let rawValue = textView.textStorage.attribute(
+                    .markdownCodeBackgroundKind,
+                    at: characterIndex,
+                    longestEffectiveRange: &codeRange,
+                    in: NSRange(location: 0, length: textView.textStorage.length)
+                ) as? Int,
+                let kind = MarkdownCodeBackgroundKind(rawValue: rawValue),
+                codeRange.location != NSNotFound,
+                codeRange.length > 0,
+                pointHitsCodeBackgroundRange(codeRange, kind: kind, at: hitPoint, in: textView)
+            else {
+                return nil
+            }
+
+            let copiedText = (textView.textStorage.string as NSString).substring(with: codeRange)
+            guard copiedText.isEmpty == false else {
+                return nil
+            }
+
+            return CodeCopyTarget(
+                range: codeRange,
+                kind: kind,
+                text: copiedText
+            )
+        }
+
+        private func pointHitsCodeBackgroundRange(
+            _ range: NSRange,
+            kind: MarkdownCodeBackgroundKind,
+            at point: CGPoint,
+            in textView: UITextView
+        ) -> Bool {
+            switch kind {
+            case .inline:
+                return pointHitsCharacterRange(range, at: point, in: textView)
+            case .block:
+                let glyphRange = textView.layoutManager.glyphRange(
+                    forCharacterRange: range,
+                    actualCharacterRange: nil
+                )
+                guard glyphRange.length > 0 else {
+                    return false
+                }
+
+                var hitRect: CGRect?
+                textView.layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { usedRect, _, _, lineGlyphRange, _ in
+                    guard NSIntersectionRange(lineGlyphRange, glyphRange).length > 0 else {
+                        return
+                    }
+
+                    let expandedRect = usedRect.insetBy(dx: -8, dy: -6)
+                    hitRect = hitRect.map { $0.union(expandedRect) } ?? expandedRect
+                }
+
+                return hitRect?.contains(point) == true
+            }
         }
 
         private func toggleTaskCheckbox(in checkboxRange: NSRange, textView: UITextView) {
@@ -1370,6 +1542,10 @@ extension MarkdownEditorTextView {
             case let .local(rawDestination):
                 openLocalMarkdownLink(rawDestination)
             }
+        }
+
+        func resolvedCodeCopyTextForTesting(at point: CGPoint, in textView: UITextView) -> String? {
+            resolvedCodeCopyTarget(at: point, in: textView)?.text
         }
 
         func applyInlineMarkdownFormatForTesting(marker: String, in textView: UITextView) {

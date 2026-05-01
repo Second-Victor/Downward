@@ -808,6 +808,41 @@ final class ThemeStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testStoreKitEntitlementStoreClearsCachedSupporterUnlockWhenCurrentEntitlementsAreLocked() throws {
+        let suiteName = "StoreKitThemeEntitlementStoreTests-\(UUID().uuidString)"
+        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+        userDefaults.set(true, forKey: StoreKitThemeEntitlementStore.cachedSupporterUnlockKey)
+
+        let store = StoreKitThemeEntitlementStore(userDefaults: userDefaults, autoload: false)
+
+        store.applyResolvedSupporterEntitlement(hasCurrentEntitlement: false)
+
+        XCTAssertFalse(store.hasUnlockedThemes)
+        XCTAssertTrue(store.hasResolvedThemeEntitlements)
+        XCTAssertFalse(userDefaults.bool(forKey: StoreKitThemeEntitlementStore.cachedSupporterUnlockKey))
+    }
+
+    @MainActor
+    func testStoreKitEntitlementStoreCachesVerifiedSupporterUnlockResolution() throws {
+        let suiteName = "StoreKitThemeEntitlementStoreTests-\(UUID().uuidString)"
+        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let store = StoreKitThemeEntitlementStore(userDefaults: userDefaults, autoload: false)
+
+        store.applyResolvedSupporterEntitlement(hasCurrentEntitlement: true)
+
+        XCTAssertTrue(store.hasUnlockedThemes)
+        XCTAssertTrue(store.hasResolvedThemeEntitlements)
+        XCTAssertTrue(userDefaults.bool(forKey: StoreKitThemeEntitlementStore.cachedSupporterUnlockKey))
+    }
+
+    @MainActor
     private func makeThemeStore(
         fileURL: URL,
         persistThemes: ThemeStore.PersistThemes? = nil,

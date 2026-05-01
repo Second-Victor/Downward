@@ -4,7 +4,8 @@ import UIKit
 enum EditorTextViewLayout {
     static let horizontalInset: CGFloat = 12
     static let contentTopInset: CGFloat = 24
-    static let bottomInset: CGFloat = 12
+    // Leave enough scrollable space after the final line that it clears the rounded editor chrome.
+    static let bottomInset: CGFloat = 64
     static let lineNumberGutterGap: CGFloat = 4
     static let lineNumberGutterHorizontalPadding: CGFloat = 8
     static let lineNumberGutterTrailingPadding: CGFloat = 8

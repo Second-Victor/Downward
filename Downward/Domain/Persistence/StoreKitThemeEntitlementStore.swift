@@ -146,18 +146,23 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
                 continue
             }
 
-            if transaction.productID == Self.supporterProductID {
+            if Self.isCurrentSupporterTransaction(transaction) {
                 isUnlocked = true
                 break
             }
         }
 
-        // A verified non-consumable purchase is cached locally so launch stays calm while
-        // StoreKit is still warming up or temporarily unable to enumerate entitlements.
+        applyResolvedSupporterEntitlement(hasCurrentEntitlement: isUnlocked)
+    }
+
+    func applyResolvedSupporterEntitlement(hasCurrentEntitlement isUnlocked: Bool) {
+        // The launch cache is optimistic only until StoreKit finishes enumerating
+        // current entitlements. Once resolved, mirror the authoritative result locally.
         setHasUnlockedThemes(
-            isUnlocked || hasUnlockedThemes,
+            isUnlocked,
             markingEntitlementsResolved: true,
-            persistLocalUnlock: isUnlocked
+            persistLocalUnlock: isUnlocked,
+            clearLocalUnlock: isUnlocked == false
         )
     }
 
@@ -176,6 +181,12 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
                 return
             }
 
+            guard transaction.revocationDate == nil else {
+                await refreshPurchasedEntitlements()
+                await transaction.finish()
+                return
+            }
+
             try await deliverSupporterUnlock(from: transaction)
             await transaction.finish()
         } catch {
@@ -184,7 +195,7 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
     }
 
     private func deliverSupporterUnlock(from transaction: Transaction) async throws {
-        guard transaction.productID == Self.supporterProductID else {
+        guard Self.isCurrentSupporterTransaction(transaction) else {
             return
         }
 
@@ -194,7 +205,8 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
     private func setHasUnlockedThemes(
         _ isUnlocked: Bool,
         markingEntitlementsResolved: Bool = false,
-        persistLocalUnlock: Bool = false
+        persistLocalUnlock: Bool = false,
+        clearLocalUnlock: Bool = false
     ) {
         let didChangeUnlockState = hasUnlockedThemes != isUnlocked
         let didResolveEntitlements = markingEntitlementsResolved && hasResolvedThemeEntitlements == false
@@ -202,6 +214,8 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
         hasUnlockedThemes = isUnlocked
         if isUnlocked && persistLocalUnlock {
             userDefaults.set(true, forKey: Self.cachedSupporterUnlockKey)
+        } else if isUnlocked == false && clearLocalUnlock {
+            userDefaults.removeObject(forKey: Self.cachedSupporterUnlockKey)
         }
 
         if markingEntitlementsResolved {
@@ -211,6 +225,10 @@ final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
         if didChangeUnlockState || didResolveEntitlements {
             entitlementChangeHandler?()
         }
+    }
+
+    private static func isCurrentSupporterTransaction(_ transaction: Transaction) -> Bool {
+        transaction.productID == Self.supporterProductID && transaction.revocationDate == nil
     }
 
     private nonisolated static func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {

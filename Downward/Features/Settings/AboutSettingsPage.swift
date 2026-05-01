@@ -11,7 +11,7 @@ struct AboutSettingsPage: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                gradient: Gradient(colors: [.clear, .gray.opacity(0.1)]),
+                gradient: Gradient(colors: [.clear, .gray.opacity(0.4)]),
                 startPoint: .top,
                 endPoint: .bottomTrailing
             )

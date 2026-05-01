@@ -399,6 +399,74 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorResolvesInlineCodeCopyLongPressTarget() throws {
+        let textBox = MutableBox("Use `let value = 1` here")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.textContainerInset = UIEdgeInsets(
+            top: EditorTextViewLayout.contentTopInset,
+            left: EditorTextViewLayout.horizontalInset,
+            bottom: EditorTextViewLayout.bottomInset,
+            right: EditorTextViewLayout.horizontalInset
+        )
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let codeRange = (textBox.value as NSString).range(of: "let value = 1")
+        let pressPoint = try XCTUnwrap(pointForCharacterRange(codeRange, in: textView))
+
+        XCTAssertEqual(
+            coordinator.resolvedCodeCopyTextForTesting(at: pressPoint, in: textView),
+            "let value = 1"
+        )
+    }
+
+    @MainActor
+    func testCoordinatorResolvesFencedCodeBlockCopyLongPressTarget() throws {
+        let textBox = MutableBox(
+            """
+            Intro
+            ```swift
+            let value = 1
+            print(value)
+            ```
+            """
+        )
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        textView.textContainerInset = UIEdgeInsets(
+            top: EditorTextViewLayout.contentTopInset,
+            left: EditorTextViewLayout.horizontalInset,
+            bottom: EditorTextViewLayout.bottomInset,
+            right: EditorTextViewLayout.horizontalInset
+        )
+
+        coordinator.apply(
+            configuration: makeConfiguration(text: textBox.value),
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        let lineRange = (textBox.value as NSString).range(of: "print(value)")
+        let pressPoint = try XCTUnwrap(pointForCharacterRange(lineRange, in: textView))
+
+        XCTAssertEqual(
+            coordinator.resolvedCodeCopyTextForTesting(at: pressPoint, in: textView),
+            "let value = 1\nprint(value)\n"
+        )
+    }
+
+    @MainActor
     func testCoordinatorContinuesTaskListWhenReturnIsPressedAtEnd() {
         let textBox = MutableBox("- [ ] Task")
         let coordinator = makeCoordinator(text: textBox)

@@ -61,7 +61,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
         let store = EditorAppearanceStore(initialPreferences: .default)
 
         XCTAssertEqual(store.selectedFontChoice, .systemMonospaced)
-        XCTAssertEqual(store.selectedFontDisplayName, "SF Mono")
+        XCTAssertEqual(store.selectedFontDisplayName, "System Monospaced")
         XCTAssertFalse(store.showLineNumbers)
         XCTAssertFalse(store.effectiveShowLineNumbers)
         XCTAssertEqual(store.lineNumberOpacity, EditorAppearancePreferences.defaultLineNumberOpacity)
@@ -664,7 +664,7 @@ final class EditorAppearanceStoreTests: XCTestCase {
 
         XCTAssertNil(store.selectedImportedFontFamilyName)
         XCTAssertEqual(store.selectedFontChoice, .systemMonospaced)
-        XCTAssertEqual(store.selectedFontDisplayName, "SF Mono")
+        XCTAssertEqual(store.selectedFontDisplayName, "System Monospaced")
     }
 
     @MainActor
