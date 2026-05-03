@@ -49,6 +49,14 @@ struct SettingsHomePage: View {
     let doneAction: () -> Void
     var releaseConfiguration: SettingsReleaseConfiguration = .current
 
+    private var supporterRowTitle: String {
+        hasUnlockedThemes ? "Thanks for being a supporter" : "Supporter"
+    }
+
+    private var supporterRowDetail: String? {
+        hasUnlockedThemes ? nil : "Perks"
+    }
+
     var body: some View {
         List {
             Section {
@@ -131,8 +139,8 @@ struct SettingsHomePage: View {
                             SettingsHomeRow(
                                 systemName: "heart.fill",
                                 colors: [.pink, Color(red: 1.0, green: 0.31, blue: 0.58)],
-                                title: hasUnlockedThemes ? "Thanks for being a supporter" : "Supporter",
-                                detail: hasUnlockedThemes ? nil : "Perks"
+                                title: supporterRowTitle,
+                                detail: supporterRowDetail
                             )
                         }
                     }
