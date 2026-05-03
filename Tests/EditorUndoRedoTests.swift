@@ -121,7 +121,7 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
-    func testCoordinatorDisablesKeyboardAccessoryCommandsDuringWritingTools() throws {
+    func testCoordinatorSuppressesKeyboardAccessoryCommandsDuringWritingTools() async throws {
         guard #available(iOS 18.0, *) else {
             throw XCTSkip("Writing Tools delegate callbacks require iOS 18.")
         }
@@ -156,10 +156,32 @@ final class EditorUndoRedoTests: XCTestCase {
         XCTAssertTrue(textView.formatAccessoryItem?.isEnabled ?? false)
         XCTAssertTrue(textView.undoAccessoryItem?.isEnabled ?? false)
         XCTAssertTrue(textView.redoAccessoryItem?.isEnabled ?? false)
+        XCTAssertTrue(textView.inputAccessoryView === textView.keyboardAccessoryToolbarView)
+        XCTAssertFalse(textView.keyboardAccessoryToolbarView?.isHidden ?? true)
+        XCTAssertTrue(textView.keyboardAccessoryToolbarView?.isUserInteractionEnabled ?? false)
+
+        textView.willPresentWritingTools()
+
+        XCTAssertTrue(textView.isWritingToolsPresentationActive)
+        try await waitForWritingToolsAccessoryUpdate()
+        XCTAssertTrue(textView.inputAccessoryView === textView.keyboardAccessoryToolbarView)
+        XCTAssertEqual(textView.keyboardAccessoryToolbarView?.alpha ?? -1, 0, accuracy: 0.001)
+        XCTAssertFalse(textView.keyboardAccessoryToolbarView?.isHidden ?? true)
+        XCTAssertFalse(textView.keyboardAccessoryToolbarView?.isUserInteractionEnabled ?? true)
+        XCTAssertFalse(textView.formatAccessoryItem?.isEnabled ?? true)
+        XCTAssertFalse(textView.undoAccessoryItem?.isEnabled ?? true)
+        XCTAssertFalse(textView.redoAccessoryItem?.isEnabled ?? true)
+        XCTAssertFalse(textView.dismissAccessoryItem?.isEnabled ?? true)
 
         coordinator.textViewWritingToolsWillBegin(textView)
 
+        XCTAssertTrue(textView.isWritingToolsPresentationActive)
         XCTAssertTrue(textView.isWritingToolsInteractionActive)
+        try await waitForWritingToolsAccessoryUpdate()
+        XCTAssertTrue(textView.inputAccessoryView === textView.keyboardAccessoryToolbarView)
+        XCTAssertEqual(textView.keyboardAccessoryToolbarView?.alpha ?? -1, 0, accuracy: 0.001)
+        XCTAssertFalse(textView.keyboardAccessoryToolbarView?.isHidden ?? true)
+        XCTAssertFalse(textView.keyboardAccessoryToolbarView?.isUserInteractionEnabled ?? true)
         XCTAssertFalse(textView.formatAccessoryItem?.isEnabled ?? true)
         XCTAssertFalse(textView.undoAccessoryItem?.isEnabled ?? true)
         XCTAssertFalse(textView.redoAccessoryItem?.isEnabled ?? true)
@@ -180,7 +202,26 @@ final class EditorUndoRedoTests: XCTestCase {
 
         coordinator.textViewWritingToolsDidEnd(textView)
 
+        XCTAssertTrue(textView.isWritingToolsPresentationActive)
         XCTAssertFalse(textView.isWritingToolsInteractionActive)
+        try await waitForWritingToolsAccessoryUpdate()
+        XCTAssertTrue(textView.inputAccessoryView === textView.keyboardAccessoryToolbarView)
+        XCTAssertEqual(textView.keyboardAccessoryToolbarView?.alpha ?? -1, 0, accuracy: 0.001)
+        XCTAssertFalse(textView.keyboardAccessoryToolbarView?.isHidden ?? true)
+        XCTAssertFalse(textView.keyboardAccessoryToolbarView?.isUserInteractionEnabled ?? true)
+        XCTAssertFalse(textView.formatAccessoryItem?.isEnabled ?? true)
+        XCTAssertFalse(textView.undoAccessoryItem?.isEnabled ?? true)
+        XCTAssertFalse(textView.redoAccessoryItem?.isEnabled ?? true)
+
+        textView.didDismissWritingTools()
+
+        XCTAssertFalse(textView.isWritingToolsPresentationActive)
+        XCTAssertFalse(textView.isWritingToolsInteractionActive)
+        try await waitForWritingToolsAccessoryUpdate()
+        XCTAssertTrue(textView.inputAccessoryView === textView.keyboardAccessoryToolbarView)
+        XCTAssertEqual(textView.keyboardAccessoryToolbarView?.alpha ?? -1, 1, accuracy: 0.001)
+        XCTAssertFalse(textView.keyboardAccessoryToolbarView?.isHidden ?? true)
+        XCTAssertTrue(textView.keyboardAccessoryToolbarView?.isUserInteractionEnabled ?? false)
         XCTAssertTrue(textView.formatAccessoryItem?.isEnabled ?? false)
         XCTAssertTrue(textView.undoAccessoryItem?.isEnabled ?? false)
         XCTAssertTrue(textView.redoAccessoryItem?.isEnabled ?? false)
@@ -197,6 +238,10 @@ final class EditorUndoRedoTests: XCTestCase {
         XCTAssertEqual(textView.trackingUndoManager.undoCallCount, 0)
         XCTAssertEqual(textView.trackingUndoManager.redoCallCount, 0)
         XCTAssertEqual(textView.resignFirstResponderCallCount, 0)
+    }
+
+    private func waitForWritingToolsAccessoryUpdate() async throws {
+        try await Task.sleep(nanoseconds: 250_000_000)
     }
 
     @MainActor

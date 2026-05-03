@@ -462,9 +462,7 @@ extension MarkdownEditorTextView {
                 return
             }
 
-            textView.isWritingToolsInteractionActive = true
-            publishUndoRedoAvailability(for: textView)
-            updateKeyboardAccessoryState(for: textView)
+            textView.setWritingToolsInteractionActive(true)
         }
 
         @available(iOS 18.0, *)
@@ -473,9 +471,7 @@ extension MarkdownEditorTextView {
                 return
             }
 
-            textView.isWritingToolsInteractionActive = false
-            publishUndoRedoAvailability(for: textView)
-            updateKeyboardAccessoryState(for: textView)
+            textView.setWritingToolsInteractionActive(false)
         }
 
         func viewportInsetsSnapshot(for textView: UITextView) -> ViewportInsetsSnapshot {
@@ -1626,10 +1622,41 @@ extension MarkdownEditorTextView {
                 }
             }
 
+            textView.writingToolsActivityDidChange = { [weak self, weak textView] updatedTextView in
+                guard let self, let textView, textView === updatedTextView else {
+                    return
+                }
+
+                self.applyKeyboardAccessorySuppressionIfNeeded(for: textView)
+                self.publishUndoRedoAvailability(for: textView)
+                self.updateKeyboardAccessoryState(for: textView)
+            }
+
             textView.keyboardAccessoryToolbarView?.applyResolvedTheme(resolvedTheme)
             textView.keyboardAccessoryToolbarView?.applyChromeInterfaceStyle(textView.overrideUserInterfaceStyle)
 
+            applyKeyboardAccessorySuppressionIfNeeded(for: textView)
             updateKeyboardAccessoryState(for: textView)
+        }
+
+        private func applyKeyboardAccessorySuppressionIfNeeded(for textView: EditorChromeAwareTextView) {
+            let shouldSuppressAccessory = textView.shouldSuppressKeyboardAccessoryForWritingTools
+            textView.keyboardAccessoryToolbarView?.alpha = shouldSuppressAccessory ? 0 : 1
+            textView.keyboardAccessoryToolbarView?.isUserInteractionEnabled = !shouldSuppressAccessory
+
+            guard !shouldSuppressAccessory else {
+                return
+            }
+
+            guard textView.inputAccessoryView !== textView.keyboardAccessoryToolbarView else {
+                return
+            }
+
+            textView.inputAccessoryView = textView.keyboardAccessoryToolbarView
+
+            if textView.isFirstResponder {
+                textView.reloadInputViews()
+            }
         }
 
         private func makeFormattingMenu() -> UIMenu {
@@ -1701,9 +1728,9 @@ extension MarkdownEditorTextView {
                 return true
             }
 
-            // Writing Tools temporarily owns the text interaction, so the editor accessory
-            // should be visible-but-inert until UIKit ends that session.
-            if textView.isWritingToolsInteractionActive {
+            // Writing Tools presents its own controls; hide and ignore the editor accessory
+            // while either the panel or the underlying text interaction is active.
+            if textView.shouldSuppressKeyboardAccessoryForWritingTools {
                 return false
             }
 

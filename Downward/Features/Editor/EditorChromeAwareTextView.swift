@@ -7,7 +7,12 @@ class EditorChromeAwareTextView: UITextView {
     var redoAccessoryItem: UIBarButtonItem?
     var dismissAccessoryItem: UIBarButtonItem?
     var keyboardOverlapInset: CGFloat = 0
-    var isWritingToolsInteractionActive = false
+    var writingToolsActivityDidChange: ((EditorChromeAwareTextView) -> Void)?
+    private(set) var isWritingToolsPresentationActive = false
+    private(set) var isWritingToolsInteractionActive = false
+    var shouldSuppressKeyboardAccessoryForWritingTools: Bool {
+        isWritingToolsPresentationActive || isWritingToolsInteractionActive
+    }
     var resolvedTheme: ResolvedEditorTheme = .default {
         didSet {
             guard oldValue != resolvedTheme else {
@@ -46,6 +51,7 @@ class EditorChromeAwareTextView: UITextView {
 
     private var cachedLineMetrics = TextLineMetrics(text: "")
     private var needsLineMetricsRefresh = true
+    private var writingToolsActivityNotificationGeneration = 0
     private var lineNumberFontSize: CGFloat = UIFont.systemFontSize {
         didSet {
             guard abs(oldValue - lineNumberFontSize) > 0.1 else {
@@ -160,8 +166,51 @@ class EditorChromeAwareTextView: UITextView {
         reloadInputViews()
     }
 
+    @available(iOS 18.0, *)
+    override func willPresentWritingTools() {
+        setWritingToolsPresentationActive(true)
+    }
+
+    @available(iOS 18.0, *)
+    override func didDismissWritingTools() {
+        setWritingToolsPresentationActive(false)
+    }
+
+    func setWritingToolsInteractionActive(_ isActive: Bool) {
+        guard isWritingToolsInteractionActive != isActive else {
+            return
+        }
+
+        isWritingToolsInteractionActive = isActive
+        scheduleWritingToolsActivityDidChange()
+    }
+
     func shouldHideLineNumber(for _: NSRange) -> Bool {
         false
+    }
+
+    private func setWritingToolsPresentationActive(_ isActive: Bool) {
+        guard isWritingToolsPresentationActive != isActive else {
+            return
+        }
+
+        isWritingToolsPresentationActive = isActive
+        scheduleWritingToolsActivityDidChange()
+    }
+
+    private func scheduleWritingToolsActivityDidChange() {
+        writingToolsActivityNotificationGeneration += 1
+        let generation = writingToolsActivityNotificationGeneration
+
+        // Writing Tools is driven by UIKit's input host. Let that transition settle before
+        // changing the accessory toolbar, otherwise long-press presentation can crash.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, self.writingToolsActivityNotificationGeneration == generation else {
+                return
+            }
+
+            self.writingToolsActivityDidChange?(self)
+        }
     }
 
     private func updateLineNumberVisibility() {
