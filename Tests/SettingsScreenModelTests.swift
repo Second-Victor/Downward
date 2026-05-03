@@ -309,6 +309,8 @@ final class SettingsScreenModelTests: XCTestCase {
                 showsRateTheAppRow: true
             )
         )
+        XCTAssertFalse(SettingsHomeReleaseSurfaces(configuration: hiddenConfiguration).showsSupportSection)
+        XCTAssertTrue(SettingsHomeReleaseSurfaces(configuration: visibleConfiguration).showsSupportSection)
     }
 
     @MainActor

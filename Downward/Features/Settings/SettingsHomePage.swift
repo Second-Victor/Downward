@@ -23,6 +23,10 @@ struct SettingsHomeReleaseSurfaces: Equatable {
         showsRateTheAppRow = configuration.showsRateTheApp
     }
 
+    var showsSupportSection: Bool {
+        showsSupporterRow || showsTipsRow
+    }
+
     var visibleRows: [SettingsHomeReleaseRow] {
         var rows: [SettingsHomeReleaseRow] = []
         if showsSupporterRow {
@@ -120,30 +124,32 @@ struct SettingsHomePage: View {
                 Text("Information")
             }
 
-            Section {
-                if releaseSurfaces.showsSupporterRow {
-                    NavigationLink(value: SettingsPage.supporterUnlock) {
-                        SettingsHomeRow(
-                            systemName: "heart.fill",
-                            colors: [.pink, Color(red: 1.0, green: 0.31, blue: 0.58)],
-                            title: hasUnlockedThemes ? "Thanks for being a supporter" : "Supporter",
-                            detail: hasUnlockedThemes ? nil : "Perks"
-                        )
+            if releaseSurfaces.showsSupportSection {
+                Section {
+                    if releaseSurfaces.showsSupporterRow {
+                        NavigationLink(value: SettingsPage.supporterUnlock) {
+                            SettingsHomeRow(
+                                systemName: "heart.fill",
+                                colors: [.pink, Color(red: 1.0, green: 0.31, blue: 0.58)],
+                                title: hasUnlockedThemes ? "Thanks for being a supporter" : "Supporter",
+                                detail: hasUnlockedThemes ? nil : "Perks"
+                            )
+                        }
                     }
-                }
 
-                if releaseSurfaces.showsTipsRow {
-                    NavigationLink(value: SettingsPage.tips) {
-                        SettingsHomeRow(
-                            systemName: "banknote.fill",
-                            colors: [.green],
-                            title: "Tips",
-                            detail: nil
-                        )
+                    if releaseSurfaces.showsTipsRow {
+                        NavigationLink(value: SettingsPage.tips) {
+                            SettingsHomeRow(
+                                systemName: "banknote.fill",
+                                colors: [.green],
+                                title: "Tips",
+                                detail: nil
+                            )
+                        }
                     }
+                } header: {
+                    Text("Support the App")
                 }
-            } header: {
-                Text("Support the App")
             }
         }
         .listStyle(.insetGrouped)
