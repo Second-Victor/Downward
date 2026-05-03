@@ -152,6 +152,44 @@ Environment: local Codex workspace at `/Users/allan/Desktop/Downward`
   - No static references were found for tracking/ad APIs, analytics/telemetry SDKs, network collection APIs, CoreLocation, camera capture, Photos library, microphone, or Contacts.
   - `print(` usage was found only in `DebugLogger`, guarded by `#if DEBUG`.
 
+### 2026-05-03 Second-Pass Verification Update
+
+- `xcodebuild build -scheme Downward -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/DownwardDerivedData-P0SecondPass-20260503`
+  - Result: passed.
+  - Coverage: app target compiled, linked, signed for simulator, copied `PrivacyInfo.xcprivacy` and `Downward.storekit`, and validated the app bundle.
+- `xcrun simctl list devices available`
+  - Result: passed.
+  - Note: no `iPhone 16` simulator was available. Replacement used for focused tests: `iPhone 17`, iOS 26.4.
+- `xcodebuild test -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17' -parallel-testing-enabled NO -derivedDataPath /tmp/DownwardDerivedData-P0SecondPassTests-20260503 -only-testing:DownwardTests/DocumentOpenPolicyTests -only-testing:DownwardTests/DocumentManagerTests -only-testing:DownwardTests/EditorAutosaveTests -only-testing:DownwardTests/WorkspaceDeleteConfirmationPresentationTests -only-testing:DownwardTests/WorkspaceEnumeratorTests -only-testing:DownwardTests/StoreProductIdentifiersTests -only-testing:DownwardTests/SettingsScreenModelTests`
+  - Result: passed.
+  - Result bundle: `/tmp/DownwardDerivedData-P0SecondPassTests-20260503/Logs/Test/Test-Downward-2026.05.03_11-52-30-+0100.xcresult`.
+  - XCTest summary: 107 tests, 0 failures, 0 unexpected.
+- `xcodebuild test -scheme Downward -destination 'platform=iOS Simulator,name=iPhone 17' -parallel-testing-enabled NO -derivedDataPath /tmp/DownwardDerivedData-P0SecondPassFull-20260503`
+  - Result: failed before XCTest due to simulator launch failure after compiling the app and test runner.
+  - Result bundle: `/tmp/DownwardDerivedData-P0SecondPassFull-20260503/Logs/Test/Test-Downward-2026.05.03_11-53-08-+0100.xcresult`.
+  - Error: `FBSOpenApplicationServiceErrorDomain Code=1`; simulator preflight `Busy`.
+  - Interpretation: the focused P0 suite passed; the optional full-suite run was blocked by simulator launch state, not a Swift compile or XCTest assertion failure.
+- Large document policy re-check:
+  - `DocumentOpenPolicy.maximumReadableFileSize` remains the single 5 MB threshold.
+  - Normal document opening still validates file size before `PlainTextDocumentSession.readUTF8TextContents(from:)` performs `Data(contentsOf:)`.
+  - Focused tests covered below-limit, at-limit, above-limit, missing-size, and normal document manager paths.
+- Destructive delete re-check:
+  - Delete presentation copy still says files/folders are permanently deleted from Files and the underlying workspace.
+  - `WorkspaceNode.Folder.containsAnyFilesystemItems` still carries real filesystem contents for the stronger non-empty warning, including hidden or unsupported-only descendants.
+  - Focused delete-presentation and enumerator tests passed.
+- Direct in-place save re-check:
+  - Focused save-failure tests passed, including dirty-state preservation and user-facing error copy.
+  - Local Files/iCloud/provider-latency behavior remains a manual device QA item.
+- StoreKit/release configuration re-check:
+  - Code product IDs still match local `Downward.storekit`.
+  - Supporter is explicitly controlled by `SettingsReleaseConfiguration.supporterPurchasesEnabled`.
+  - Tips are deliberately enabled after local device validation, but TestFlight product loading and purchase evidence remain required before App Store submission.
+- Privacy static scan re-check:
+  - UserDefaults and file timestamp/resource-value access still match the privacy manifest declarations.
+  - Pasteboard usage remains a user-initiated write for code copy; no pasteboard reads were found.
+  - No imports or direct references were found for AdSupport, AppTrackingTransparency, CoreLocation, AVFoundation capture, Photos, Contacts, Network, `URLSession`, or `NWConnection`.
+  - `print(` remains isolated to `DebugLogger` and compiled under `#if DEBUG`.
+
 ## Legal / Support URL Verification QA
 
 Device:

@@ -45,6 +45,7 @@ This TODO is intentionally a backlog, not a completion report. Do not mark items
   - Suggested fix: Keep the current approach unless device evidence proves it unsafe, but add failure/latency tests or fakes around `writeUTF8Data`, and run real-device QA on local Files and iCloud Drive.
   - Acceptance criteria: Failed saves keep the editor dirty, do not report `.saved`, surface a useful error, and `RELEASE_QA.md` records provider-specific save behavior.
   - P0 pass note: Partially completed on 2026-05-02. Added automated direct write failure coverage with a read-only file, plus editor autosave failure assertions for dirty state and error copy. Real-device Local Files/iCloud/provider latency evidence is still required, so this remains unchecked.
+  - 2026-05-03 note: Second-pass focused P0 tests, including `EditorAutosaveTests`, passed on the iPhone 17 simulator. Local Files, iCloud Drive, and provider-latency/failure evidence still require real-device QA, so this remains unchecked.
 
 - [x] P0: Make delete confirmation copy explicitly permanent
   - File path(s): `Downward/Features/Workspace/WorkspaceFolderScreen.swift`, `Downward/Features/Workspace/WorkspaceViewModel.swift`, `Downward/Domain/Workspace/WorkspaceManager.swift`
@@ -446,6 +447,7 @@ This TODO is intentionally a backlog, not a completion report. Do not mark items
   - Suggested fix: Prefer `SKTestSession` tests for product load/purchase/restore/revocation. If not feasible, write exact device/TestFlight QA steps in `RELEASE_QA.md`.
   - Acceptance criteria: Every purchase result state has either automated coverage or repeatable recorded manual coverage.
   - P0 pass note: Repeatable StoreKit Sandbox/TestFlight QA script added to `RELEASE_QA.md` on 2026-05-02. This remains unchecked until the script is executed or automated StoreKit tests cover every result state.
+  - 2026-05-03 note: StoreKit product ID parity and settings release-surface tests passed in the focused P0 suite. Supporter and Tips are deliberately visible for validation builds, but TestFlight product loading, purchase, restore, pending/cancelled, and revocation evidence are still required.
 
 - [ ] P1: Add tests for model cleanup/lifecycle
   - File path(s): `Downward/Features/Editor/EditorViewModel.swift`, `Downward/Features/Root/RootViewModel.swift`, `Tests/EditorAutosaveTests.swift`, `Tests/MarkdownWorkspaceAppSmokeTests.swift`
@@ -477,6 +479,7 @@ This TODO is intentionally a backlog, not a completion report. Do not mark items
   - Suggested fix: Record final values, increment build number for each submission, and verify archive uses distribution signing.
   - Acceptance criteria: `RELEASE_QA.md` contains the exact release commit and identity values for the submitted build.
   - P0 pass note: Current project identity/signing values were recorded in `RELEASE_QA.md` on 2026-05-02. This remains unchecked until the exact submitted commit/archive/export evidence is recorded.
+  - 2026-05-03 note: Generic simulator build passed and focused P0 tests passed. Archive validation, export, signing credential confirmation, TestFlight upload, and submitted commit evidence are still manual release tasks, so this remains unchecked.
 
 - [ ] P1: Resolve root documentation source-of-truth drift
   - File path(s): `AGENTS.md`, `ARCHITECTURE.md`, `TODO.md`, `RELEASE_QA.md`
