@@ -1,6 +1,7 @@
 import Foundation
 
 struct SettingsReleaseConfiguration: Equatable, Sendable {
+    var supporterPurchasesEnabled: Bool
     var tipsPurchasesEnabled: Bool
     var rateTheAppEnabled: Bool
     var appStoreReviewURL: URL?
@@ -9,6 +10,7 @@ struct SettingsReleaseConfiguration: Equatable, Sendable {
     var termsAndConditionsURL: URL?
 
     init(
+        supporterPurchasesEnabled: Bool = false,
         tipsPurchasesEnabled: Bool,
         rateTheAppEnabled: Bool = false,
         appStoreReviewURL: URL? = nil,
@@ -16,6 +18,7 @@ struct SettingsReleaseConfiguration: Equatable, Sendable {
         privacyPolicyURL: URL? = nil,
         termsAndConditionsURL: URL? = nil
     ) {
+        self.supporterPurchasesEnabled = supporterPurchasesEnabled
         self.tipsPurchasesEnabled = tipsPurchasesEnabled
         self.rateTheAppEnabled = rateTheAppEnabled
         self.appStoreReviewURL = appStoreReviewURL
@@ -25,6 +28,7 @@ struct SettingsReleaseConfiguration: Equatable, Sendable {
     }
 
     static let current = SettingsReleaseConfiguration(
+        supporterPurchasesEnabled: true,
         tipsPurchasesEnabled: true,
         rateTheAppEnabled: true,
         appStoreReviewURL: nil,
@@ -32,6 +36,10 @@ struct SettingsReleaseConfiguration: Equatable, Sendable {
         privacyPolicyURL: URL(string: "https://secondvictor.com/public/projects/downward/downward-policy.html"),
         termsAndConditionsURL: URL(string: "https://secondvictor.com/public/projects/downward/downward-terms.html")
     )
+
+    var showsSupporterUnlockPage: Bool {
+        supporterPurchasesEnabled
+    }
 
     var showsTipsPage: Bool {
         tipsPurchasesEnabled

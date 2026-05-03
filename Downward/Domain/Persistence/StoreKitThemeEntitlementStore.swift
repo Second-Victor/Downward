@@ -5,7 +5,7 @@ import StoreKit
 @MainActor
 @Observable
 final class StoreKitThemeEntitlementStore: ThemeEntitlementProviding {
-    static let supporterProductID = "com.secondvictor.downward.supporter"
+    static let supporterProductID = StoreProductIdentifiers.supporterUnlock
     static let cachedSupporterUnlockKey = "theme.entitlements.supporterUnlock.cached"
 
     private(set) var hasUnlockedThemes = false

@@ -215,6 +215,7 @@ final class SettingsScreenModelTests: XCTestCase {
     func testReleaseConfigurationShowsImplementedSettingsSurfaces() {
         let configuration = SettingsReleaseConfiguration.current
 
+        XCTAssertTrue(configuration.showsSupporterUnlockPage)
         XCTAssertTrue(configuration.showsTipsPage)
         XCTAssertTrue(configuration.showsRateTheApp)
         XCTAssertTrue(configuration.showsLegalLinks)
@@ -235,6 +236,7 @@ final class SettingsScreenModelTests: XCTestCase {
         let privacyPolicyURL = try XCTUnwrap(URL(string: "https://example.com/privacy"))
         let termsAndConditionsURL = try XCTUnwrap(URL(string: "https://example.com/terms"))
         let configuration = SettingsReleaseConfiguration(
+            supporterPurchasesEnabled: true,
             tipsPurchasesEnabled: true,
             rateTheAppEnabled: true,
             appStoreReviewURL: appStoreReviewURL,
@@ -242,6 +244,7 @@ final class SettingsScreenModelTests: XCTestCase {
             termsAndConditionsURL: termsAndConditionsURL
         )
 
+        XCTAssertTrue(configuration.showsSupporterUnlockPage)
         XCTAssertTrue(configuration.showsTipsPage)
         XCTAssertTrue(configuration.showsRateTheApp)
         XCTAssertTrue(configuration.showsLegalLinks)
@@ -284,6 +287,7 @@ final class SettingsScreenModelTests: XCTestCase {
             appStoreReviewURL: appStoreReviewURL
         )
         let visibleConfiguration = SettingsReleaseConfiguration(
+            supporterPurchasesEnabled: true,
             tipsPurchasesEnabled: true,
             rateTheAppEnabled: true,
             appStoreReviewURL: appStoreReviewURL
@@ -291,11 +295,19 @@ final class SettingsScreenModelTests: XCTestCase {
 
         XCTAssertEqual(
             SettingsHomeReleaseSurfaces(configuration: hiddenConfiguration),
-            SettingsHomeReleaseSurfaces(showsTipsRow: false, showsRateTheAppRow: false)
+            SettingsHomeReleaseSurfaces(
+                showsSupporterRow: false,
+                showsTipsRow: false,
+                showsRateTheAppRow: false
+            )
         )
         XCTAssertEqual(
             SettingsHomeReleaseSurfaces(configuration: visibleConfiguration),
-            SettingsHomeReleaseSurfaces(showsTipsRow: true, showsRateTheAppRow: true)
+            SettingsHomeReleaseSurfaces(
+                showsSupporterRow: true,
+                showsTipsRow: true,
+                showsRateTheAppRow: true
+            )
         )
     }
 
@@ -308,6 +320,7 @@ final class SettingsScreenModelTests: XCTestCase {
             appStoreReviewURL: appStoreReviewURL
         )
         let visibleConfiguration = SettingsReleaseConfiguration(
+            supporterPurchasesEnabled: true,
             tipsPurchasesEnabled: true,
             rateTheAppEnabled: true,
             appStoreReviewURL: appStoreReviewURL
@@ -316,7 +329,7 @@ final class SettingsScreenModelTests: XCTestCase {
         XCTAssertEqual(SettingsHomeReleaseSurfaces(configuration: hiddenConfiguration).visibleRows, [])
         XCTAssertEqual(
             SettingsHomeReleaseSurfaces(configuration: visibleConfiguration).visibleRows,
-            [.tips, .rateTheApp]
+            [.supporter, .tips, .rateTheApp]
         )
     }
 

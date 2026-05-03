@@ -5,12 +5,7 @@ import StoreKit
 @MainActor
 @Observable
 final class TipJarManager {
-    private static let productIdentifiers = [
-        "com.secondvictor.downward.tip.small",
-        "com.secondvictor.downward.tip.medium",
-        "com.secondvictor.downward.tip.large",
-        "com.secondvictor.downward.tip.xlarge"
-    ]
+    private static let productIdentifiers = StoreProductIdentifiers.tipProductIDs
 
     enum PurchaseState: Equatable {
         case idle

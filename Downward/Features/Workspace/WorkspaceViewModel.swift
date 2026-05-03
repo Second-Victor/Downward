@@ -183,9 +183,15 @@ final class WorkspaceViewModel {
     }
 
     var deletePromptMessage: String {
-        pendingDeleteNode?.isFolder == true
-            ? "This removes the folder and its contents from the workspace."
-            : "This removes the file from the workspace."
+        guard let pendingDeleteNode else {
+            return "This item will be permanently deleted from Files and the underlying workspace."
+        }
+
+        return WorkspaceDeleteConfirmationPresentation(node: pendingDeleteNode).message
+    }
+
+    var deleteConfirmationPresentation: WorkspaceDeleteConfirmationPresentation? {
+        pendingDeleteNode.map(WorkspaceDeleteConfirmationPresentation.init(node:))
     }
 
     var moveSheetTitle: String {

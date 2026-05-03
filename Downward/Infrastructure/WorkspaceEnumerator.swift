@@ -124,12 +124,15 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
                 ) else {
                     continue
                 }
+                let containsAnyFilesystemItems = Self.containsAnyFilesystemItems(in: childURL)
+                    ?? (children.isEmpty == false)
                 nodes.append(
                     .folder(
                         .init(
                             url: childURL,
                             displayName: displayName,
-                            children: children
+                            children: children,
+                            containsAnyFilesystemItems: containsAnyFilesystemItems
                         )
                     )
                 )
@@ -178,6 +181,18 @@ struct LiveWorkspaceEnumerator: WorkspaceEnumerating {
         }
 
         return false
+    }
+
+    nonisolated private static func containsAnyFilesystemItems(in directoryURL: URL) -> Bool? {
+        guard let childURLs = try? FileManager.default.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: [],
+            options: []
+        ) else {
+            return nil
+        }
+
+        return childURLs.isEmpty == false
     }
 
     nonisolated private static func shouldSkipDescendantFailure(_ error: Error) -> Bool {

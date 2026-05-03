@@ -370,7 +370,7 @@ private struct WorkspaceTreeRow: View {
                 }
                 .disabled(viewModel.areRowActionsDisabled)
                 .accessibilityLabel("Delete \(node.displayName)")
-                .accessibilityHint("Deletes this folder and its contents from the workspace.")
+                .accessibilityHint(deletePresentation.deleteActionAccessibilityHint)
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 folderSwipeActions
@@ -380,7 +380,7 @@ private struct WorkspaceTreeRow: View {
                 isPresented: deleteDialogBinding,
                 titleVisibility: .visible
             ) {
-                Button("Delete \(node.displayName)", role: .destructive) {
+                Button(deletePresentation.destructiveButtonTitle, role: .destructive) {
                     viewModel.deleteItem()
                 }
 
@@ -413,7 +413,7 @@ private struct WorkspaceTreeRow: View {
                 isPresented: deleteDialogBinding,
                 titleVisibility: .visible
             ) {
-                Button("Delete \(node.displayName)", role: .destructive) {
+                Button(deletePresentation.destructiveButtonTitle, role: .destructive) {
                     viewModel.deleteItem()
                 }
 
@@ -447,7 +447,7 @@ private struct WorkspaceTreeRow: View {
                 isPresented: deleteDialogBinding,
                 titleVisibility: .visible
             ) {
-                Button("Delete \(node.displayName)", role: .destructive) {
+                Button(deletePresentation.destructiveButtonTitle, role: .destructive) {
                     viewModel.deleteItem()
                 }
 
@@ -493,7 +493,7 @@ private struct WorkspaceTreeRow: View {
         }
         .disabled(viewModel.areRowActionsDisabled)
         .accessibilityLabel("Delete \(node.displayName)")
-        .accessibilityHint("Deletes this file from the workspace.")
+        .accessibilityHint(deletePresentation.deleteActionAccessibilityHint)
     }
 
     @ViewBuilder
@@ -527,6 +527,8 @@ private struct WorkspaceTreeRow: View {
         }
         .disabled(viewModel.areRowActionsDisabled)
         .tint(.red)
+        .accessibilityLabel("Delete \(node.displayName)")
+        .accessibilityHint(deletePresentation.deleteActionAccessibilityHint)
     }
 
     @ViewBuilder
@@ -560,6 +562,8 @@ private struct WorkspaceTreeRow: View {
         }
         .disabled(viewModel.areRowActionsDisabled)
         .tint(.red)
+        .accessibilityLabel("Delete \(node.displayName)")
+        .accessibilityHint(deletePresentation.deleteActionAccessibilityHint)
     }
 
     private var deleteDialogBinding: Binding<Bool> {
@@ -578,15 +582,15 @@ private struct WorkspaceTreeRow: View {
     }
 
     private var deleteDialogTitle: String {
-        node.isFolder ? "Delete Folder" : "Delete File"
+        deletePresentation.title
     }
 
     private var deleteDialogMessage: String {
-        if node.isFolder {
-            return "This removes \(node.displayName) and its contents from the workspace."
-        }
+        deletePresentation.message
+    }
 
-        return "This removes \(node.displayName) from the workspace."
+    private var deletePresentation: WorkspaceDeleteConfirmationPresentation {
+        WorkspaceDeleteConfirmationPresentation(node: node)
     }
 }
 

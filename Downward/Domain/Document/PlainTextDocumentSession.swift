@@ -707,11 +707,17 @@ actor PlainTextDocumentSession {
                 )
             }
 
+            let displayName = resourceValues.localizedName ?? resourceValues.name ?? url.lastPathComponent
+            try DocumentOpenPolicy.validateReadableFileSize(
+                DocumentOpenPolicy.fileSize(from: resourceValues, url: url),
+                displayName: displayName
+            )
+
             let contents = try readUTF8TextContents(from: url)
 
             return .success(
                 CoordinatedDocumentState(
-                    displayName: resourceValues.localizedName ?? resourceValues.name ?? url.lastPathComponent,
+                    displayName: displayName,
                     text: contents.text,
                     version: makeLoadedVersion(from: resourceValues, utf8Data: contents.utf8Data)
                 )

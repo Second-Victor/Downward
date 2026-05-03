@@ -160,12 +160,20 @@ final class WorkspaceEnumeratorTests: XCTestCase {
         }
 
         XCTAssertEqual(onlyDirectoriesFolder.children.map(\.displayName), ["NestedEmpty"])
+        XCTAssertTrue(onlyDirectoriesFolder.containsAnyFilesystemItems)
+
+        guard case let .folder(nestedEmptyFolder) = onlyDirectoriesFolder.children.first else {
+            return XCTFail("Expected NestedEmpty to be represented as a folder.")
+        }
+
+        XCTAssertFalse(nestedEmptyFolder.containsAnyFilesystemItems)
 
         guard case let .folder(unsupportedFolder) = snapshot.rootNodes[3] else {
             return XCTFail("Expected Unsupported to be represented as a folder.")
         }
 
         XCTAssertTrue(unsupportedFolder.children.isEmpty)
+        XCTAssertTrue(unsupportedFolder.containsAnyFilesystemItems)
     }
 
     func testEnumeratorSkipsUnreadableChildFolderAndKeepsReadableSiblings() throws {

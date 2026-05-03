@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import XCTest
 @testable import Downward
@@ -117,6 +118,54 @@ final class DocumentManagerTests: XCTestCase {
 
             XCTAssertEqual(name, "Broken.md")
             XCTAssertEqual(details, "The file is not valid UTF-8 text.")
+        }
+    }
+
+    @MainActor
+    func testOpenDocumentLoadsFileAtMaximumSupportedSize() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let fileURL = workspaceURL.appending(path: "AtLimit.md")
+        let contents = String(
+            repeating: "a",
+            count: DocumentOpenPolicy.maximumReadableFileSize
+        )
+        try Data(contents.utf8).write(to: fileURL)
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+
+        let document = try await manager.openDocument(at: fileURL, in: workspaceURL)
+
+        XCTAssertEqual(document.text.count, DocumentOpenPolicy.maximumReadableFileSize)
+        XCTAssertEqual(document.loadedVersion.fileSize, DocumentOpenPolicy.maximumReadableFileSize)
+    }
+
+    @MainActor
+    func testOpenDocumentRejectsFileAboveMaximumSupportedSize() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let fileURL = workspaceURL.appending(path: "TooLarge.log")
+        let oversizedData = Data(
+            repeating: 0x61,
+            count: DocumentOpenPolicy.maximumReadableFileSize + 1
+        )
+        try oversizedData.write(to: fileURL)
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+
+        do {
+            _ = try await manager.openDocument(at: fileURL, in: workspaceURL)
+            XCTFail("Expected oversized document open to throw.")
+        } catch let error as AppError {
+            guard case let .documentOpenFailed(name, details) = error else {
+                return XCTFail("Expected documentOpenFailed error.")
+            }
+
+            XCTAssertEqual(name, "TooLarge.log")
+            XCTAssertTrue(details.contains("too large to open safely"))
+            XCTAssertTrue(details.contains(DocumentOpenPolicy.maximumReadableFileSizeDescription))
         }
     }
 
@@ -517,6 +566,46 @@ final class DocumentManagerTests: XCTestCase {
         XCTAssertTrue(saveResult.isDirty)
         XCTAssertEqual(saveResult.saveState, .unsaved)
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
+    @MainActor
+    func testSaveWriteFailureThrowsDocumentSaveFailedAndLeavesFileUnchanged() async throws {
+        let workspaceURL = try makeTemporaryDirectory(named: "Workspace")
+        defer { removeItemIfPresent(at: workspaceURL) }
+
+        let originalText = "# Entry\n\nOriginal text."
+        let fileURL = try makeTemporaryFile(
+            in: workspaceURL,
+            named: "ReadOnly.md",
+            contents: originalText
+        )
+
+        let manager = LiveDocumentManager(securityScopedAccess: FakeDocumentSecurityAccessHandler())
+        var document = try await manager.openDocument(at: fileURL, in: workspaceURL)
+        document.text = "# Entry\n\nUnsaved local text."
+        document.isDirty = true
+        document.saveState = .unsaved
+
+        XCTAssertEqual(chmod(fileURL.path, S_IRUSR | S_IRGRP | S_IROTH), 0)
+        defer {
+            _ = chmod(fileURL.path, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+        }
+
+        do {
+            _ = try await manager.saveDocument(document, overwriteConflict: false)
+            XCTFail("Expected direct write failure to throw.")
+        } catch let error as AppError {
+            guard case let .documentSaveFailed(name, details) = error else {
+                return XCTFail("Expected documentSaveFailed error.")
+            }
+
+            XCTAssertEqual(name, "ReadOnly.md")
+            XCTAssertEqual(details, "The latest text could not be written to disk.")
+        }
+
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), originalText)
+        XCTAssertTrue(document.isDirty)
+        XCTAssertEqual(document.saveState, .unsaved)
     }
 
     @MainActor

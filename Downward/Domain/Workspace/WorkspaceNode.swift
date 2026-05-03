@@ -8,6 +8,19 @@ enum WorkspaceNode: Hashable, Identifiable, Sendable {
         nonisolated let url: URL
         nonisolated let displayName: String
         nonisolated let children: [WorkspaceNode]
+        nonisolated let containsAnyFilesystemItems: Bool
+
+        nonisolated init(
+            url: URL,
+            displayName: String,
+            children: [WorkspaceNode],
+            containsAnyFilesystemItems: Bool? = nil
+        ) {
+            self.url = url
+            self.displayName = displayName
+            self.children = children
+            self.containsAnyFilesystemItems = containsAnyFilesystemItems ?? (children.isEmpty == false)
+        }
     }
 
     struct File: Hashable, Sendable {
@@ -73,6 +86,14 @@ enum WorkspaceNode: Hashable, Identifiable, Sendable {
         }
 
         return nil
+    }
+
+    nonisolated var hasChildItems: Bool {
+        if case let .folder(folder) = self {
+            return folder.containsAnyFilesystemItems
+        }
+
+        return false
     }
 
     nonisolated var isFolder: Bool {

@@ -4,7 +4,7 @@ struct AboutSettingsPage: View {
     let backAction: () -> Void
     var releaseConfiguration: SettingsReleaseConfiguration = .current
 
-    private static let companyURL = URL(string: "https://secondvictor.com")!
+    private static let companyURL = URL(string: "https://secondvictor.com")
 
     @ScaledMetric(relativeTo: .largeTitle) private var iconFrameSize: CGFloat = 170
 
@@ -30,11 +30,17 @@ struct AboutSettingsPage: View {
 
                 Spacer()
 
-                Link("Second Victor Ltd.", destination: Self.companyURL)
-                    .font(.system(.body, design: .rounded).bold())
-                    .foregroundStyle(.primary)
-                    .padding(.bottom, 10)
-                    .accessibilityHint("Opens the Second Victor website in Safari")
+                if let companyURL = Self.companyURL {
+                    Link("Second Victor Ltd.", destination: companyURL)
+                        .font(.system(.body, design: .rounded).bold())
+                        .foregroundStyle(.primary)
+                        .padding(.bottom, 10)
+                        .accessibilityHint("Opens the Second Victor website in Safari")
+                } else {
+                    Text("Second Victor Ltd.")
+                        .font(.system(.body, design: .rounded).bold())
+                        .padding(.bottom, 10)
+                }
 
                 if let privacyPolicyURL = releaseConfiguration.privacyPolicyURL {
                     AboutLinkRow(systemName: "lock", title: "Privacy Policy", destination: privacyPolicyURL)

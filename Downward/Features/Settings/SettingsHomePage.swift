@@ -1,26 +1,33 @@
 import SwiftUI
 
 enum SettingsHomeReleaseRow: Equatable {
+    case supporter
     case tips
     case rateTheApp
 }
 
 struct SettingsHomeReleaseSurfaces: Equatable {
+    let showsSupporterRow: Bool
     let showsTipsRow: Bool
     let showsRateTheAppRow: Bool
 
-    init(showsTipsRow: Bool, showsRateTheAppRow: Bool) {
+    init(showsSupporterRow: Bool, showsTipsRow: Bool, showsRateTheAppRow: Bool) {
+        self.showsSupporterRow = showsSupporterRow
         self.showsTipsRow = showsTipsRow
         self.showsRateTheAppRow = showsRateTheAppRow
     }
 
     init(configuration: SettingsReleaseConfiguration) {
+        showsSupporterRow = configuration.showsSupporterUnlockPage
         showsTipsRow = configuration.showsTipsPage
         showsRateTheAppRow = configuration.showsRateTheApp
     }
 
     var visibleRows: [SettingsHomeReleaseRow] {
         var rows: [SettingsHomeReleaseRow] = []
+        if showsSupporterRow {
+            rows.append(.supporter)
+        }
         if showsTipsRow {
             rows.append(.tips)
         }
@@ -114,13 +121,15 @@ struct SettingsHomePage: View {
             }
 
             Section {
-                NavigationLink(value: SettingsPage.supporterUnlock) {
-                    SettingsHomeRow(
-                        systemName: "heart.fill",
-                        colors: [.pink, Color(red: 1.0, green: 0.31, blue: 0.58)],
-                        title: hasUnlockedThemes ? "Thanks for being a supporter" : "Supporter",
-                        detail: hasUnlockedThemes ? nil : "Perks"
-                    )
+                if releaseSurfaces.showsSupporterRow {
+                    NavigationLink(value: SettingsPage.supporterUnlock) {
+                        SettingsHomeRow(
+                            systemName: "heart.fill",
+                            colors: [.pink, Color(red: 1.0, green: 0.31, blue: 0.58)],
+                            title: hasUnlockedThemes ? "Thanks for being a supporter" : "Supporter",
+                            detail: hasUnlockedThemes ? nil : "Perks"
+                        )
+                    }
                 }
 
                 if releaseSurfaces.showsTipsRow {

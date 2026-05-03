@@ -547,9 +547,12 @@ final class EditorAutosaveTests: XCTestCase {
         system.viewModel.handleTextChange("Broken save")
         try await Task.sleep(for: .milliseconds(80))
 
-        guard case .failed = system.session.openDocument?.saveState else {
+        guard case let .failed(error) = system.session.openDocument?.saveState else {
             return XCTFail("Expected save state to become failed when autosave throws.")
         }
+        XCTAssertEqual(error.title, "Save Failed")
+        XCTAssertTrue(error.message.contains("Inbox.md could not be saved"))
+        XCTAssertTrue(error.message.contains("Disk write failed."))
         XCTAssertTrue(system.session.openDocument?.isDirty ?? false)
         XCTAssertTrue(system.viewModel.showsUnsavedIndicator)
         XCTAssertTrue(system.viewModel.showsSaveStatusIndicator)
