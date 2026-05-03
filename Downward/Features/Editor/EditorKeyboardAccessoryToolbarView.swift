@@ -95,7 +95,8 @@ final class KeyboardAccessoryToolbarView: UIView {
         toolbar.frame = CGRect(x: 0, y: 0, width: bounds.width, height: toolbarHeight)
     }
 
-    func update(canUndo: Bool, canRedo: Bool, canDismiss: Bool) {
+    func update(canFormat: Bool, canUndo: Bool, canRedo: Bool, canDismiss: Bool) {
+        formatButton.isEnabled = canFormat
         undoButton.isEnabled = canUndo
         redoButton.isEnabled = canRedo
         dismissButton.isEnabled = showsDismissButton && canDismiss

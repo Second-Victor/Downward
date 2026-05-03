@@ -7,6 +7,7 @@ class EditorChromeAwareTextView: UITextView {
     var redoAccessoryItem: UIBarButtonItem?
     var dismissAccessoryItem: UIBarButtonItem?
     var keyboardOverlapInset: CGFloat = 0
+    var isWritingToolsInteractionActive = false
     var resolvedTheme: ResolvedEditorTheme = .default {
         didSet {
             guard oldValue != resolvedTheme else {

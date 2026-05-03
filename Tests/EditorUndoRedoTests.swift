@@ -121,6 +121,85 @@ final class EditorUndoRedoTests: XCTestCase {
     }
 
     @MainActor
+    func testCoordinatorDisablesKeyboardAccessoryCommandsDuringWritingTools() throws {
+        guard #available(iOS 18.0, *) else {
+            throw XCTSkip("Writing Tools delegate callbacks require iOS 18.")
+        }
+
+        let textBox = MutableBox("Draft")
+        let coordinator = makeCoordinator(text: textBox)
+        let textView = TrackingUndoTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let configuration = makeConfiguration(text: textBox.value)
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: true
+        )
+
+        textView.trackingUndoManager.simulatedCanUndo = true
+        textView.trackingUndoManager.simulatedCanRedo = true
+        textView.simulatedIsFirstResponder = true
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 0,
+            redoCommandToken: 0,
+            dismissKeyboardCommandToken: 0,
+            to: textView,
+            force: false
+        )
+
+        XCTAssertTrue(textView.formatAccessoryItem?.isEnabled ?? false)
+        XCTAssertTrue(textView.undoAccessoryItem?.isEnabled ?? false)
+        XCTAssertTrue(textView.redoAccessoryItem?.isEnabled ?? false)
+
+        coordinator.textViewWritingToolsWillBegin(textView)
+
+        XCTAssertTrue(textView.isWritingToolsInteractionActive)
+        XCTAssertFalse(textView.formatAccessoryItem?.isEnabled ?? true)
+        XCTAssertFalse(textView.undoAccessoryItem?.isEnabled ?? true)
+        XCTAssertFalse(textView.redoAccessoryItem?.isEnabled ?? true)
+        XCTAssertFalse(textView.dismissAccessoryItem?.isEnabled ?? true)
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 1,
+            redoCommandToken: 1,
+            dismissKeyboardCommandToken: 1,
+            to: textView,
+            force: false
+        )
+
+        XCTAssertEqual(textView.trackingUndoManager.undoCallCount, 0)
+        XCTAssertEqual(textView.trackingUndoManager.redoCallCount, 0)
+        XCTAssertEqual(textView.resignFirstResponderCallCount, 0)
+
+        coordinator.textViewWritingToolsDidEnd(textView)
+
+        XCTAssertFalse(textView.isWritingToolsInteractionActive)
+        XCTAssertTrue(textView.formatAccessoryItem?.isEnabled ?? false)
+        XCTAssertTrue(textView.undoAccessoryItem?.isEnabled ?? false)
+        XCTAssertTrue(textView.redoAccessoryItem?.isEnabled ?? false)
+
+        coordinator.apply(
+            configuration: configuration,
+            undoCommandToken: 1,
+            redoCommandToken: 1,
+            dismissKeyboardCommandToken: 1,
+            to: textView,
+            force: false
+        )
+
+        XCTAssertEqual(textView.trackingUndoManager.undoCallCount, 0)
+        XCTAssertEqual(textView.trackingUndoManager.redoCallCount, 0)
+        XCTAssertEqual(textView.resignFirstResponderCallCount, 0)
+    }
+
+    @MainActor
     func testCoordinatorAppliesLineNumbersWithoutFullRerender() {
         let textBox = MutableBox("First\nSecond")
         let coordinator = makeCoordinator(text: textBox)
@@ -955,7 +1034,7 @@ final class EditorUndoRedoTests: XCTestCase {
         accessoryView.frame = CGRect(x: 0, y: 0, width: 320, height: 44)
         accessoryView.setNeedsLayout()
         accessoryView.layoutIfNeeded()
-        accessoryView.update(canUndo: true, canRedo: false, canDismiss: true)
+        accessoryView.update(canFormat: true, canUndo: true, canRedo: false, canDismiss: true)
 
         XCTAssertEqual(textView.contentInset.bottom, originalBottomInset, accuracy: 0.5)
         XCTAssertEqual(textView.verticalScrollIndicatorInsets.bottom, originalIndicatorBottomInset, accuracy: 0.5)
@@ -1019,7 +1098,7 @@ final class EditorUndoRedoTests: XCTestCase {
             showsDismissButton: false
         )
 
-        accessoryView.update(canUndo: true, canRedo: true, canDismiss: true)
+        accessoryView.update(canFormat: true, canUndo: true, canRedo: true, canDismiss: true)
 
         XCTAssertEqual(accessoryView.toolbar.items?.count, 4)
         XCTAssertTrue(accessoryView.toolbar.items?.first === accessoryView.formatButton)

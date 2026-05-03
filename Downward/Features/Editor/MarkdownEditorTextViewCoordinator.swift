@@ -456,6 +456,28 @@ extension MarkdownEditorTextView {
             updateKeyboardAccessoryState(for: textView)
         }
 
+        @available(iOS 18.0, *)
+        func textViewWritingToolsWillBegin(_ textView: UITextView) {
+            guard let textView = textView as? EditorChromeAwareTextView else {
+                return
+            }
+
+            textView.isWritingToolsInteractionActive = true
+            publishUndoRedoAvailability(for: textView)
+            updateKeyboardAccessoryState(for: textView)
+        }
+
+        @available(iOS 18.0, *)
+        func textViewWritingToolsDidEnd(_ textView: UITextView) {
+            guard let textView = textView as? EditorChromeAwareTextView else {
+                return
+            }
+
+            textView.isWritingToolsInteractionActive = false
+            publishUndoRedoAvailability(for: textView)
+            updateKeyboardAccessoryState(for: textView)
+        }
+
         func viewportInsetsSnapshot(for textView: UITextView) -> ViewportInsetsSnapshot {
             keyboardGeometryController.viewportInsetsSnapshot(for: textView)
         }
@@ -971,8 +993,12 @@ extension MarkdownEditorTextView {
             redoCommandToken: Int,
             dismissKeyboardCommandToken: Int
         ) {
+            let commandsAreAvailable = areKeyboardAccessoryCommandsAvailable(in: textView)
+
             if let lastHandledUndoCommandToken {
-                if undoCommandToken != lastHandledUndoCommandToken, textView.undoManager?.canUndo == true {
+                if undoCommandToken != lastHandledUndoCommandToken,
+                   commandsAreAvailable,
+                   textView.undoManager?.canUndo == true {
                     textView.undoManager?.undo()
                 }
             } else {
@@ -981,7 +1007,9 @@ extension MarkdownEditorTextView {
             lastHandledUndoCommandToken = undoCommandToken
 
             if let lastHandledRedoCommandToken {
-                if redoCommandToken != lastHandledRedoCommandToken, textView.undoManager?.canRedo == true {
+                if redoCommandToken != lastHandledRedoCommandToken,
+                   commandsAreAvailable,
+                   textView.undoManager?.canRedo == true {
                     textView.undoManager?.redo()
                 }
             } else {
@@ -990,7 +1018,9 @@ extension MarkdownEditorTextView {
             lastHandledRedoCommandToken = redoCommandToken
 
             if let lastHandledDismissKeyboardCommandToken {
-                if dismissKeyboardCommandToken != lastHandledDismissKeyboardCommandToken, textView.isFirstResponder {
+                if dismissKeyboardCommandToken != lastHandledDismissKeyboardCommandToken,
+                   commandsAreAvailable,
+                   textView.isFirstResponder {
                     textView.resignFirstResponder()
                 }
             } else {
@@ -1000,9 +1030,10 @@ extension MarkdownEditorTextView {
         }
 
         private func publishUndoRedoAvailability(for textView: UITextView) {
+            let commandsAreAvailable = areKeyboardAccessoryCommandsAvailable(in: textView)
             onUndoRedoAvailabilityChange(
-                textView.isEditable && (textView.undoManager?.canUndo ?? false),
-                textView.isEditable && (textView.undoManager?.canRedo ?? false)
+                commandsAreAvailable && (textView.undoManager?.canUndo ?? false),
+                commandsAreAvailable && (textView.undoManager?.canRedo ?? false)
             )
         }
 
@@ -1652,11 +1683,35 @@ extension MarkdownEditorTextView {
                 return
             }
 
+            let commandsAreAvailable = areKeyboardAccessoryCommandsAvailable(in: textView)
             textView.keyboardAccessoryToolbarView?.update(
-                canUndo: textView.isEditable && (textView.undoManager?.canUndo ?? false),
-                canRedo: textView.isEditable && (textView.undoManager?.canRedo ?? false),
-                canDismiss: textView.isFirstResponder
+                canFormat: commandsAreAvailable,
+                canUndo: commandsAreAvailable && (textView.undoManager?.canUndo ?? false),
+                canRedo: commandsAreAvailable && (textView.undoManager?.canRedo ?? false),
+                canDismiss: commandsAreAvailable && textView.isFirstResponder
             )
+        }
+
+        private func areKeyboardAccessoryCommandsAvailable(in textView: UITextView) -> Bool {
+            guard textView.isEditable else {
+                return false
+            }
+
+            guard let textView = textView as? EditorChromeAwareTextView else {
+                return true
+            }
+
+            // Writing Tools temporarily owns the text interaction, so the editor accessory
+            // should be visible-but-inert until UIKit ends that session.
+            if textView.isWritingToolsInteractionActive {
+                return false
+            }
+
+            if #available(iOS 18.0, *) {
+                return textView.isWritingToolsActive == false
+            }
+
+            return true
         }
 
         @objc
@@ -1665,7 +1720,7 @@ extension MarkdownEditorTextView {
                 return
             }
 
-            if textView.isEditable, textView.undoManager?.canUndo == true {
+            if areKeyboardAccessoryCommandsAvailable(in: textView), textView.undoManager?.canUndo == true {
                 textView.undoManager?.undo()
             }
             publishUndoRedoAvailability(for: textView)
@@ -1678,7 +1733,7 @@ extension MarkdownEditorTextView {
                 return
             }
 
-            if textView.isEditable, textView.undoManager?.canRedo == true {
+            if areKeyboardAccessoryCommandsAvailable(in: textView), textView.undoManager?.canRedo == true {
                 textView.undoManager?.redo()
             }
             publishUndoRedoAvailability(for: textView)
@@ -1691,7 +1746,7 @@ extension MarkdownEditorTextView {
                 return
             }
 
-            if textView.isFirstResponder {
+            if areKeyboardAccessoryCommandsAvailable(in: textView), textView.isFirstResponder {
                 textView.resignFirstResponder()
             }
             publishUndoRedoAvailability(for: textView)
@@ -1708,7 +1763,7 @@ extension MarkdownEditorTextView {
 
         private func applyInlineMarkdownFormat(marker: String, in textView: UITextView) {
             guard
-                textView.isEditable,
+                areKeyboardAccessoryCommandsAvailable(in: textView),
                 let currentText = textView.text as NSString?
             else {
                 return
@@ -1770,7 +1825,7 @@ extension MarkdownEditorTextView {
 
         private func applyCodeBlockMarkdownFormat(in textView: UITextView) {
             guard
-                textView.isEditable,
+                areKeyboardAccessoryCommandsAvailable(in: textView),
                 let currentText = textView.text as NSString?
             else {
                 return
@@ -1801,7 +1856,7 @@ extension MarkdownEditorTextView {
 
         private func applyLineMarkdownPrefix(_ prefix: String, in textView: UITextView) {
             guard
-                textView.isEditable,
+                areKeyboardAccessoryCommandsAvailable(in: textView),
                 let currentText = textView.text as NSString?
             else {
                 return
@@ -1858,7 +1913,7 @@ extension MarkdownEditorTextView {
 
         private func insertMarkdownLink(in textView: UITextView) {
             guard
-                textView.isEditable,
+                areKeyboardAccessoryCommandsAvailable(in: textView),
                 let currentText = textView.text as NSString?
             else {
                 return
@@ -1889,7 +1944,7 @@ extension MarkdownEditorTextView {
 
         private func insertMarkdownImage(in textView: UITextView) {
             guard
-                textView.isEditable,
+                areKeyboardAccessoryCommandsAvailable(in: textView),
                 let currentText = textView.text as NSString?
             else {
                 return
